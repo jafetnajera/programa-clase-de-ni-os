@@ -1,6 +1,6 @@
 [build]
   command = "npm install && npm run build:web"
-  publish = "dist"
+  publish = "web-build"
 
 [[redirects]]
   from = "/*"
