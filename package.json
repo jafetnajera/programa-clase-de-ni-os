@@ -1,13 +1,13 @@
 {
   "name": "clase-ninos-indus",
   "version": "1.0.0",
-  "main": "node_modules/expo/AppEntry.js",
+  "main": "index.js",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build:web": "npx expo export"
+    "build:web": "npx expo export -p web"
   },
   "dependencies": {
     "@expo/metro-runtime": "~3.2.3",
@@ -26,7 +26,8 @@
     "react-native-web": "~0.19.10"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "babel-preset-expo": "~11.0.8"
   },
   "private": true
 }
