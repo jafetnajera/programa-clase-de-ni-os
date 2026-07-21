@@ -25,7 +25,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "display": "standalone",
+      "backgroundColor": "#ffffff",
+      "themeColor": "#2C313C",
+      "shortName": "Clase Indus"
     }
   }
 }
