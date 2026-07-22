@@ -1,0 +1,16 @@
+{
+  "short_name": "Clase Indus",
+  "name": "Programa Clase de Niños Indus",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#2C313C",
+  "background_color": "#ffffff"
+}
