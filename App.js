@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { createClient } from '@supabase/supabase-js';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
@@ -175,23 +175,23 @@ function GruposScreen({ navigation }) {
   const { isDark, toggleTheme } = useContext(ThemeContext);
   const colors = getColors(isDark);
 
-  // NUEVO BOTÓN: Obliga al teléfono a responder
+  // NUEVO BOTÓN: Diagnóstico Imbloqueable
   const activarNotificaciones = async () => {
     try {
       if (typeof window !== 'undefined' && window.Notification) {
         if (window.Notification.permission === 'granted') {
-           alert("¡El sistema dice que tus notificaciones ya están autorizadas!");
+           Alert.alert("Diagnóstico", "¡Tus notificaciones ya están autorizadas!");
         } else if (window.Notification.permission === 'denied') {
-           alert("El navegador las tiene bloqueadas. Ve a la Configuración de Sitios de tu teléfono y permite las notificaciones para esta app.");
+           Alert.alert("Bloqueadas", "El navegador las tiene bloqueadas. Ve a la Configuración de Sitios de tu teléfono y permite las notificaciones para esta app.");
         } else {
            // Si no están ni aceptadas ni bloqueadas, forzamos a OneSignal a preguntar
            await OneSignal.Slidedown.promptPush({ force: true });
         }
       } else {
-        alert("Tu dispositivo actual no soporta notificaciones web push.");
+        Alert.alert("No Soportado", "Tu dispositivo actual no soporta notificaciones web push.");
       }
     } catch (error) {
-      alert("Error del sistema: " + error.message);
+      Alert.alert("Error del sistema", error.message);
     }
   };
 
@@ -204,7 +204,6 @@ function GruposScreen({ navigation }) {
             <Text style={[styles.subtitle, { color: colors.textSub }]}>Selecciona el grupo a impartir</Text>
           </View>
           <View style={[styles.toggleContainer, { flexDirection: 'row', gap: 10 }]}>
-            {/* NUEVO BOTÓN DE CAMPANITA */}
             <TouchableOpacity onPress={activarNotificaciones} style={{ padding: 8 }}>
               <Feather name="bell" size={26} color={colors.textSub} />
             </TouchableOpacity>
