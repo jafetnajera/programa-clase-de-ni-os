@@ -168,13 +168,31 @@ function LoginScreen({ navigation }) {
 // ==========================================
 // PANTALLA 1: GRUPOS (El único lugar con botón de tema)
 // ==========================================
+// ==========================================
+// PANTALLA 1: GRUPOS (El único lugar con botón de tema)
+// ==========================================
 function GruposScreen({ navigation }) {
   const { isDark, toggleTheme } = useContext(ThemeContext);
   const colors = getColors(isDark);
 
-  // Función atada al nuevo botón físico
-  const activarNotificaciones = () => {
-    OneSignal.Slidedown.promptPush();
+  // NUEVO BOTÓN: Obliga al teléfono a responder
+  const activarNotificaciones = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.Notification) {
+        if (window.Notification.permission === 'granted') {
+           alert("¡El sistema dice que tus notificaciones ya están autorizadas!");
+        } else if (window.Notification.permission === 'denied') {
+           alert("El navegador las tiene bloqueadas. Ve a la Configuración de Sitios de tu teléfono y permite las notificaciones para esta app.");
+        } else {
+           // Si no están ni aceptadas ni bloqueadas, forzamos a OneSignal a preguntar
+           await OneSignal.Slidedown.promptPush({ force: true });
+        }
+      } else {
+        alert("Tu dispositivo actual no soporta notificaciones web push.");
+      }
+    } catch (error) {
+      alert("Error del sistema: " + error.message);
+    }
   };
 
   return (
@@ -186,7 +204,7 @@ function GruposScreen({ navigation }) {
             <Text style={[styles.subtitle, { color: colors.textSub }]}>Selecciona el grupo a impartir</Text>
           </View>
           <View style={[styles.toggleContainer, { flexDirection: 'row', gap: 10 }]}>
-            {/* NUEVO BOTÓN DE CAMPANITA PARA NOTIFICACIONES */}
+            {/* NUEVO BOTÓN DE CAMPANITA */}
             <TouchableOpacity onPress={activarNotificaciones} style={{ padding: 8 }}>
               <Feather name="bell" size={26} color={colors.textSub} />
             </TouchableOpacity>
