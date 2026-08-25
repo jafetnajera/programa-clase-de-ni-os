@@ -172,6 +172,11 @@ function GruposScreen({ navigation }) {
   const { isDark, toggleTheme } = useContext(ThemeContext);
   const colors = getColors(isDark);
 
+  // Función atada al nuevo botón físico
+  const activarNotificaciones = () => {
+    OneSignal.Slidedown.promptPush();
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
@@ -180,7 +185,11 @@ function GruposScreen({ navigation }) {
             <Text style={[styles.title, { color: colors.textMain }]}>PROGRAMA CLASE DE NIÑOS INDUS</Text>
             <Text style={[styles.subtitle, { color: colors.textSub }]}>Selecciona el grupo a impartir</Text>
           </View>
-          <View style={styles.toggleContainer}>
+          <View style={[styles.toggleContainer, { flexDirection: 'row', gap: 10 }]}>
+            {/* NUEVO BOTÓN DE CAMPANITA PARA NOTIFICACIONES */}
+            <TouchableOpacity onPress={activarNotificaciones} style={{ padding: 8 }}>
+              <Feather name="bell" size={26} color={colors.textSub} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
               <Feather name={isDark ? "sun" : "moon"} size={26} color={colors.textSub} />
             </TouchableOpacity>
