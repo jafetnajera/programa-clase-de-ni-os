@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { createClient } from '@supabase/supabase-js';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import OneSignal from 'react-onesignal';
 
 // Conexión a Supabase
 const supabaseUrl = 'https://clspbwuvzqnzkvnaafzo.supabase.co';
@@ -579,18 +580,12 @@ function AdminScreen() {
     const { data } = await supabase.from('maestros').select('id').eq('equipo', maestro.equipo);
     const cantidadEnEquipo = data ? data.length : 0;
     let mensajeAlerta = `¿Estás seguro de eliminar a ${maestro.nombre_usuario}?`;
-    if (maestro.equipo !== 'Sin equipo' && maestro.rol !== 'administrador') { mensajeAlerta += `
-
-⚠️ El ${maestro.equipo} tiene ${cantidadEnEquipo} miembro(s).`; }
+    if (maestro.equipo !== 'Sin equipo' && maestro.rol !== 'administrador') { mensajeAlerta += `\n\n⚠️ El ${maestro.equipo} tiene ${cantidadEnEquipo} miembro(s).`; }
 
     setAlerta({ visible: true, titulo: "Dar de baja", mensaje: mensajeAlerta, textoConfirmar: "Eliminar", onCancelar: cerrarAlerta, isDark: isDark, onConfirmar: async () => { cerrarAlerta(); setEquipoSeleccionadoAdmin(null); await supabase.from('maestros').delete().eq('id', maestro.id); obtenerMaestros(); } });
   }
 
-  const compartirAccesos = async (usuario, pin, equipo) => { try { await Share.share({ message: `¡Hola! Aquí tienes tus accesos.
-
-👤 Usuario: ${usuario}
-🔑 PIN: ${pin}
-🛡️ Equipo: ${equipo}` }); } catch (error) {} };
+  const compartirAccesos = async (usuario, pin, equipo) => { try { await Share.share({ message: `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${usuario}\n🔑 PIN: ${pin}\n🛡️ Equipo: ${equipo}` }); } catch (error) {} };
 
   const maestrosPorEquipo = maestros.reduce((acc, maestro) => {
     let equipo = maestro.equipo || 'Sin equipo';
@@ -668,6 +663,13 @@ function AdminScreen() {
 // ==========================================
 export default function App() {
   const [isDark, setIsDark] = useState(false);
+
+  // AQUI INYECTAMOS ONESIGNAL
+  useEffect(() => {
+    OneSignal.init({
+      appId: "a598b3d5-0064-4124-bf93-2543c79a9922"
+    });
+  }, []);
   
   const toggleTheme = () => setIsDark(!isDark);
   const colors = getColors(isDark);
