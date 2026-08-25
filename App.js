@@ -164,10 +164,6 @@ function LoginScreen({ navigation }) {
     </SafeAreaView>
   );
 }
-
-// ==========================================
-// PANTALLA 1: GRUPOS (El único lugar con botón de tema)
-// ==========================================
 // ==========================================
 // PANTALLA 1: GRUPOS (El único lugar con botón de tema)
 // ==========================================
@@ -545,6 +541,7 @@ function TablonScreen() {
 }
 
 // ==========================================
+// ==========================================
 // PANTALLA: ADMIN 
 // ==========================================
 function AdminScreen() {
@@ -560,6 +557,7 @@ function AdminScreen() {
   const [maestroEditando, setMaestroEditando] = useState(null);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar', isDark: isDark });
   const colors = getColors(isDark);
+  const [telefono, setTelefono] = useState('');
 
   useEffect(() => { obtenerMaestros(); }, []);
   
@@ -586,12 +584,12 @@ function AdminScreen() {
     const rolFinal = esAdmin ? 'administrador' : 'maestro';
     const equipoFinal = esAdmin ? 'Administradores' : (numeroEquipoAsignado ? `Equipo ${numeroEquipoAsignado}` : 'Sin equipo');
 
-    const { error } = await supabase.from('maestros').insert([{ nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal }]);
+    const { error } = await supabase.from('maestros').insert([{ nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono }]);
     
     if(error) { setAlerta({ visible: true, titulo: "Error", mensaje: "El usuario ya existe.", onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
       setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: "Usuario registrado.", onConfirmar: cerrarAlerta, isDark: isDark });
-      setNombreCompleto(''); setUsuarioGenerado(''); setPinGenerado(''); setNumeroEquipoAsignado(''); setEsAdmin(false); obtenerMaestros();
+      setNombreCompleto(''); setUsuarioGenerado(''); setPinGenerado(''); setNumeroEquipoAsignado(''); setTelefono(''); setEsAdmin(false); obtenerMaestros();
     }
     setGuardando(false);
   }
@@ -628,20 +626,29 @@ function AdminScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }}>
         <Text style={[styles.topicTitle, { color: colors.textMain }]}>Registrar Usuario</Text>
+        
         <View style={styles.formGroup}>
           <Text style={[styles.label, { color: colors.textSub }]}>Nombre y Apellido</Text>
           <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Ej. Juan Pérez" placeholderTextColor={colors.textSub} value={nombreCompleto} onChangeText={procesarNombre} />
         </View>
+
+        <View style={styles.formGroup}>
+          <Text style={[styles.label, { color: colors.textSub }]}>Número Celular</Text>
+          <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Ej. 8123456789" placeholderTextColor={colors.textSub} value={telefono} onChangeText={setTelefono} keyboardType="numeric" />
+        </View>
+
         <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
           <Text style={[styles.label, { color: colors.textSub }]}>Es Administrador</Text>
           <Switch trackColor={{ false: colors.cardBorder, true: "#EFBC68" }} thumbColor={"#FFFFFF"} onValueChange={setEsAdmin} value={esAdmin} />
         </View>
+        
         {!esAdmin && (
           <View style={styles.formGroup}>
             <Text style={[styles.label, { color: colors.textSub }]}>Número de Equipo (Opcional)</Text>
             <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Ej. 1" placeholderTextColor={colors.textSub} value={numeroEquipoAsignado} onChangeText={(texto) => setNumeroEquipoAsignado(texto.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
           </View>
         )}
+        
         {usuarioGenerado !== '' && (
           <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
             <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Accesos que se crearán:</Text>
@@ -649,9 +656,12 @@ function AdminScreen() {
             <View style={styles.autoGenRow}><Text style={[styles.autoGenLabel, { color: colors.textSub }]}>PIN (4 dígitos):</Text><View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}><TextInput style={[styles.autoGenInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, flex: 1 }]} value={pinGenerado} onChangeText={setPinGenerado} keyboardType="numeric" maxLength={4} /><TouchableOpacity onPress={generarNuevoPin} style={{ padding: 10 }}><Feather name="refresh-cw" size={18} color={colors.textSub} /></TouchableOpacity></View></View>
           </View>
         )}
+        
         <TouchableOpacity style={styles.primaryButton} onPress={registrarMaestro}>{guardando ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Guardar</Text>}</TouchableOpacity>
+        
         <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
         <Text style={[styles.topicTitle, { color: colors.textMain }]}>Equipos y Usuarios</Text>
+        
         {!equipoSeleccionadoAdmin ? (
           <View>
             <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Selecciona un equipo para ver a sus miembros.</Text>
