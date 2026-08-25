@@ -668,6 +668,9 @@ export default function App() {
   useEffect(() => {
     OneSignal.init({
       appId: "a598b3d5-0064-4124-bf93-2543c79a9922"
+    }).then(() => {
+      // Esto hace que aparezca el mensaje de "Permitir notificaciones"
+      OneSignal.Slidedown.promptPush();
     });
   }, []);
   
