@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import OneSignal from 'react-onesignal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Conexión a Supabase
 const supabaseUrl = 'https://clspbwuvzqnzkvnaafzo.supabase.co';
@@ -132,6 +133,8 @@ function LoginScreen({ navigation }) {
       } else {
         usuarioActivoGlobal = data.nombre_usuario;
         rolUsuarioActivoGlobal = data.rol;
+        await AsyncStorage.setItem('sesionMaestro', JSON.stringify({ nombre_usuario: data.nombre_usuario, rol: data.rol }));
+        OneSignal.login(data.nombre_usuario);
         setUsuarioLogin(''); setPinLogin('');
         navigation.replace('Grupos');
       }
@@ -699,6 +702,8 @@ function AdminScreen() {
 // ==========================================
 export default function App() {
   const [isDark, setIsDark] = useState(false);
+  const [cargandoSesion, setCargandoSesion] = useState(true);
+  const [rutaInicial, setRutaInicial] = useState('Login');
 
   // AQUI INYECTAMOS ONESIGNAL
   useEffect(() => {
@@ -709,9 +714,32 @@ export default function App() {
       OneSignal.Slidedown.promptPush();
     });
   }, []);
+
+  // Revisa si ya hay una sesión guardada en el dispositivo
+  useEffect(() => {
+    (async () => {
+      try {
+        const guardada = await AsyncStorage.getItem('sesionMaestro');
+        if (guardada) {
+          const { nombre_usuario, rol } = JSON.parse(guardada);
+          usuarioActivoGlobal = nombre_usuario;
+          rolUsuarioActivoGlobal = rol;
+          OneSignal.login(nombre_usuario);
+          setRutaInicial('Grupos');
+        }
+      } catch (e) {
+        console.error('Error leyendo sesión:', e);
+      } finally {
+        setCargandoSesion(false);
+      }
+    })();
+  }, []);
+
+  if (cargandoSesion) {
+    return <ActivityIndicator style={{ flex: 1 }} size="large" />;
+  }
   
   const toggleTheme = () => setIsDark(!isDark);
-  const colors = getColors(isDark);
 
   // Tema global para React Navigation, elimina el flasheo blanco vinculando el Root al fondo actual
   const MyTheme = {
@@ -731,7 +759,7 @@ export default function App() {
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
         <NavigationContainer theme={MyTheme}>
           <Stack.Navigator 
-            initialRouteName="Login"
+            initialRouteName={rutaInicial}
             screenOptions={{
               headerShadowVisible: false, 
               headerTitleStyle: { fontFamily: 'serif', fontWeight: 'bold' },
