@@ -174,26 +174,25 @@ function GruposScreen({ navigation }) {
   const { isDark, toggleTheme } = useContext(ThemeContext);
   const colors = getColors(isDark);
 
-  // NUEVO BOTÓN: Diagnóstico Imbloqueable
-  const activarNotificaciones = async () => {
-    try {
-      if (typeof window !== 'undefined' && window.Notification) {
-        if (window.Notification.permission === 'granted') {
-           Alert.alert("Diagnóstico", "¡Tus notificaciones ya están autorizadas!");
-        } else if (window.Notification.permission === 'denied') {
-           Alert.alert("Bloqueadas", "El navegador las tiene bloqueadas. Ve a la Configuración de Sitios de tu teléfono y permite las notificaciones para esta app.");
-        } else {
-           // Si no están ni aceptadas ni bloqueadas, forzamos a OneSignal a preguntar
-           await OneSignal.Slidedown.promptPush({ force: true });
-        }
-      } else {
-        Alert.alert("No Soportado", "Tu dispositivo actual no soporta notificaciones web push.");
-      }
-    } catch (error) {
-      Alert.alert("Error del sistema", error.message);
-    }
+ // Cierra la sesión del maestro actual y regresa al Login
+  const cerrarSesion = async () => {
+    await AsyncStorage.removeItem('sesionMaestro');
+    usuarioActivoGlobal = null;
+    rolUsuarioActivoGlobal = null;
+    navigation.replace('Login');
   };
-
+// Pregunta antes de cerrar la sesión
+  const confirmarCerrarSesion = () => {
+    setAlerta({
+      visible: true,
+      titulo: "Cerrar sesión",
+      mensaje: "¿Seguro que quieres cerrar tu sesión?",
+      textoConfirmar: "Sí, cerrar sesión",
+      onCancelar: cerrarAlerta,
+      isDark: isDark,
+      onConfirmar: () => { cerrarAlerta(); cerrarSesion(); }
+    });
+  };
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
@@ -203,8 +202,8 @@ function GruposScreen({ navigation }) {
             <Text style={[styles.subtitle, { color: colors.textSub }]}>Selecciona el grupo a impartir</Text>
           </View>
           <View style={[styles.toggleContainer, { flexDirection: 'row', gap: 10 }]}>
-            <TouchableOpacity onPress={activarNotificaciones} style={{ padding: 8 }}>
-              <Feather name="bell" size={26} color={colors.textSub} />
+             <TouchableOpacity onPress={cerrarSesion} style={{ padding: 8 }}>
+              <Feather name="log-out" size={26} color={colors.textSub} />
             </TouchableOpacity>
             <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
               <Feather name={isDark ? "sun" : "moon"} size={26} color={colors.textSub} />
@@ -242,6 +241,7 @@ function GruposScreen({ navigation }) {
           </TouchableOpacity>
         )}
       </ScrollView>
+      <AlertaPersonalizada {...alerta} />
     </SafeAreaView>
   );
 }
