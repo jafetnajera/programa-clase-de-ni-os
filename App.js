@@ -173,8 +173,10 @@ function LoginScreen({ navigation }) {
 function GruposScreen({ navigation }) {
   const { isDark, toggleTheme } = useContext(ThemeContext);
   const colors = getColors(isDark);
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
+  const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 
- // Cierra la sesión del maestro actual y regresa al Login
+  // Cierra la sesión del maestro actual y regresa al Login
   const cerrarSesion = async () => {
     await AsyncStorage.removeItem('sesionMaestro');
     usuarioActivoGlobal = null;
@@ -202,7 +204,7 @@ function GruposScreen({ navigation }) {
             <Text style={[styles.subtitle, { color: colors.textSub }]}>Selecciona el grupo a impartir</Text>
           </View>
           <View style={[styles.toggleContainer, { flexDirection: 'row', gap: 10 }]}>
-             <TouchableOpacity onPress={cerrarSesion} style={{ padding: 8 }}>
+          <TouchableOpacity onPress={confirmarCerrarSesion} style={{ padding: 8 }}>
               <Feather name="log-out" size={26} color={colors.textSub} />
             </TouchableOpacity>
             <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
@@ -705,19 +707,14 @@ export default function App() {
   const [cargandoSesion, setCargandoSesion] = useState(true);
   const [rutaInicial, setRutaInicial] = useState('Login');
 
-  // AQUI INYECTAMOS ONESIGNAL
+   // AQUI INYECTAMOS ONESIGNAL Y REVISAMOS LA SESIÓN GUARDADA
   useEffect(() => {
     OneSignal.init({
       appId: "a598b3d5-0064-4124-bf93-2543c79a9922"
-    }).then(() => {
+    }).then(async () => {
       // Esto hace que aparezca el mensaje de "Permitir notificaciones"
       OneSignal.Slidedown.promptPush();
-    });
-  }, []);
 
-  // Revisa si ya hay una sesión guardada en el dispositivo
-  useEffect(() => {
-    (async () => {
       try {
         const guardada = await AsyncStorage.getItem('sesionMaestro');
         if (guardada) {
@@ -732,7 +729,7 @@ export default function App() {
       } finally {
         setCargandoSesion(false);
       }
-    })();
+    });
   }, []);
 
 if (cargandoSesion) {
