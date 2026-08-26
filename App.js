@@ -735,11 +735,12 @@ export default function App() {
     })();
   }, []);
 
-  if (cargandoSesion) {
+if (cargandoSesion) {
     return <ActivityIndicator style={{ flex: 1 }} size="large" />;
   }
   
   const toggleTheme = () => setIsDark(!isDark);
+  const colors = getColors(isDark);
 
   // Tema global para React Navigation, elimina el flasheo blanco vinculando el Root al fondo actual
   const MyTheme = {
