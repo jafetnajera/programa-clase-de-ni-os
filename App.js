@@ -563,7 +563,8 @@ function AdminScreen() {
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar', isDark: isDark });
   const colors = getColors(isDark);
   const [telefono, setTelefono] = useState('');
-
+ const [previaRol, setPreviaRol] = useState([]);
+  const [subiendoRol, setSubiendoRol] = useState(false);
   useEffect(() => { obtenerMaestros(); }, []);
   
   function cerrarAlerta() { setAlerta({ ...alerta, visible: false }); }
@@ -614,7 +615,47 @@ function AdminScreen() {
     setAlerta({ visible: true, titulo: "Dar de baja", mensaje: mensajeAlerta, textoConfirmar: "Eliminar", onCancelar: cerrarAlerta, isDark: isDark, onConfirmar: async () => { cerrarAlerta(); setEquipoSeleccionadoAdmin(null); await supabase.from('maestros').delete().eq('id', maestro.id); obtenerMaestros(); } });
   }
 
-  const compartirAccesos = async (usuario, pin, equipo) => { try { await Share.share({ message: `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${usuario}\n🔑 PIN: ${pin}\n🛡️ Equipo: ${equipo}` }); } catch (error) {} };
+   const compartirAccesos = async (usuario, pin, equipo) => { try { await Share.share({ message: `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${usuario}\n🔑 PIN: ${pin}\n🛡️ Equipo: ${equipo}` }); } catch (error) {} };
+
+  // Lee el texto del CSV y lo convierte en una lista de filas
+  const parsearCSV = (texto) => {
+    const lineas = texto.trim().split('\n');
+    const encabezados = lineas[0].split(',').map(h => h.trim().toLowerCase());
+    return lineas.slice(1).filter(l => l.trim() !== '').map(linea => {
+      const valores = linea.split(',').map(v => v.trim());
+      const fila = {};
+      encabezados.forEach((encabezado, i) => { fila[encabezado] = valores[i]; });
+      return fila;
+    });
+  };
+
+  // Se activa cuando el admin selecciona el archivo CSV
+  const manejarArchivoCSV = (evento) => {
+    const archivo = evento.target.files[0];
+    if (!archivo) return;
+    const lector = new FileReader();
+    lector.onload = (e) => {
+      try {
+        setPreviaRol(parsearCSV(e.target.result));
+      } catch (error) {
+        setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo leer el archivo. Revisa que sea un CSV válido.", onConfirmar: cerrarAlerta, isDark: isDark });
+      }
+    };
+    lector.readAsText(archivo);
+  };
+
+  // Sube a Supabase las filas que se previsualizaron
+  const confirmarCargaRol = async () => {
+    setSubiendoRol(true);
+    const { error } = await supabase.from('programa_servicios').insert(previaRol);
+    setSubiendoRol(false);
+    if (error) {
+      setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo subir el rol. Revisa que las columnas del CSV coincidan (fecha, horario, tipo, nombre_usuario).", onConfirmar: cerrarAlerta, isDark: isDark });
+    } else {
+      setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: `Se subieron ${previaRol.length} fechas correctamente.`, onConfirmar: cerrarAlerta, isDark: isDark });
+      setPreviaRol([]);
+    }
+  };
 
   const maestrosPorEquipo = maestros.reduce((acc, maestro) => {
     let equipo = maestro.equipo || 'Sin equipo';
@@ -690,6 +731,25 @@ function AdminScreen() {
                 <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
               </View>
             ))}
+                 </View>
+        )}
+
+        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
+        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Cargar Rol (Clases y Predicaciones)</Text>
+        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las fechas del periodo.</Text>
+
+        {Platform.OS === 'web' && (
+          <input type="file" accept=".csv" onChange={manejarArchivoCSV} style={{ marginBottom: 15, color: colors.textMain }} />
+        )}
+
+        {previaRol.length > 0 && (
+          <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+            <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Se van a subir {previaRol.length} fechas:</Text>
+            {previaRol.slice(0, 5).map((fila, index) => (
+              <Text key={index} style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>{fila.fecha} • {fila.horario} • {fila.tipo} • {fila.nombre_usuario}</Text>
+            ))}
+            {previaRol.length > 5 && <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>...y {previaRol.length - 5} más</Text>}
+            <TouchableOpacity style={[styles.primaryButton, { marginTop: 15 }]} onPress={confirmarCargaRol}>{subiendoRol ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Confirmar y subir</Text>}</TouchableOpacity>
           </View>
         )}
       </ScrollView>
