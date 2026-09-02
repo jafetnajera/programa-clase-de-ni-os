@@ -135,8 +135,8 @@ function LoginScreen({ navigation }) {
         rolUsuarioActivoGlobal = data.rol;
         await AsyncStorage.setItem('sesionMaestro', JSON.stringify({ nombre_usuario: data.nombre_usuario, rol: data.rol }));
         OneSignal.login(data.nombre_usuario);
-        setUsuarioLogin(''); setPinLogin('');
-        navigation.replace('Grupos');
+               setUsuarioLogin(''); setPinLogin('');
+        navigation.replace('MenuPrincipal');
       }
     } catch (error) { setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo iniciar sesión." }); } finally { setIngresando(false); }
   }
@@ -168,22 +168,21 @@ function LoginScreen({ navigation }) {
   );
 }
 // ==========================================
-// PANTALLA 1: GRUPOS (El único lugar con botón de tema)
+// PANTALLA 1: MENÚ PRINCIPAL
 // ==========================================
-function GruposScreen({ navigation }) {
+function MenuPrincipalScreen({ navigation }) {
   const { isDark, toggleTheme } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 
-  // Cierra la sesión del maestro actual y regresa al Login
   const cerrarSesion = async () => {
     await AsyncStorage.removeItem('sesionMaestro');
     usuarioActivoGlobal = null;
     rolUsuarioActivoGlobal = null;
     navigation.replace('Login');
   };
-// Pregunta antes de cerrar la sesión
+
   const confirmarCerrarSesion = () => {
     setAlerta({
       visible: true,
@@ -195,44 +194,44 @@ function GruposScreen({ navigation }) {
       onConfirmar: () => { cerrarAlerta(); cerrarSesion(); }
     });
   };
+
+  const proximamente = () => {
+    setAlerta({ visible: true, titulo: "Próximamente", mensaje: "Esta sección todavía se está construyendo.", onConfirmar: cerrarAlerta, isDark: isDark });
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
-        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850 }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: colors.textMain }]}>PROGRAMA CLASE DE NIÑOS INDUS</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>Selecciona el grupo a impartir</Text>
-          </View>
-          <View style={[styles.toggleContainer, { flexDirection: 'row', gap: 10 }]}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
           <TouchableOpacity onPress={confirmarCerrarSesion} style={{ padding: 8 }}>
-              <Feather name="log-out" size={26} color={colors.textSub} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
-              <Feather name={isDark ? "sun" : "moon"} size={26} color={colors.textSub} />
-            </TouchableOpacity>
-          </View>
+            <Feather name="log-out" size={24} color={colors.textSub} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textMain }]}>Indus app</Text>
+          <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
+            <Feather name={isDark ? "sun" : "moon"} size={18} color={colors.textSub} />
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.gruposContainer, { width: '95%', maxWidth: 850 }]}>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#FFB7A1', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Niños' })}>
-            <Feather name="smile" size={32} color="#FFFFFF" style={styles.grupoIcon} />
-            <Text style={styles.grupoTitleBlanco}>Niños</Text>
-            <Text style={styles.grupoEdadBlanco}>3 a 6 años</Text>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#EAF3F0', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Grupos')}>
+            <Feather name="smile" size={32} color="#2F6E5E" style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: '#2F6E5E' }]}>Clases de niños</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#EFBC68', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Pre adolescentes' })}>
-            <Feather name="users" size={32} color="#FFFFFF" style={styles.grupoIcon} />
-            <Text style={styles.grupoTitleBlanco}>Pre adolescentes</Text>
-            <Text style={styles.grupoEdadBlanco}>7 a 9 años</Text>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#EDF2FA', borderColor: 'transparent' }]} onPress={proximamente}>
+            <Feather name="calendar" size={32} color="#2C4A73" style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: '#2C4A73' }]}>Rol de predicaciones</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#919F89', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Adolescentes' })}>
-            <Feather name="book" size={32} color="#FFFFFF" style={styles.grupoIcon} />
-            <Text style={styles.grupoTitleBlanco}>Adolescentes</Text>
-            <Text style={styles.grupoEdadBlanco}>10 a 13 años</Text>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#FBEEDD', borderColor: 'transparent' }]} onPress={proximamente}>
+            <Feather name="volume-2" size={32} color="#8A4F1E" style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: '#8A4F1E' }]}>Anuncios</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => navigation.navigate('Tablon')}>
-            <Feather name="clipboard" size={20} color={colors.textSub} />
-            <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#F1EDFA', borderColor: 'transparent' }]} onPress={proximamente}>
+            <Feather name="heart" size={32} color="#5B4A8A" style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: '#5B4A8A' }]}>Petición de oración</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#FDEFEF', borderColor: 'transparent' }]} onPress={proximamente}>
+            <Feather name="calendar" size={32} color="#A34A4A" style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: '#A34A4A' }]}>Calendario de actividades</Text>
           </TouchableOpacity>
         </View>
 
@@ -244,6 +243,53 @@ function GruposScreen({ navigation }) {
         )}
       </ScrollView>
       <AlertaPersonalizada {...alerta} />
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA 1b: GRUPOS (clases de niños)
+// ==========================================
+function GruposScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, flexDirection: 'row', alignItems: 'center' }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Clases de niños</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>Selecciona el grupo a impartir</Text>
+          </View>
+        </View>
+
+        <View style={[styles.gruposContainer, { width: '95%', maxWidth: 850 }]}>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#FFF0EC', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Niños' })}>
+            <Feather name="smile" size={32} color="#D96E53" style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: '#D96E53' }]}>Niños</Text>
+            <Text style={[styles.grupoEdadBlanco, { color: '#D96E53' }]}>3 a 6 años</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#FDF6EB', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Pre adolescentes' })}>
+            <Feather name="users" size={32} color="#C48B29" style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: '#C48B29' }]}>Pre adolescentes</Text>
+            <Text style={[styles.grupoEdadBlanco, { color: '#C48B29' }]}>7 a 9 años</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#EEF1ED', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Adolescentes' })}>
+            <Feather name="book" size={32} color="#6A7A61" style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: '#6A7A61' }]}>Adolescentes</Text>
+            <Text style={[styles.grupoEdadBlanco, { color: '#6A7A61' }]}>10 a 13 años</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => navigation.navigate('Tablon')}>
+            <Feather name="clipboard" size={20} color={colors.textSub} />
+            <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -782,7 +828,7 @@ export default function App() {
           usuarioActivoGlobal = nombre_usuario;
           rolUsuarioActivoGlobal = rol;
           OneSignal.login(nombre_usuario);
-          setRutaInicial('Grupos');
+        setRutaInicial('MenuPrincipal');
         }
       } catch (e) {
         console.error('Error leyendo sesión:', e);
@@ -825,6 +871,7 @@ if (cargandoSesion) {
             }}
           >
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="MenuPrincipal" component={MenuPrincipalScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Grupos" component={GruposScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Temas" component={TemasScreen} options={{ title: '' }} />
             <Stack.Screen name="Clases" component={ClasesScreen} options={{ title: 'Lecciones' }} />
