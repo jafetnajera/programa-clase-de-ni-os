@@ -813,29 +813,35 @@ export default function App() {
   const [cargandoSesion, setCargandoSesion] = useState(true);
   const [rutaInicial, setRutaInicial] = useState('Login');
 
-   // AQUI INYECTAMOS ONESIGNAL Y REVISAMOS LA SESIÓN GUARDADA
+   // Inicializa OneSignal por su cuenta, sin bloquear el resto de la app si falla
   useEffect(() => {
     OneSignal.init({
       appId: "a598b3d5-0064-4124-bf93-2543c79a9922"
-    }).then(async () => {
-      // Esto hace que aparezca el mensaje de "Permitir notificaciones"
+    }).then(() => {
       OneSignal.Slidedown.promptPush();
+    }).catch((e) => {
+      console.error('OneSignal no se pudo inicializar:', e);
+    });
+  }, []);
 
+  // Revisa la sesión guardada por su cuenta, sin esperar a OneSignal
+  useEffect(() => {
+    (async () => {
       try {
         const guardada = await AsyncStorage.getItem('sesionMaestro');
         if (guardada) {
           const { nombre_usuario, rol } = JSON.parse(guardada);
           usuarioActivoGlobal = nombre_usuario;
           rolUsuarioActivoGlobal = rol;
-          OneSignal.login(nombre_usuario);
-        setRutaInicial('MenuPrincipal');
+          try { OneSignal.login(nombre_usuario); } catch (e) { console.error('OneSignal.login falló:', e); }
+          setRutaInicial('MenuPrincipal');
         }
       } catch (e) {
         console.error('Error leyendo sesión:', e);
       } finally {
         setCargandoSesion(false);
       }
-    });
+    })();
   }, []);
 
 if (cargandoSesion) {
