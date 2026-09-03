@@ -175,6 +175,15 @@ function MenuPrincipalScreen({ navigation }) {
   const colors = getColors(isDark);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
+  const [tieneRol, setTieneRol] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const hoy = new Date().toISOString().split('T')[0];
+      const { data } = await supabase.from('programa_servicios').select('id').eq('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy);
+      setTieneRol(data && data.length > 0);
+    })();
+  }, []);
 
   const cerrarSesion = async () => {
     await AsyncStorage.removeItem('sesionMaestro');
@@ -217,9 +226,12 @@ function MenuPrincipalScreen({ navigation }) {
             <Feather name="smile" size={32} color="#2F6E5E" style={styles.grupoIcon} />
             <Text style={[styles.grupoTitleBlanco, { color: '#2F6E5E' }]}>Clases de niños</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#EDF2FA', borderColor: 'transparent' }]} onPress={proximamente}>
-            <Feather name="calendar" size={32} color="#2C4A73" style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: '#2C4A73' }]}>Rol de predicaciones</Text>
+                    <TouchableOpacity
+            style={[styles.card, { backgroundColor: tieneRol ? '#EDF2FA' : colors.cardBg, borderColor: tieneRol ? 'transparent' : colors.cardBorder, opacity: tieneRol ? 1 : 0.55 }]}
+            onPress={() => tieneRol ? navigation.navigate('MiRol') : setAlerta({ visible: true, titulo: "Sin fecha asignada", mensaje: "No tienes ninguna fecha programada por ahora.", onConfirmar: cerrarAlerta, isDark: isDark })}
+          >
+            <Feather name={tieneRol ? "calendar" : "lock"} size={32} color={tieneRol ? "#2C4A73" : colors.textSub} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: tieneRol ? "#2C4A73" : colors.textSub }]}>Rol de predicaciones</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.card, { backgroundColor: '#FBEEDD', borderColor: 'transparent' }]} onPress={proximamente}>
             <Feather name="volume-2" size={32} color="#8A4F1E" style={styles.grupoIcon} />
@@ -242,7 +254,71 @@ function MenuPrincipalScreen({ navigation }) {
           </TouchableOpacity>
         )}
       </ScrollView>
-      <AlertaPersonalizada {...alerta} />
+            <AlertaPersonalizada {...alerta} />
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA: MI ROL
+// ==========================================
+function MiRolScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const [fechas, setFechas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const hoy = new Date().toISOString().split('T')[0];
+      const { data } = await supabase.from('programa_servicios').select('*').eq('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).order('fecha', { ascending: true });
+      setFechas(data || []);
+      setCargando(false);
+    })();
+  }, []);
+
+  const formatearFecha = (fechaTexto) => {
+    const fecha = new Date(fechaTexto + 'T00:00:00');
+    return fecha.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+  };
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Mi rol</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>Tus próximas fechas</Text>
+          </View>
+        </View>
+
+        <View style={{ width: '95%', maxWidth: 850 }}>
+          {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
+          {!cargando && fechas.length === 0 && (
+            <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>No tienes fechas próximas.</Text>
+          )}
+          {fechas.map((item) => {
+            const esClase = item.tipo === 'Clase';
+            const tintBg = esClase ? '#EDF2FA' : '#FBEAE0';
+            const tintText = esClase ? '#3A5A8A' : '#A65A2E';
+            return (
+              <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Feather name={esClase ? "calendar" : "mic"} size={18} color={tintText} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textMain, textTransform: 'capitalize' }}>{formatearFecha(item.fecha)}</Text>
+                  <Text style={{ fontSize: 11, color: colors.textSub }}>{item.horario}</Text>
+                </View>
+                <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{item.tipo}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -879,6 +955,7 @@ if (cargandoSesion) {
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
             <Stack.Screen name="MenuPrincipal" component={MenuPrincipalScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Grupos" component={GruposScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="MiRol" component={MiRolScreen} options={{ title: 'Mi rol' }} />
             <Stack.Screen name="Temas" component={TemasScreen} options={{ title: '' }} />
             <Stack.Screen name="Clases" component={ClasesScreen} options={{ title: 'Lecciones' }} />
             <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ title: 'Clase' }} />
