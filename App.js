@@ -204,8 +204,8 @@ function MenuPrincipalScreen({ navigation }) {
     });
   };
 
-  const proximamente = () => {
-    setAlerta({ visible: true, titulo: "Próximamente", mensaje: "Esta sección todavía se está construyendo.", onConfirmar: cerrarAlerta, isDark: isDark });
+    const proximamente = (color) => {
+    setAlerta({ visible: true, titulo: "Próximamente", mensaje: "Esta sección todavía se está construyendo.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: color });
   };
 
   return (
@@ -227,21 +227,20 @@ function MenuPrincipalScreen({ navigation }) {
             <Text style={[styles.grupoTitleBlanco, { color: '#2F6E5E' }]}>Clases de niños</Text>
           </TouchableOpacity>
                     <TouchableOpacity
-            style={[styles.card, { backgroundColor: tieneRol ? '#EDF2FA' : colors.cardBg, borderColor: tieneRol ? 'transparent' : colors.cardBorder, opacity: tieneRol ? 1 : 0.55 }]}
-            onPress={() => tieneRol ? navigation.navigate('MiRol') : setAlerta({ visible: true, titulo: "Sin fecha asignada", mensaje: "No tienes ninguna fecha programada por ahora.", onConfirmar: cerrarAlerta, isDark: isDark })}
+                        onPress={() => tieneRol ? navigation.navigate('MiRol') : setAlerta({ visible: true, titulo: "Sin fecha asignada", mensaje: "No tienes ninguna fecha programada por ahora.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' })}
           >
             <Feather name={tieneRol ? "calendar" : "lock"} size={32} color={tieneRol ? "#2C4A73" : colors.textSub} style={styles.grupoIcon} />
             <Text style={[styles.grupoTitleBlanco, { color: tieneRol ? "#2C4A73" : colors.textSub }]}>Rol de predicaciones</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#FBEEDD', borderColor: 'transparent' }]} onPress={proximamente}>
+                    <TouchableOpacity style={[styles.card, { backgroundColor: '#FBEEDD', borderColor: 'transparent' }]} onPress={() => proximamente('#8A4F1E')}>
             <Feather name="volume-2" size={32} color="#8A4F1E" style={styles.grupoIcon} />
             <Text style={[styles.grupoTitleBlanco, { color: '#8A4F1E' }]}>Anuncios</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#F1EDFA', borderColor: 'transparent' }]} onPress={proximamente}>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#F1EDFA', borderColor: 'transparent' }]} onPress={() => proximamente('#5B4A8A')}>
             <Feather name="heart" size={32} color="#5B4A8A" style={styles.grupoIcon} />
             <Text style={[styles.grupoTitleBlanco, { color: '#5B4A8A' }]}>Petición de oración</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#FDEFEF', borderColor: 'transparent' }]} onPress={proximamente}>
+          <TouchableOpacity style={[styles.card, { backgroundColor: '#FDEFEF', borderColor: 'transparent' }]} onPress={() => proximamente('#A34A4A')}>
             <Feather name="calendar" size={32} color="#A34A4A" style={styles.grupoIcon} />
             <Text style={[styles.grupoTitleBlanco, { color: '#A34A4A' }]}>Calendario de actividades</Text>
           </TouchableOpacity>
