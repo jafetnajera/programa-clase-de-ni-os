@@ -201,13 +201,16 @@ function MenuPrincipalScreen({ navigation }) {
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
   const [tieneRol, setTieneRol] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const hoy = new Date().toISOString().split('T')[0];
-      const { data } = await supabase.from('programa_servicios').select('id').eq('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy);
-      setTieneRol(data && data.length > 0);
-    })();
-  }, []);
+    useFocusEffect(
+    React.useCallback(() => {
+      if (rolUsuarioActivoGlobal === 'administrador') { setTieneRol(true); return; }
+      (async () => {
+        const hoy = new Date().toISOString().split('T')[0];
+        const { data } = await supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy);
+        setTieneRol(data && data.length > 0);
+      })();
+    }, [])
+  );
 
   const cerrarSesion = async () => {
     await AsyncStorage.removeItem('sesionMaestro');
@@ -221,7 +224,8 @@ function MenuPrincipalScreen({ navigation }) {
       visible: true,
       titulo: "Cerrar sesión",
       mensaje: "¿Seguro que quieres cerrar tu sesión?",
-      textoConfirmar: "Sí, cerrar sesión",
+            textoConfirmar: "Sí, cerrar sesión",
+      themeColor: '#4A5568',
       onCancelar: cerrarAlerta,
       isDark: isDark,
       onConfirmar: () => { cerrarAlerta(); cerrarSesion(); }
@@ -297,7 +301,7 @@ function MiRolScreen({ navigation }) {
   useEffect(() => {
     (async () => {
       const hoy = new Date().toISOString().split('T')[0];
-      const { data } = await supabase.from('programa_servicios').select('*').eq('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).order('fecha', { ascending: true });
+            const { data } = await supabase.from('programa_servicios').select('*').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).order('fecha', { ascending: true });
       setFechas(data || []);
       setCargando(false);
     })();
