@@ -40,6 +40,15 @@ const getThemeColors = (grupo, isDark) => {
   }
 };
 
+// Calcula si una fecha es Clase o Predicación según el día y horario
+const calcularTipo = (fechaTexto, horario) => {
+  const dia = new Date(fechaTexto + 'T00:00:00').getDay(); // 0 = domingo, 2 = martes, 4 = jueves
+  if (dia === 0) {
+    return (horario || '').includes('10') ? 'Clase' : 'Predicación';
+  }
+  return 'Clase';
+};
+
 const Stack = createNativeStackNavigator();
 
 // ==========================================
@@ -215,7 +224,10 @@ function MenuPrincipalScreen({ navigation }) {
           <TouchableOpacity onPress={confirmarCerrarSesion} style={{ padding: 8 }}>
             <Feather name="log-out" size={24} color={colors.textSub} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textMain }]}>Indus app</Text>
+                    <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: 1.5, fontSize: 18, color: colors.textMain }}>INDUS</Text>
+            <Text style={{ fontFamily: 'sans-serif', fontSize: 11, color: colors.textSub, marginTop: -2 }}>app</Text>
+          </View>
           <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
             <Feather name={isDark ? "sun" : "moon"} size={18} color={colors.textSub} />
           </TouchableOpacity>
@@ -300,7 +312,8 @@ function MiRolScreen({ navigation }) {
             <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>No tienes fechas próximas.</Text>
           )}
           {fechas.map((item) => {
-            const esClase = item.tipo === 'Clase';
+                        const tipoCalculado = calcularTipo(item.fecha, item.horario);
+            const esClase = tipoCalculado === 'Clase';
             const tintBg = esClase ? '#EDF2FA' : '#FBEAE0';
             const tintText = esClase ? '#3A5A8A' : '#A65A2E';
             return (
@@ -312,7 +325,7 @@ function MiRolScreen({ navigation }) {
                   <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textMain, textTransform: 'capitalize' }}>{formatearFecha(item.fecha)}</Text>
                   <Text style={{ fontSize: 11, color: colors.textSub }}>{item.horario}</Text>
                 </View>
-                <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{item.tipo}</Text>
+                                <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{tipoCalculado}</Text>
               </View>
             );
           })}
@@ -867,7 +880,7 @@ function AdminScreen() {
           <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
             <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Se van a subir {previaRol.length} fechas:</Text>
             {previaRol.slice(0, 5).map((fila, index) => (
-              <Text key={index} style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>{fila.fecha} • {fila.horario} • {fila.tipo} • {fila.nombre_usuario}</Text>
+                            <Text key={index} style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>{fila.fecha} • {fila.horario} • {calcularTipo(fila.fecha, fila.horario)} • {fila.nombre_usuario}</Text>
             ))}
             {previaRol.length > 5 && <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>...y {previaRol.length - 5} más</Text>}
             <TouchableOpacity style={[styles.primaryButton, { marginTop: 15 }]} onPress={confirmarCargaRol}>{subiendoRol ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Confirmar y subir</Text>}</TouchableOpacity>
