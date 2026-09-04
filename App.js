@@ -778,7 +778,7 @@ function AdminScreen() {
   };
 
   // Lee el texto del CSV y lo convierte en una lista de filas
-  const parsearCSV = (texto) => {
+   const parsearCSV = (texto) => {
     const lineas = texto.trim().split('\n');
     const encabezados = lineas[0].split(',').map(h => h.trim().toLowerCase());
     return lineas.slice(1).filter(l => l.trim() !== '').map(linea => {
@@ -786,7 +786,7 @@ function AdminScreen() {
       const fila = {};
       encabezados.forEach((encabezado, i) => { fila[encabezado] = valores[i]; });
       return fila;
-    });
+    }).filter(fila => fila.fecha && fila.fecha.trim() !== '');
   };
 
   // Se activa cuando el admin selecciona el archivo CSV
@@ -810,7 +810,7 @@ function AdminScreen() {
     const { error } = await supabase.from('programa_servicios').insert(previaRol);
     setSubiendoRol(false);
     if (error) {
-      setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo subir el rol. Revisa que las columnas del CSV coincidan (fecha, horario, tipo, nombre_usuario).", onConfirmar: cerrarAlerta, isDark: isDark });
+            setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo subir el rol: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
       setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: `Se subieron ${previaRol.length} fechas correctamente.`, onConfirmar: cerrarAlerta, isDark: isDark });
       setPreviaRol([]);
@@ -882,7 +882,7 @@ function AdminScreen() {
               <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                 <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso} • {maestro.equipo || 'Sin equipo'}</Text></View>
                 <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
-                {maestro.rol !== 'administrador' && ( <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity> )}
+                                <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>
                 <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
               </View>
             ))}
@@ -906,8 +906,7 @@ function AdminScreen() {
               <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                 <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text></View>
                                 <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
-                {maestro.rol !== 'administrador' && ( <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity> )}
-                <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
+                <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>                <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
               </View>
             ))}
                  </View>
