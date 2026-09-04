@@ -82,12 +82,14 @@ const AlertaPersonalizada = ({ visible, titulo, mensaje, textoConfirmar, textoCa
 
 const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
   const [nuevoNumeroEquipo, setNuevoNumeroEquipo] = useState('');
+  const [nuevoTelefono, setNuevoTelefono] = useState('');
   const colors = getColors(isDark);
   
   useEffect(() => { 
-    if (maestro && maestro.equipo) {
-      const soloNumeros = maestro.equipo.replace(/[^0-9]/g, '');
+    if (maestro) {
+      const soloNumeros = (maestro.equipo || '').replace(/[^0-9]/g, '');
       setNuevoNumeroEquipo(soloNumeros);
+      setNuevoTelefono(maestro.telefono || '');
     } 
   }, [maestro]);
 
@@ -95,8 +97,10 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
-          <Text style={[styles.modalTitle, { color: colors.textMain }]}>Editar Equipo</Text>
-          <Text style={[styles.modalMessage, { color: colors.textSub }]}>Reasignar a {maestro?.nombre_usuario}</Text>
+          <Text style={[styles.modalTitle, { color: colors.textMain }]}>Editar Maestro</Text>
+          <Text style={[styles.modalMessage, { color: colors.textSub }]}>{maestro?.nombre_usuario}</Text>
+
+          <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Número de equipo</Text>
           <TextInput 
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} 
             value={nuevoNumeroEquipo} 
@@ -105,11 +109,22 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             placeholderTextColor={colors.textSub}
             keyboardType="numeric" 
           />
+
+          <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Número celular</Text>
+          <TextInput 
+            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} 
+            value={nuevoTelefono} 
+            onChangeText={(texto) => setNuevoTelefono(texto.replace(/[^0-9]/g, ''))} 
+            placeholder="Ej. 8123456789" 
+            placeholderTextColor={colors.textSub}
+            keyboardType="numeric" 
+          />
+
           <View style={[styles.modalButtons, { marginTop: 20 }]}>
             <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.cardBorder }]} onPress={onCancelar}>
               <Text style={[styles.modalCancelText, { color: colors.textSub }]}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar(nuevoNumeroEquipo ? `Equipo ${nuevoNumeroEquipo}` : 'Sin equipo'); }}>
+            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ equipo: nuevoNumeroEquipo ? `Equipo ${nuevoNumeroEquipo}` : 'Sin equipo', telefono: nuevoTelefono }); }}>
               <Text style={styles.modalConfirmText}>Guardar</Text>
             </TouchableOpacity>
           </View>
@@ -697,7 +712,8 @@ function AdminScreen() {
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar', isDark: isDark });
   const colors = getColors(isDark);
   const [telefono, setTelefono] = useState('');
- const [previaRol, setPreviaRol] = useState([]);
+    const [busquedaUsuario, setBusquedaUsuario] = useState('');
+   const [previaRol, setPreviaRol] = useState([]);
   const [subiendoRol, setSubiendoRol] = useState(false);
   useEffect(() => { obtenerMaestros(); }, []);
   
@@ -734,9 +750,11 @@ function AdminScreen() {
     setGuardando(false);
   }
 
-  async function guardarEdicion(equipoFinal) {
+    async function guardarEdicion(datos) {
     setMaestroEditando(null);
-    if(equipoFinal !== maestroEditando.equipo) { setEquipoSeleccionadoAdmin(null); await supabase.from('maestros').update({ equipo: equipoFinal }).eq('id', maestroEditando.id); obtenerMaestros(); }
+    setEquipoSeleccionadoAdmin(null);
+    await supabase.from('maestros').update({ equipo: datos.equipo, telefono: datos.telefono }).eq('id', maestroEditando.id);
+    obtenerMaestros();
   }
 
   async function confirmarEliminacion(maestro) {
@@ -749,7 +767,15 @@ function AdminScreen() {
     setAlerta({ visible: true, titulo: "Dar de baja", mensaje: mensajeAlerta, textoConfirmar: "Eliminar", onCancelar: cerrarAlerta, isDark: isDark, onConfirmar: async () => { cerrarAlerta(); setEquipoSeleccionadoAdmin(null); await supabase.from('maestros').delete().eq('id', maestro.id); obtenerMaestros(); } });
   }
 
-   const compartirAccesos = async (usuario, pin, equipo) => { try { await Share.share({ message: `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${usuario}\n🔑 PIN: ${pin}\n🛡️ Equipo: ${equipo}` }); } catch (error) {} };
+      const compartirWhatsApp = (usuario, pin, equipo, telefono) => {
+    const numeroLimpio = (telefono || '').replace(/\D/g, '');
+    if (!numeroLimpio) {
+      setAlerta({ visible: true, titulo: "Sin número", mensaje: "Esta persona no tiene un número celular guardado.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#EFBC68' });
+      return;
+    }
+    const mensaje = `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${usuario}\n🔑 PIN: ${pin}\n🛡️ Equipo: ${equipo}`;
+    Linking.openURL(`https://wa.me/52${numeroLimpio}?text=${encodeURIComponent(mensaje)}`);
+  };
 
   // Lee el texto del CSV y lo convierte en una lista de filas
   const parsearCSV = (texto) => {
@@ -840,9 +866,28 @@ function AdminScreen() {
         <TouchableOpacity style={styles.primaryButton} onPress={registrarMaestro}>{guardando ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Guardar</Text>}</TouchableOpacity>
         
         <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
-        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Equipos y Usuarios</Text>
-        
-        {!equipoSeleccionadoAdmin ? (
+               <Text style={[styles.topicTitle, { color: colors.textMain }]}>Equipos y Usuarios</Text>
+
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 15 }]}
+          placeholder="Buscar usuario por nombre..."
+          placeholderTextColor={colors.textSub}
+          value={busquedaUsuario}
+          onChangeText={setBusquedaUsuario}
+        />
+
+        {busquedaUsuario.trim() !== '' ? (
+          <View>
+            {maestros.filter(m => m.nombre_usuario.toLowerCase().includes(busquedaUsuario.trim().toLowerCase())).map((maestro) => (
+              <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+                <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso} • {maestro.equipo || 'Sin equipo'}</Text></View>
+                <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
+                {maestro.rol !== 'administrador' && ( <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity> )}
+                <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ) : !equipoSeleccionadoAdmin ? (
           <View>
             <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Selecciona un equipo para ver a sus miembros.</Text>
             {listaEquipos.map((equipo, index) => (
@@ -860,7 +905,7 @@ function AdminScreen() {
             {(maestrosPorEquipo[equipoSeleccionadoAdmin] || []).map((maestro) => (
               <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                 <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text></View>
-                <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirAccesos(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
+                                <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
                 {maestro.rol !== 'administrador' && ( <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity> )}
                 <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
               </View>
