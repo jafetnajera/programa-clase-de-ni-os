@@ -36,6 +36,11 @@ const getThemeColors = (grupo, isDark) => {
     case 'Niños': return { main: '#FFB7A1', textDark: isDark ? '#FFB7A1' : '#D96E53', bgLight: isDark ? 'rgba(255, 183, 161, 0.1)' : '#FFF0EC' }; 
     case 'Pre adolescentes': return { main: '#EFBC68', textDark: isDark ? '#EFBC68' : '#C48B29', bgLight: isDark ? 'rgba(239, 188, 104, 0.1)' : '#FDF6EB' }; 
     case 'Adolescentes': return { main: '#919F89', textDark: isDark ? '#919F89' : '#6A7A61', bgLight: isDark ? 'rgba(145, 159, 137, 0.1)' : '#EEF1ED' }; 
+    case 'Clases de niños': return { main: '#5FA8A0', textDark: isDark ? '#5FA8A0' : '#2F6E5E', bgLight: isDark ? 'rgba(95, 168, 160, 0.15)' : '#EAF3F0' };
+    case 'Predicaciones': return { main: '#7EA0D8', textDark: isDark ? '#9FBCE8' : '#2C4A73', bgLight: isDark ? 'rgba(126, 160, 216, 0.18)' : '#EDF2FA' };
+    case 'Anuncios': return { main: '#E0935A', textDark: isDark ? '#E0935A' : '#8A4F1E', bgLight: isDark ? 'rgba(224, 147, 90, 0.15)' : '#FBEEDD' };
+    case 'Petición': return { main: '#9B8AC4', textDark: isDark ? '#9B8AC4' : '#5B4A8A', bgLight: isDark ? 'rgba(155, 138, 196, 0.15)' : '#F1EDFA' };
+    case 'Calendario': return { main: '#C97A7A', textDark: isDark ? '#C97A7A' : '#A34A4A', bgLight: isDark ? 'rgba(201, 122, 122, 0.15)' : '#FDEFEF' };
     default: return { main: '#4A5568', textDark: isDark ? '#A0AEC0' : '#4A5568', bgLight: isDark ? '#3B424D' : '#FFFFFF' }; 
   }
 };
@@ -253,27 +258,28 @@ function MenuPrincipalScreen({ navigation }) {
         </View>
 
         <View style={[styles.gruposContainer, { width: '95%', maxWidth: 850 }]}>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#EAF3F0', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Grupos')}>
-            <Feather name="smile" size={32} color="#2F6E5E" style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: '#2F6E5E' }]}>Clases de niños</Text>
+                    <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Clases de niños', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Grupos')}>
+            <Feather name="smile" size={32} color={getThemeColors('Clases de niños', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Clases de niños', isDark).textDark }]}>Clases de niños</Text>
           </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => tieneRol ? navigation.navigate('MiRol') : setAlerta({ visible: true, titulo: "Sin fecha asignada", mensaje: "No tienes ninguna fecha programada por ahora.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' })}
+                                        <TouchableOpacity
+            style={[styles.card, { backgroundColor: tieneRol ? getThemeColors('Predicaciones', isDark).bgLight : colors.cardBg, borderColor: tieneRol ? 'transparent' : colors.cardBorder, opacity: tieneRol ? 1 : 0.55 }]}
+            onPress={() => tieneRol ? navigation.navigate('MiRol') : setAlerta({ visible: true, titulo: "Sin fecha asignada", mensaje: "No tienes ninguna fecha programada por ahora.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' })}
           >
-            <Feather name={tieneRol ? "calendar" : "lock"} size={32} color={tieneRol ? "#2C4A73" : colors.textSub} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: tieneRol ? "#2C4A73" : colors.textSub }]}>Rol de predicaciones</Text>
+            <Feather name={tieneRol ? "calendar" : "lock"} size={32} color={tieneRol ? getThemeColors('Predicaciones', isDark).textDark : colors.textSub} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: tieneRol ? getThemeColors('Predicaciones', isDark).textDark : colors.textSub }]}>Rol de predicaciones</Text>
           </TouchableOpacity>
-                    <TouchableOpacity style={[styles.card, { backgroundColor: '#FBEEDD', borderColor: 'transparent' }]} onPress={() => proximamente('#8A4F1E')}>
-            <Feather name="volume-2" size={32} color="#8A4F1E" style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: '#8A4F1E' }]}>Anuncios</Text>
+                                        <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Anuncios', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Anuncios', isDark).textDark)}>
+            <Feather name="volume-2" size={32} color={getThemeColors('Anuncios', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Anuncios', isDark).textDark }]}>Anuncios</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#F1EDFA', borderColor: 'transparent' }]} onPress={() => proximamente('#5B4A8A')}>
-            <Feather name="heart" size={32} color="#5B4A8A" style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: '#5B4A8A' }]}>Petición de oración</Text>
+          <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Petición', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Petición', isDark).textDark)}>
+            <Feather name="heart" size={32} color={getThemeColors('Petición', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Petición', isDark).textDark }]}>Petición de oración</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#FDEFEF', borderColor: 'transparent' }]} onPress={() => proximamente('#A34A4A')}>
-            <Feather name="calendar" size={32} color="#A34A4A" style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: '#A34A4A' }]}>Calendario de actividades</Text>
+          <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Calendario', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Calendario', isDark).textDark)}>
+            <Feather name="calendar" size={32} color={getThemeColors('Calendario', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Calendario', isDark).textDark }]}>Calendario de actividades</Text>
           </TouchableOpacity>
         </View>
 
@@ -375,20 +381,20 @@ function GruposScreen({ navigation }) {
         </View>
 
         <View style={[styles.gruposContainer, { width: '95%', maxWidth: 850 }]}>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#FFF0EC', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Niños' })}>
-            <Feather name="smile" size={32} color="#D96E53" style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: '#D96E53' }]}>Niños</Text>
-            <Text style={[styles.grupoEdadBlanco, { color: '#D96E53' }]}>3 a 6 años</Text>
+                    <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Niños', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Niños' })}>
+            <Feather name="smile" size={32} color={getThemeColors('Niños', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Niños', isDark).textDark }]}>Niños</Text>
+            <Text style={[styles.grupoEdadBlanco, { color: getThemeColors('Niños', isDark).textDark }]}>3 a 6 años</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#FDF6EB', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Pre adolescentes' })}>
-            <Feather name="users" size={32} color="#C48B29" style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: '#C48B29' }]}>Pre adolescentes</Text>
-            <Text style={[styles.grupoEdadBlanco, { color: '#C48B29' }]}>7 a 9 años</Text>
+          <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Pre adolescentes', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Pre adolescentes' })}>
+            <Feather name="users" size={32} color={getThemeColors('Pre adolescentes', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Pre adolescentes', isDark).textDark }]}>Pre adolescentes</Text>
+            <Text style={[styles.grupoEdadBlanco, { color: getThemeColors('Pre adolescentes', isDark).textDark }]}>7 a 9 años</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: '#EEF1ED', borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Adolescentes' })}>
-            <Feather name="book" size={32} color="#6A7A61" style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: '#6A7A61' }]}>Adolescentes</Text>
-            <Text style={[styles.grupoEdadBlanco, { color: '#6A7A61' }]}>10 a 13 años</Text>
+          <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Adolescentes', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Adolescentes' })}>
+            <Feather name="book" size={32} color={getThemeColors('Adolescentes', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Adolescentes', isDark).textDark }]}>Adolescentes</Text>
+            <Text style={[styles.grupoEdadBlanco, { color: getThemeColors('Adolescentes', isDark).textDark }]}>10 a 13 años</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => navigation.navigate('Tablon')}>
@@ -702,7 +708,7 @@ function TablonScreen() {
 // ==========================================
 // PANTALLA: ADMIN 
 // ==========================================
-function AdminScreen() {
+function AdminScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const [nombreCompleto, setNombreCompleto] = useState('');
   const [usuarioGenerado, setUsuarioGenerado] = useState('');
@@ -832,9 +838,15 @@ function AdminScreen() {
     if (a === 'Administradores') return -1; if (b === 'Administradores') return 1; return a.localeCompare(b);
   });
 
-  return (
+    return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 15 }}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textMain, marginLeft: 4 }]}>Panel de Control</Text>
+        </View>
         <Text style={[styles.topicTitle, { color: colors.textMain }]}>Registrar Usuario</Text>
         
         <View style={styles.formGroup}>
@@ -1015,12 +1027,12 @@ if (cargandoSesion) {
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
             <Stack.Screen name="MenuPrincipal" component={MenuPrincipalScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Grupos" component={GruposScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="MiRol" component={MiRolScreen} options={{ title: 'Mi rol' }} />
+            <Stack.Screen name="MiRol" component={MiRolScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Temas" component={TemasScreen} options={{ title: '' }} />
             <Stack.Screen name="Clases" component={ClasesScreen} options={{ title: 'Lecciones' }} />
             <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ title: 'Clase' }} />
             <Stack.Screen name="Tablon" component={TablonScreen} options={{ title: 'Apoyo' }} />
-            <Stack.Screen name="Admin" component={AdminScreen} options={{ title: 'Panel de Control' }} />
+            <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
       </View>
