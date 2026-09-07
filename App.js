@@ -441,7 +441,10 @@ function TemasScreen({ route, navigation }) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center' }}>
         <View style={{ width: '95%', maxWidth: 850, flex: 1, paddingBottom: 20 }}>
-          <View style={styles.headerRowSpaceBetween}>
+                    <View style={styles.headerRowSpaceBetween}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
+              <Feather name="arrow-left" size={22} color={colors.textSub} />
+            </TouchableOpacity>
             <View style={{ flex: 1 }}>
               <Text style={[styles.titleMini, { color: colors.textMain }]}>TEMARIO</Text>
               <Text style={[styles.subtitle, { color: theme.textDark }]}>Grupo: {grupo}</Text>
@@ -499,9 +502,14 @@ function ClasesScreen({ route, navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
       <View style={{ width: '95%', maxWidth: 850, flex: 1 }}>
-        <View style={styles.headerSoloText}>
-          <Text style={[styles.titleMini, { color: colors.textMain }]}>{tema.titulo_tema.toUpperCase()}</Text>
-          <Text style={[styles.subtitle, { color: theme.textDark }]}>{tema.mes_anio} • {grupo}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={styles.headerSoloText}>
+            <Text style={[styles.titleMini, { color: colors.textMain }]}>{tema.titulo_tema.toUpperCase()}</Text>
+            <Text style={[styles.subtitle, { color: theme.textDark }]}>{tema.mes_anio} • {grupo}</Text>
+          </View>
         </View>
         {cargando ? (
           <View style={styles.center}><ActivityIndicator size="large" color={theme.main} /></View>
@@ -582,7 +590,10 @@ function ClaseDetalleScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 5, paddingBottom: 30, width: '95%', maxWidth: 850, alignSelf: 'center' }}>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 5, paddingBottom: 30, width: '95%', maxWidth: 850, alignSelf: 'center' }}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginBottom: 10, alignSelf: 'flex-start' }}>
+          <Feather name="arrow-left" size={22} color={colors.textSub} />
+        </TouchableOpacity>
         <Text style={[styles.detalleTitleMain, { color: colors.textMain }]}>{clase.titulo_clase}</Text>
         <Text style={[styles.detalleSubtitle, { color: theme.main }]}>Domingo {clase.numero_clase} • {grupo}</Text>
         <Text style={[styles.detalleBase, { color: colors.textSub }]}>Base bíblica: {clase.texto_base}</Text>
@@ -617,7 +628,7 @@ function ClaseDetalleScreen({ route, navigation }) {
 // ==========================================
 // PANTALLA: SOLICITUDES DE APOYO (TABLÓN)
 // ==========================================
-function TablonScreen() {
+function TablonScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const [solicitudes, setSolicitudes] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -660,9 +671,14 @@ function TablonScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
       <View style={{ width: '95%', maxWidth: 850, flex: 1, paddingBottom: 20 }}>
-        <View style={styles.headerSoloText}>
-          <Text style={[styles.titleMini, { color: colors.textMain }]}>SOLICITUDES DE APOYO</Text>
-          <Text style={[styles.subtitle, { color: colors.textSub }]}>Maestros que necesitan cobertura</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={styles.headerSoloText}>
+            <Text style={[styles.titleMini, { color: colors.textMain }]}>SOLICITUDES DE APOYO</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>Maestros que necesitan cobertura</Text>
+          </View>
         </View>
         {cargando ? <ActivityIndicator size="large" color={colors.textSub} style={{marginTop: 50}} /> : (
           <ScrollView style={styles.listContainer}>
@@ -1028,10 +1044,10 @@ if (cargandoSesion) {
             <Stack.Screen name="MenuPrincipal" component={MenuPrincipalScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Grupos" component={GruposScreen} options={{ headerShown: false }} />
             <Stack.Screen name="MiRol" component={MiRolScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Temas" component={TemasScreen} options={{ title: '' }} />
-            <Stack.Screen name="Clases" component={ClasesScreen} options={{ title: 'Lecciones' }} />
-            <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ title: 'Clase' }} />
-            <Stack.Screen name="Tablon" component={TablonScreen} options={{ title: 'Apoyo' }} />
+            <Stack.Screen name="Temas" component={TemasScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Clases" component={ClasesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Tablon" component={TablonScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
