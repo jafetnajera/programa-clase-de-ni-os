@@ -304,10 +304,14 @@ function MiRolScreen({ navigation }) {
   const [fechas, setFechas] = useState([]);
   const [cargando, setCargando] = useState(true);
 
-  useEffect(() => {
+    useEffect(() => {
     (async () => {
       const hoy = new Date().toISOString().split('T')[0];
-            const { data } = await supabase.from('programa_servicios').select('*').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).order('fecha', { ascending: true });
+      let consulta = supabase.from('programa_servicios').select('*').gte('fecha', hoy).order('fecha', { ascending: true });
+      if (rolUsuarioActivoGlobal !== 'administrador') {
+        consulta = consulta.ilike('nombre_usuario', usuarioActivoGlobal);
+      }
+      const { data } = await consulta;
       setFechas(data || []);
       setCargando(false);
     })();
@@ -325,16 +329,16 @@ function MiRolScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 8 }}>
-            <Text style={[styles.title, { color: colors.textMain }]}>Mi rol</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>Tus próximas fechas</Text>
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>{rolUsuarioActivoGlobal === 'administrador' ? 'Rol de predicaciones' : 'Mi rol'}</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{rolUsuarioActivoGlobal === 'administrador' ? 'Todas las fechas asignadas' : 'Tus próximas fechas'}</Text>
           </View>
         </View>
 
         <View style={{ width: '95%', maxWidth: 850 }}>
           {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
-          {!cargando && fechas.length === 0 && (
-            <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>No tienes fechas próximas.</Text>
+                    {!cargando && fechas.length === 0 && (
+            <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>{rolUsuarioActivoGlobal === 'administrador' ? 'No hay fechas programadas.' : 'No tienes fechas próximas.'}</Text>
           )}
           {fechas.map((item) => {
                         const tipoCalculado = calcularTipo(item.fecha, item.horario);
@@ -348,7 +352,7 @@ function MiRolScreen({ navigation }) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textMain, textTransform: 'capitalize' }}>{formatearFecha(item.fecha)}</Text>
-                  <Text style={{ fontSize: 11, color: colors.textSub }}>{item.horario}</Text>
+                                    <Text style={{ fontSize: 11, color: colors.textSub }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${item.nombre_usuario}` : ''}</Text>
                 </View>
                                 <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{tipoCalculado}</Text>
               </View>
