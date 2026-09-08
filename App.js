@@ -791,12 +791,14 @@ function AdminScreen({ navigation }) {
   async function registrarMaestro() {
     if (!usuarioGenerado || !pinGenerado) return setAlerta({ visible: true, titulo: "Aviso", mensaje: "Escribe el nombre del usuario.", onConfirmar: cerrarAlerta, isDark: isDark });
     setGuardando(true);
-    const rolFinal = esAdmin ? 'administrador' : 'maestro';
+        const rolFinal = esAdmin ? 'administrador' : 'maestro';
     const equipoFinal = esAdmin ? 'Administradores' : (numeroEquipoAsignado ? `Equipo ${numeroEquipoAsignado}` : 'Sin equipo');
 
-        const { error } = await supabase.from('maestros').insert([{ nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono, nombre_completo: nombreCompleto }]);
-    
-    if(error) { setAlerta({ visible: true, titulo: "Error", mensaje: "El usuario ya existe.", onConfirmar: cerrarAlerta, isDark: isDark });
+    const { data: resultado, error } = await supabase.functions.invoke('registrar-maestro', {
+      body: { nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono, nombre_completo: nombreCompleto }
+    });
+
+    if (error || resultado?.error) { setAlerta({ visible: true, titulo: "Error", mensaje: resultado?.error || "El usuario ya existe.", onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
       setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: "Usuario registrado.", onConfirmar: cerrarAlerta, isDark: isDark });
       setNombreCompleto(''); setUsuarioGenerado(''); setPinGenerado(''); setNumeroEquipoAsignado(''); setTelefono(''); setEsAdmin(false); obtenerMaestros();
