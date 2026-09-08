@@ -10,7 +10,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Conexión a Supabase
 const supabaseUrl = 'https://clspbwuvzqnzkvnaafzo.supabase.co';
 const supabaseKey = 'sb_publishable_QThR0YIh1opBm9vLBKrjCw_4cv3grQE';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    storage: AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  }
+});
 
 let usuarioActivoGlobal = null;
 let rolUsuarioActivoGlobal = null;
@@ -162,23 +169,27 @@ function LoginScreen({ navigation }) {
 
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 
-  async function iniciarSesion() {
+    async function iniciarSesion() {
     if (!usuarioLogin || !pinLogin) return setAlerta({ visible: true, titulo: "Aviso", mensaje: "Ingresa tu usuario y PIN." });
     setIngresando(true);
     try {
-      const { data, error } = await supabase.from('maestros').select('*').eq('nombre_usuario', usuarioLogin.trim()).eq('pin_acceso', pinLogin.trim()).single(); 
-      if (error || !data) {
+      const email = `${usuarioLogin.trim().toLowerCase()}@indus.app`;
+      const password = `IndusApp-${pinLogin.trim()}`;
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError || !authData.session) {
         setAlerta({ visible: true, titulo: "Acceso denegado", mensaje: "Usuario o PIN incorrectos." });
       } else {
-        usuarioActivoGlobal = data.nombre_usuario;
-        rolUsuarioActivoGlobal = data.rol;
-        await AsyncStorage.setItem('sesionMaestro', JSON.stringify({ nombre_usuario: data.nombre_usuario, rol: data.rol }));
-        OneSignal.login(data.nombre_usuario);
-               setUsuarioLogin(''); setPinLogin('');
-        navigation.replace('MenuPrincipal');
+        const { data, error } = await supabase.from('maestros').select('*').eq('user_id', authData.user.id).single();
+        if (error || !data) {
+          setAlerta({ visible: true, titulo: "Error", mensaje: "No se encontró tu perfil de maestro." });
+        } else {
+          usuarioActivoGlobal = data.nombre_usuario;
+          rolUsuarioActivoGlobal = data.rol;
+          OneSignal.login(data.nombre_usuario);
+          setUsuarioLogin(''); setPinLogin('');
+          navigation.replace('MenuPrincipal');
+        }
       }
-    } catch (error) { setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo iniciar sesión." }); } finally { setIngresando(false); }
-  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -227,8 +238,8 @@ function MenuPrincipalScreen({ navigation }) {
     }, [])
   );
 
-  const cerrarSesion = async () => {
-    await AsyncStorage.removeItem('sesionMaestro');
+   const cerrarSesion = async () => {
+    await supabase.auth.signOut();
     usuarioActivoGlobal = null;
     rolUsuarioActivoGlobal = null;
     navigation.replace('Login');
@@ -1004,17 +1015,19 @@ export default function App() {
     });
   }, []);
 
-  // Revisa la sesión guardada por su cuenta, sin esperar a OneSignal
+    // Revisa si ya hay una sesión real de Supabase guardada, sin esperar a OneSignal
   useEffect(() => {
     (async () => {
       try {
-        const guardada = await AsyncStorage.getItem('sesionMaestro');
-        if (guardada) {
-          const { nombre_usuario, rol } = JSON.parse(guardada);
-          usuarioActivoGlobal = nombre_usuario;
-          rolUsuarioActivoGlobal = rol;
-          try { OneSignal.login(nombre_usuario); } catch (e) { console.error('OneSignal.login falló:', e); }
-          setRutaInicial('MenuPrincipal');
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const { data } = await supabase.from('maestros').select('*').eq('user_id', session.user.id).single();
+          if (data) {
+            usuarioActivoGlobal = data.nombre_usuario;
+            rolUsuarioActivoGlobal = data.rol;
+            try { OneSignal.login(data.nombre_usuario); } catch (e) { console.error('OneSignal.login falló:', e); }
+            setRutaInicial('MenuPrincipal');
+          }
         }
       } catch (e) {
         console.error('Error leyendo sesión:', e);
