@@ -188,9 +188,11 @@ function LoginScreen({ navigation }) {
           rolUsuarioActivoGlobal = data.rol;
           OneSignal.login(data.nombre_usuario);
           setUsuarioLogin(''); setPinLogin('');
-          navigation.replace('MenuPrincipal');
+                    navigation.replace('MenuPrincipal');
         }
       }
+    } catch (error) { setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo iniciar sesión." }); } finally { setIngresando(false); }
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
