@@ -87,7 +87,8 @@ const AlertaPersonalizada = ({ visible, titulo, mensaje, textoConfirmar, textoCa
 
 const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
   const [nuevoNumeroEquipo, setNuevoNumeroEquipo] = useState('');
-  const [nuevoTelefono, setNuevoTelefono] = useState('');
+    const [nuevoTelefono, setNuevoTelefono] = useState('');
+  const [nuevoNombreCompleto, setNuevoNombreCompleto] = useState('');
   const colors = getColors(isDark);
   
   useEffect(() => { 
@@ -95,6 +96,7 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
       const soloNumeros = (maestro.equipo || '').replace(/[^0-9]/g, '');
       setNuevoNumeroEquipo(soloNumeros);
       setNuevoTelefono(maestro.telefono || '');
+      setNuevoNombreCompleto(maestro.nombre_completo || '');
     } 
   }, [maestro]);
 
@@ -102,11 +104,19 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
-          <Text style={[styles.modalTitle, { color: colors.textMain }]}>Editar Maestro</Text>
+                    <Text style={[styles.modalTitle, { color: colors.textMain }]}>Editar Maestro</Text>
           <Text style={[styles.modalMessage, { color: colors.textSub }]}>{maestro?.nombre_usuario}</Text>
 
-          <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Número de equipo</Text>
+          <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Nombre para mostrar</Text>
           <TextInput 
+            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} 
+            value={nuevoNombreCompleto} 
+            onChangeText={setNuevoNombreCompleto} 
+            placeholder="Ej. Jafet Najera" 
+            placeholderTextColor={colors.textSub}
+          />
+
+          <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Número de equipo</Text>
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} 
             value={nuevoNumeroEquipo} 
             onChangeText={(texto) => setNuevoNumeroEquipo(texto.replace(/[^0-9]/g, ''))} 
@@ -129,7 +139,7 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.cardBorder }]} onPress={onCancelar}>
               <Text style={[styles.modalCancelText, { color: colors.textSub }]}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ equipo: nuevoNumeroEquipo ? `Equipo ${nuevoNumeroEquipo}` : 'Sin equipo', telefono: nuevoTelefono }); }}>
+            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ equipo: nuevoNumeroEquipo ? `Equipo ${nuevoNumeroEquipo}` : 'Sin equipo', telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto }); }}>
               <Text style={styles.modalConfirmText}>Guardar</Text>
             </TouchableOpacity>
           </View>
@@ -770,7 +780,7 @@ function AdminScreen({ navigation }) {
     const rolFinal = esAdmin ? 'administrador' : 'maestro';
     const equipoFinal = esAdmin ? 'Administradores' : (numeroEquipoAsignado ? `Equipo ${numeroEquipoAsignado}` : 'Sin equipo');
 
-    const { error } = await supabase.from('maestros').insert([{ nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono }]);
+        const { error } = await supabase.from('maestros').insert([{ nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono, nombre_completo: nombreCompleto }]);
     
     if(error) { setAlerta({ visible: true, titulo: "Error", mensaje: "El usuario ya existe.", onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
@@ -783,7 +793,7 @@ function AdminScreen({ navigation }) {
     async function guardarEdicion(datos) {
     setMaestroEditando(null);
     setEquipoSeleccionadoAdmin(null);
-    await supabase.from('maestros').update({ equipo: datos.equipo, telefono: datos.telefono }).eq('id', maestroEditando.id);
+        await supabase.from('maestros').update({ equipo: datos.equipo, telefono: datos.telefono, nombre_completo: datos.nombre_completo }).eq('id', maestroEditando.id);
     obtenerMaestros();
   }
 
@@ -940,7 +950,9 @@ function AdminScreen({ navigation }) {
             <Text style={[styles.topicTitle, { color: '#EFBC68', marginTop: 10 }]}>{equipoSeleccionadoAdmin}</Text>
             {(maestrosPorEquipo[equipoSeleccionadoAdmin] || []).map((maestro) => (
               <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-                <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text></View>
+                <View style={{ flex: 1 }}>
+              <Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text>
+              <Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text></View>
                                 <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>                <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
               </View>
