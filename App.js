@@ -123,7 +123,8 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             placeholderTextColor={colors.textSub}
           />
 
-          <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Número de equipo</Text>
+                    <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Número de equipo</Text>
+          <TextInput 
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} 
             value={nuevoNumeroEquipo} 
             onChangeText={(texto) => setNuevoNumeroEquipo(texto.replace(/[^0-9]/g, ''))} 
