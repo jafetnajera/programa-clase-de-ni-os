@@ -798,7 +798,7 @@ function AdminScreen({ navigation }) {
       body: { nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono, nombre_completo: nombreCompleto }
     });
 
-    if (error || resultado?.error) { setAlerta({ visible: true, titulo: "Error", mensaje: resultado?.error || "El usuario ya existe.", onConfirmar: cerrarAlerta, isDark: isDark });
+        if (error || resultado?.error) { setAlerta({ visible: true, titulo: "Error", mensaje: resultado?.error || error?.message || "Error desconocido.", onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
       setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: "Usuario registrado.", onConfirmar: cerrarAlerta, isDark: isDark });
       setNombreCompleto(''); setUsuarioGenerado(''); setPinGenerado(''); setNumeroEquipoAsignado(''); setTelefono(''); setEsAdmin(false); obtenerMaestros();
@@ -884,9 +884,9 @@ function AdminScreen({ navigation }) {
     if (a === 'Administradores') return -1; if (b === 'Administradores') return 1; return a.localeCompare(b);
   });
 
-    return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }}>
+        return (
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30, alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 15 }}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
