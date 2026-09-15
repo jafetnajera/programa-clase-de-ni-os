@@ -885,8 +885,8 @@ function AdminScreen({ navigation }) {
   });
 
         return (
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30, alignItems: 'center' }}>
+               <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 15 }}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
