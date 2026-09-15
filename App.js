@@ -820,7 +820,15 @@ function AdminScreen({ navigation }) {
     let mensajeAlerta = `¿Estás seguro de eliminar a ${maestro.nombre_usuario}?`;
     if (maestro.equipo !== 'Sin equipo' && maestro.rol !== 'administrador') { mensajeAlerta += `\n\n⚠️ El ${maestro.equipo} tiene ${cantidadEnEquipo} miembro(s).`; }
 
-    setAlerta({ visible: true, titulo: "Dar de baja", mensaje: mensajeAlerta, textoConfirmar: "Eliminar", onCancelar: cerrarAlerta, isDark: isDark, onConfirmar: async () => { cerrarAlerta(); setEquipoSeleccionadoAdmin(null); await supabase.from('maestros').delete().eq('id', maestro.id); obtenerMaestros(); } });
+        setAlerta({ visible: true, titulo: "Dar de baja", mensaje: mensajeAlerta, textoConfirmar: "Eliminar", onCancelar: cerrarAlerta, isDark: isDark, onConfirmar: async () => {
+      cerrarAlerta();
+      setEquipoSeleccionadoAdmin(null);
+      const { data: resultado, error } = await supabase.functions.invoke('eliminar-maestro', { body: { maestro_id: maestro.id } });
+      if (error || resultado?.error) {
+        setAlerta({ visible: true, titulo: "Error", mensaje: resultado?.error || error?.message || "No se pudo eliminar.", onConfirmar: cerrarAlerta, isDark: isDark });
+      }
+      obtenerMaestros();
+    } });
   }
 
       const compartirWhatsApp = (usuario, pin, equipo, telefono) => {
