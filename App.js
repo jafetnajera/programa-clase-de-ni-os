@@ -21,6 +21,7 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 let usuarioActivoGlobal = null;
 let rolUsuarioActivoGlobal = null;
+let equipoActivoGlobal = null;
 
 // Contexto Global para el Tema
 const ThemeContext = createContext();
@@ -53,6 +54,16 @@ const getThemeColors = (grupo, isDark) => {
 };
 
 // Calcula si una fecha es Clase o Predicación según el día y horario
+const mesesEspanol = { enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5, julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11 };
+const parsearMesAnio = (texto) => {
+  if (!texto) return null;
+  const partes = texto.trim().split(' ');
+  const mes = mesesEspanol[partes[0].toLowerCase()];
+  const anio = parseInt(partes[1]);
+  if (mes === undefined || isNaN(anio)) return null;
+  return new Date(anio, mes, 1);
+};
+
 const calcularTipo = (fechaTexto, horario) => {
   const dia = new Date(fechaTexto + 'T00:00:00').getDay(); // 0 = domingo, 2 = martes, 4 = jueves
   if (dia === 0) {
@@ -184,8 +195,9 @@ function LoginScreen({ navigation }) {
         if (error || !data) {
           setAlerta({ visible: true, titulo: "Error", mensaje: "No se encontró tu perfil de maestro." });
         } else {
-          usuarioActivoGlobal = data.nombre_usuario;
+                    usuarioActivoGlobal = data.nombre_usuario;
           rolUsuarioActivoGlobal = data.rol;
+          equipoActivoGlobal = data.equipo;
           OneSignal.login(data.nombre_usuario);
           setUsuarioLogin(''); setPinLogin('');
                     navigation.replace('MenuPrincipal');
@@ -228,15 +240,28 @@ function MenuPrincipalScreen({ navigation }) {
   const colors = getColors(isDark);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
-  const [tieneRol, setTieneRol] = useState(false);
+    const [tieneRol, setTieneRol] = useState(false);
+  const [tieneClases, setTieneClases] = useState(false);
 
     useFocusEffect(
     React.useCallback(() => {
-      if (rolUsuarioActivoGlobal === 'administrador') { setTieneRol(true); return; }
+      if (rolUsuarioActivoGlobal === 'administrador') { setTieneRol(true); setTieneClases(true); return; }
       (async () => {
         const hoy = new Date().toISOString().split('T')[0];
         const { data } = await supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy);
         setTieneRol(data && data.length > 0);
+      })();
+      (async () => {
+        if (!equipoActivoGlobal || equipoActivoGlobal === 'Sin equipo') { setTieneClases(false); return; }
+        const { data } = await supabase.from('temas_mensuales').select('mes_anio').eq('equipo_asignado', equipoActivoGlobal);
+        const hoy = new Date();
+        const limite = new Date(hoy.getFullYear(), hoy.getMonth() + 2, 1);
+        const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+        const tieneAlgunoEnRango = (data || []).some((tema) => {
+          const fecha = parsearMesAnio(tema.mes_anio);
+          return fecha && fecha >= inicio && fecha <= limite;
+        });
+        setTieneClases(tieneAlgunoEnRango);
       })();
     }, [])
   );
@@ -281,18 +306,22 @@ function MenuPrincipalScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.gruposContainer, { width: '95%', maxWidth: 850 }]}>
-                    <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Clases de niños', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Grupos')}>
-            <Feather name="smile" size={32} color={getThemeColors('Clases de niños', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Clases de niños', isDark).textDark }]}>Clases de niños</Text>
-          </TouchableOpacity>
-                                        <TouchableOpacity
-            style={[styles.card, { backgroundColor: tieneRol ? getThemeColors('Predicaciones', isDark).bgLight : colors.cardBg, borderColor: tieneRol ? 'transparent' : colors.cardBorder, opacity: tieneRol ? 1 : 0.55 }]}
-            onPress={() => tieneRol ? navigation.navigate('MiRol') : setAlerta({ visible: true, titulo: "Sin fecha asignada", mensaje: "No tienes ninguna fecha programada por ahora.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' })}
-          >
-            <Feather name={tieneRol ? "calendar" : "lock"} size={32} color={tieneRol ? getThemeColors('Predicaciones', isDark).textDark : colors.textSub} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: tieneRol ? getThemeColors('Predicaciones', isDark).textDark : colors.textSub }]}>Rol de predicaciones</Text>
-          </TouchableOpacity>
+                <View style={[styles.gruposContainer, { width: '95%', maxWidth: 850 }]}>
+          {tieneClases && (
+            <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Clases de niños', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Grupos')}>
+              <Feather name="smile" size={32} color={getThemeColors('Clases de niños', isDark).textDark} style={styles.grupoIcon} />
+              <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Clases de niños', isDark).textDark }]}>Clases de niños</Text>
+            </TouchableOpacity>
+          )}
+                    {tieneRol && (
+            <TouchableOpacity
+              style={[styles.card, { backgroundColor: getThemeColors('Predicaciones', isDark).bgLight, borderColor: 'transparent' }]}
+              onPress={() => navigation.navigate('MiRol')}
+            >
+              <Feather name="calendar" size={32} color={getThemeColors('Predicaciones', isDark).textDark} style={styles.grupoIcon} />
+              <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Predicaciones', isDark).textDark }]}>Rol de predicaciones</Text>
+            </TouchableOpacity>
+          )}
                                         <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Anuncios', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Anuncios', isDark).textDark)}>
             <Feather name="volume-2" size={32} color={getThemeColors('Anuncios', isDark).textDark} style={styles.grupoIcon} />
             <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Anuncios', isDark).textDark }]}>Anuncios</Text>
@@ -1036,8 +1065,9 @@ export default function App() {
         if (session) {
           const { data } = await supabase.from('maestros').select('*').eq('user_id', session.user.id).single();
           if (data) {
-            usuarioActivoGlobal = data.nombre_usuario;
+                        usuarioActivoGlobal = data.nombre_usuario;
             rolUsuarioActivoGlobal = data.rol;
+            equipoActivoGlobal = data.equipo;
             try { OneSignal.login(data.nombre_usuario); } catch (e) { console.error('OneSignal.login falló:', e); }
             setRutaInicial('MenuPrincipal');
           }
