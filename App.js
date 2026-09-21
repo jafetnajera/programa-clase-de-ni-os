@@ -353,7 +353,8 @@ function MiRolScreen({ navigation }) {
     const [fechas, setFechas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [mapaNombres, setMapaNombres] = useState({});
-
+const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
+const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
     useEffect(() => {
     (async () => {
       const hoy = new Date().toISOString().split('T')[0];
@@ -375,9 +376,37 @@ function MiRolScreen({ navigation }) {
     })();
   }, []);
 
-  const formatearFecha = (fechaTexto) => {
+    const formatearFecha = (fechaTexto) => {
     const fecha = new Date(fechaTexto + 'T00:00:00');
     return fecha.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+  };
+
+  const enviarSolicitudApoyo = async (item) => {
+    const tipoCalc = calcularTipo(item.fecha, item.horario);
+    const { error } = await supabase.from('solicitudes_sustitucion').insert([{
+      mes_anio: formatearFecha(item.fecha),
+      titulo_tema: `${tipoCalc} • ${item.horario}`,
+      grupo_clase: 'Predicaciones',
+      maestro_solicitante: usuarioActivoGlobal,
+    }]);
+    if (error) {
+      setAlerta({ visible: true, titulo: "Error", mensaje: error.message, onConfirmar: cerrarAlerta, isDark: isDark });
+    } else {
+      setAlerta({ visible: true, titulo: "Listo", mensaje: "Tu solicitud ya aparece en el tablón de apoyo.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' });
+    }
+  };
+
+  const confirmarSolicitarApoyo = (item) => {
+    setAlerta({
+      visible: true,
+      titulo: "Solicitar apoyo",
+      mensaje: `¿Seguro que quieres pedir que alguien te cubra el ${formatearFecha(item.fecha)}?`,
+      textoConfirmar: "Sí, solicitar",
+      onCancelar: cerrarAlerta,
+      isDark: isDark,
+      themeColor: '#2C4A73',
+      onConfirmar: () => { cerrarAlerta(); enviarSolicitudApoyo(item); }
+    });
   };
 
   return (
@@ -412,12 +441,18 @@ function MiRolScreen({ navigation }) {
                   <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textMain, textTransform: 'capitalize' }}>{formatearFecha(item.fecha)}</Text>
                                                                         <Text style={{ fontSize: 11, color: colors.textSub }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
                 </View>
-                                <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{tipoCalculado}</Text>
+                                         <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{tipoCalculado}</Text>
+                {item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() && (
+                  <TouchableOpacity onPress={() => confirmarSolicitarApoyo(item)} style={{ padding: 6, marginLeft: 4 }}>
+                    <Feather name="user-plus" size={18} color={colors.textSub} />
+                  </TouchableOpacity>
+                )}
               </View>
             );
           })}
-        </View>
+                </View>
       </ScrollView>
+      <AlertaPersonalizada {...alerta} />
     </SafeAreaView>
   );
 }
