@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert, Image } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { createClient } from '@supabase/supabase-js';
 import { NavigationContainer, DefaultTheme, useFocusEffect } from '@react-navigation/native';
@@ -211,8 +211,7 @@ function LoginScreen({ navigation }) {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
           <View style={[styles.loginBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-            <Feather name="book-open" size={48} color={colors.textSub} style={{ alignSelf: 'center', marginBottom: 15 }} />
-            <Text style={[styles.titleMini, { color: colors.textMain, textAlign: 'center' }]}>PROGRAMA CLASE DE NIÑOS INDUS</Text>
+                        <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 180, height: 128, resizeMode: 'contain', alignSelf: 'center', marginBottom: 15 }} />
             <Text style={[styles.subtitle, { color: colors.textSub, textAlign: 'center', marginBottom: 30 }]}>Ingresa tus credenciales</Text>
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.textSub }]}>Usuario</Text>
@@ -297,10 +296,7 @@ function MenuPrincipalScreen({ navigation }) {
           <TouchableOpacity onPress={confirmarCerrarSesion} style={{ padding: 8 }}>
             <Feather name="log-out" size={24} color={colors.textSub} />
           </TouchableOpacity>
-                    <View style={{ alignItems: 'center' }}>
-            <Text style={{ fontFamily: 'sans-serif', fontWeight: 'bold', letterSpacing: 1.5, fontSize: 18, color: colors.textMain }}>INDUS</Text>
-            <Text style={{ fontFamily: 'sans-serif', fontSize: 11, color: colors.textSub, marginTop: -2 }}>app</Text>
-          </View>
+                                        <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 90, height: 64, resizeMode: 'contain' }} />
           <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
             <Feather name={isDark ? "sun" : "moon"} size={18} color={colors.textSub} />
           </TouchableOpacity>
