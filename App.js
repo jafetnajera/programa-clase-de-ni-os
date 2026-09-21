@@ -296,7 +296,7 @@ function MenuPrincipalScreen({ navigation }) {
           <TouchableOpacity onPress={confirmarCerrarSesion} style={{ padding: 8 }}>
             <Feather name="log-out" size={24} color={colors.textSub} />
           </TouchableOpacity>
-                                        <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 90, height: 64, resizeMode: 'contain' }} />
+          <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 90, height: 64, resizeMode: 'contain' }} />
           <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
             <Feather name={isDark ? "sun" : "moon"} size={18} color={colors.textSub} />
           </TouchableOpacity>
@@ -350,8 +350,9 @@ function MenuPrincipalScreen({ navigation }) {
 function MiRolScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
-  const [fechas, setFechas] = useState([]);
+    const [fechas, setFechas] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [mapaNombres, setMapaNombres] = useState({});
 
     useEffect(() => {
     (async () => {
@@ -362,6 +363,14 @@ function MiRolScreen({ navigation }) {
       }
       const { data } = await consulta;
       setFechas(data || []);
+
+      if (rolUsuarioActivoGlobal === 'administrador') {
+        const { data: maestros } = await supabase.from('maestros').select('nombre_usuario, nombre_completo');
+        const mapa = {};
+        (maestros || []).forEach((m) => { mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo; });
+        setMapaNombres(mapa);
+      }
+
       setCargando(false);
     })();
   }, []);
@@ -401,7 +410,7 @@ function MiRolScreen({ navigation }) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textMain, textTransform: 'capitalize' }}>{formatearFecha(item.fecha)}</Text>
-                                    <Text style={{ fontSize: 11, color: colors.textSub }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${item.nombre_usuario}` : ''}</Text>
+                                                                        <Text style={{ fontSize: 11, color: colors.textSub }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
                 </View>
                                 <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{tipoCalculado}</Text>
               </View>
