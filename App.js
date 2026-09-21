@@ -383,11 +383,12 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 
   const enviarSolicitudApoyo = async (item) => {
     const tipoCalc = calcularTipo(item.fecha, item.horario);
-    const { error } = await supabase.from('solicitudes_sustitucion').insert([{
+        const { error } = await supabase.from('solicitudes_sustitucion').insert([{
       mes_anio: formatearFecha(item.fecha),
       titulo_tema: `${tipoCalc} • ${item.horario}`,
       grupo_clase: 'Predicaciones',
       maestro_solicitante: usuarioActivoGlobal,
+      programa_servicio_id: item.id,
     }]);
     if (error) {
       setAlerta({ visible: true, titulo: "Error", mensaje: error.message, onConfirmar: cerrarAlerta, isDark: isDark });
@@ -420,7 +421,12 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
             <Text style={[styles.title, { color: colors.textMain }]}>{rolUsuarioActivoGlobal === 'administrador' ? 'Rol de predicaciones' : 'Mi rol'}</Text>
             <Text style={[styles.subtitle, { color: colors.textSub }]}>{rolUsuarioActivoGlobal === 'administrador' ? 'Todas las fechas asignadas' : 'Tus próximas fechas'}</Text>
           </View>
-        </View>
+                </View>
+
+        <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: 850, marginBottom: 15 }]} onPress={() => navigation.navigate('Tablon', { soloGrupo: 'Predicaciones' })}>
+          <Feather name="clipboard" size={20} color={colors.textSub} />
+          <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
+        </TouchableOpacity>
 
         <View style={{ width: '95%', maxWidth: 850 }}>
           {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
@@ -725,19 +731,33 @@ function ClaseDetalleScreen({ route, navigation }) {
 // ==========================================
 // PANTALLA: SOLICITUDES DE APOYO (TABLÓN)
 // ==========================================
-function TablonScreen({ navigation }) {
+function TablonScreen({ navigation, route }) {
   const { isDark } = useContext(ThemeContext);
   const [solicitudes, setSolicitudes] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [mapaNombres, setMapaNombres] = useState({});
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const colors = getColors(isDark);
+  const soloGrupo = route?.params?.soloGrupo;
 
-  useEffect(() => { obtenerSolicitudes(); }, []);
+  useEffect(() => {
+    obtenerSolicitudes();
+    (async () => {
+      const { data } = await supabase.from('maestros').select('nombre_usuario, nombre_completo');
+      const mapa = {};
+      (data || []).forEach((m) => { mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo; });
+      setMapaNombres(mapa);
+    })();
+  }, []);
+
+  const nombreBonito = (usuario) => mapaNombres[(usuario || '').toLowerCase()] || usuario;
 
   function cerrarAlerta() { setAlerta({ ...alerta, visible: false }); }
 
   async function obtenerSolicitudes() {
-    let { data } = await supabase.from('solicitudes_sustitucion').select('*').order('creado_en', { ascending: false });
+    let consulta = supabase.from('solicitudes_sustitucion').select('*').order('creado_en', { ascending: false });
+    if (soloGrupo) { consulta = consulta.eq('grupo_clase', soloGrupo); }
+    let { data } = await consulta;
     setSolicitudes(data || []);
     setCargando(false);
   }
@@ -756,9 +776,12 @@ function TablonScreen({ navigation }) {
     setAlerta({
       visible: true, titulo: "Confirmar", mensaje: `¿Aceptas apoyar con "${solicitud.titulo_tema}"?`, isDark: isDark, themeColor: theme.main,
       textoConfirmar: "Aceptar", onCancelar: cerrarAlerta,
-      onConfirmar: async () => {
+            onConfirmar: async () => {
         cerrarAlerta();
         await supabase.from('solicitudes_sustitucion').update({ estado: 'Cubierta', maestro_suplente: usuarioActivoGlobal }).eq('id', solicitud.id);
+        if (solicitud.programa_servicio_id) {
+          await supabase.from('programa_servicios').update({ nombre_usuario: usuarioActivoGlobal }).eq('id', solicitud.programa_servicio_id);
+        }
         setTimeout(() => setAlerta({ visible: true, titulo: "¡Gracias!", mensaje: "Has sido asignado a esta clase.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
         obtenerSolicitudes(); 
       }
@@ -772,9 +795,9 @@ function TablonScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
-          <View style={styles.headerSoloText}>
+                    <View style={styles.headerSoloText}>
             <Text style={[styles.titleMini, { color: colors.textMain }]}>SOLICITUDES DE APOYO</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>Maestros que necesitan cobertura</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{soloGrupo ? `Solo ${soloGrupo}` : 'Maestros que necesitan cobertura'}</Text>
           </View>
         </View>
         {cargando ? <ActivityIndicator size="large" color={colors.textSub} style={{marginTop: 50}} /> : (
@@ -791,7 +814,7 @@ function TablonScreen({ navigation }) {
                 return (
                   <View key={solicitud.id} style={[styles.card, styles.cardLight, { backgroundColor: theme.bgLight, borderColor: 'transparent', opacity: solicitud.estado === 'Cubierta' ? 0.6 : 1 }]}>
                     <View style={styles.textContainer}>
-                      <Text style={[styles.topicTitle, { color: colors.textMain }]}>{solicitud.maestro_solicitante} pide apoyo</Text>
+                                            <Text style={[styles.topicTitle, { color: colors.textMain }]}>{nombreBonito(solicitud.maestro_solicitante)} pide apoyo</Text>
                       <Text style={[styles.topicSubtitle, { color: theme.textDark, fontWeight: 'bold' }]}>Grupo: {solicitud.grupo_clase}</Text>
                       <Text style={[styles.topicSubtitle, { color: colors.textMain }]}>Clase: {solicitud.titulo_tema}</Text>
                     </View>
@@ -801,8 +824,8 @@ function TablonScreen({ navigation }) {
                       )}
                       {solicitud.estado === 'Pendiente' ? (
                          <TouchableOpacity style={[styles.aceptarDiscreto, { backgroundColor: theme.main }]} onPress={() => aceptarSustitucion(solicitud)}><Text style={styles.aceptarDiscretoText}>Aceptar Apoyo</Text></TouchableOpacity>
-                      ) : (
-                         <Text style={{ color: theme.textDark, fontStyle: 'italic', padding: 8, fontWeight: 'bold' }}>Cubierta por {solicitud.maestro_suplente}</Text>
+                      ) : (                         <Text style={{ color: theme.textDark, fontStyle: 'italic', padding: 8, fontWeight: 'bold' }}>Cubierta por {nombreBonito(solicitud.maestro_suplente)}</Text>
+
                       )}
                     </View>
                   </View>
