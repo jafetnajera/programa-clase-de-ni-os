@@ -386,9 +386,10 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
         const { error } = await supabase.from('solicitudes_sustitucion').insert([{
       mes_anio: formatearFecha(item.fecha),
       titulo_tema: `${tipoCalc} • ${item.horario}`,
-      grupo_clase: 'Predicaciones',
+            grupo_clase: 'Predicaciones',
       maestro_solicitante: usuarioActivoGlobal,
       programa_servicio_id: item.id,
+      fecha_referencia: item.fecha,
     }]);
     if (error) {
       setAlerta({ visible: true, titulo: "Error", mensaje: error.message, onConfirmar: cerrarAlerta, isDark: isDark });
@@ -483,6 +484,11 @@ function GruposScreen({ navigation }) {
           </View>
         </View>
 
+                <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: 850, marginBottom: 15 }]} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })}>
+          <Feather name="clipboard" size={20} color={colors.textSub} />
+          <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
+        </TouchableOpacity>
+
         <View style={[styles.gruposContainer, { width: '95%', maxWidth: 850 }]}>
                     <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Niños', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Niños' })}>
             <Feather name="smile" size={32} color={getThemeColors('Niños', isDark).textDark} style={styles.grupoIcon} />
@@ -500,11 +506,7 @@ function GruposScreen({ navigation }) {
             <Text style={[styles.grupoEdadBlanco, { color: getThemeColors('Adolescentes', isDark).textDark }]}>10 a 13 años</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => navigation.navigate('Tablon')}>
-            <Feather name="clipboard" size={20} color={colors.textSub} />
-            <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
-          </TouchableOpacity>
-        </View>
+                  </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -668,8 +670,10 @@ function ClaseDetalleScreen({ route, navigation }) {
       themeColor: theme.main,
       onConfirmar: async () => {
         cerrarAlerta();
-        try {
-          await supabase.from('solicitudes_sustitucion').insert([{ tema_id: tema.id, mes_anio: tema.mes_anio, titulo_tema: `${tema.titulo_tema} - ${clase.titulo_clase}`, grupo_clase: grupo, maestro_solicitante: usuarioActivoGlobal }]);
+                try {
+          const mesTema = parsearMesAnio(tema.mes_anio);
+          const fechaRef = mesTema ? new Date(mesTema.getFullYear(), mesTema.getMonth() + 1, 1).toISOString().split('T')[0] : null;
+          await supabase.from('solicitudes_sustitucion').insert([{ tema_id: tema.id, mes_anio: tema.mes_anio, titulo_tema: `${tema.titulo_tema} - ${clase.titulo_clase}`, grupo_clase: grupo, maestro_solicitante: usuarioActivoGlobal, fecha_referencia: fechaRef }]);
           setTimeout(() => setAlerta({ visible: true, titulo: "Enviado", mensaje: "Tu solicitud está en las Solicitudes de Apoyo.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
         } catch (error) { setTimeout(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo enviar.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500); }
       }
@@ -738,7 +742,8 @@ function TablonScreen({ navigation, route }) {
   const [mapaNombres, setMapaNombres] = useState({});
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const colors = getColors(isDark);
-  const soloGrupo = route?.params?.soloGrupo;
+    const soloGrupo = route?.params?.soloGrupo;
+  const excluirGrupo = route?.params?.excluirGrupo;
 
   useEffect(() => {
     obtenerSolicitudes();
@@ -755,8 +760,11 @@ function TablonScreen({ navigation, route }) {
   function cerrarAlerta() { setAlerta({ ...alerta, visible: false }); }
 
   async function obtenerSolicitudes() {
+        const hoy = new Date().toISOString().split('T')[0];
     let consulta = supabase.from('solicitudes_sustitucion').select('*').order('creado_en', { ascending: false });
     if (soloGrupo) { consulta = consulta.eq('grupo_clase', soloGrupo); }
+    if (excluirGrupo) { consulta = consulta.neq('grupo_clase', excluirGrupo); }
+    consulta = consulta.or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`);
     let { data } = await consulta;
     setSolicitudes(data || []);
     setCargando(false);
@@ -797,7 +805,7 @@ function TablonScreen({ navigation, route }) {
           </TouchableOpacity>
                     <View style={styles.headerSoloText}>
             <Text style={[styles.titleMini, { color: colors.textMain }]}>SOLICITUDES DE APOYO</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>{soloGrupo ? `Solo ${soloGrupo}` : 'Maestros que necesitan cobertura'}</Text>
+                        <Text style={[styles.subtitle, { color: colors.textSub }]}>{soloGrupo ? `Solo ${soloGrupo}` : excluirGrupo ? 'Clases de niños' : 'Maestros que necesitan cobertura'}</Text>
           </View>
         </View>
         {cargando ? <ActivityIndicator size="large" color={colors.textSub} style={{marginTop: 50}} /> : (
