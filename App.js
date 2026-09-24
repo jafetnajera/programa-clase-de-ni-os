@@ -396,7 +396,12 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
     return fecha.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
   };
 
-  const enviarSolicitudApoyo = async (item) => {
+    const enviarSolicitudApoyo = async (item) => {
+    const { data: existente } = await supabase.from('solicitudes_sustitucion').select('id').eq('programa_servicio_id', item.id).eq('estado', 'Pendiente');
+    if (existente && existente.length > 0) {
+      setAlerta({ visible: true, titulo: "Ya existe", mensaje: "Ya hay una solicitud de apoyo pendiente para esta fecha.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' });
+      return;
+    }
     const tipoCalc = calcularTipo(item.fecha, item.horario);
         const { error } = await supabase.from('solicitudes_sustitucion').insert([{
             mes_anio: formatearFecha(item.fecha),
@@ -683,12 +688,18 @@ function ClaseDetalleScreen({ route, navigation }) {
       onCancelar: cerrarAlerta, 
       isDark: isDark,
       themeColor: theme.main,
-      onConfirmar: async () => {
+            onConfirmar: async () => {
         cerrarAlerta();
                 try {
+          const tituloCompleto = `${tema.titulo_tema} - ${clase.titulo_clase}`;
+          const { data: existente } = await supabase.from('solicitudes_sustitucion').select('id').eq('tema_id', tema.id).eq('titulo_tema', tituloCompleto).eq('estado', 'Pendiente');
+          if (existente && existente.length > 0) {
+            setTimeout(() => setAlerta({ visible: true, titulo: "Ya existe", mensaje: "Ya hay una solicitud de apoyo pendiente para esta clase.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+            return;
+          }
           const mesTema = parsearMesAnio(tema.mes_anio);
           const fechaRef = mesTema ? new Date(mesTema.getFullYear(), mesTema.getMonth() + 1, 1).toISOString().split('T')[0] : null;
-          await supabase.from('solicitudes_sustitucion').insert([{ tema_id: tema.id, mes_anio: tema.mes_anio, titulo_tema: `${tema.titulo_tema} - ${clase.titulo_clase}`, grupo_clase: grupo, maestro_solicitante: usuarioActivoGlobal, fecha_referencia: fechaRef }]);
+          await supabase.from('solicitudes_sustitucion').insert([{ tema_id: tema.id, mes_anio: tema.mes_anio, titulo_tema: tituloCompleto, grupo_clase: grupo, maestro_solicitante: usuarioActivoGlobal, fecha_referencia: fechaRef }]);
           setTimeout(() => setAlerta({ visible: true, titulo: "Enviado", mensaje: "Tu solicitud está en las Solicitudes de Apoyo.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
         } catch (error) { setTimeout(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo enviar.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500); }
       }
