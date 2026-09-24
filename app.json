@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Clase Niños Indus",
+        "name": "Indus app",
     "slug": "clase-ninos-indus",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -29,7 +29,7 @@
       "display": "standalone",
       "backgroundColor": "#ffffff",
       "themeColor": "#2C313C",
-      "shortName": "Clase Indus"
+            "shortName": "Indus app"
     }
   }
 }

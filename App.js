@@ -64,6 +64,17 @@ const parsearMesAnio = (texto) => {
   return new Date(anio, mes, 1);
 };
 
+const parsearHorarioMinutos = (horario) => {
+  const match = (horario || '').match(/(\d+):(\d+)\s*(am|pm)/i);
+  if (!match) return 0;
+  let horas = parseInt(match[1]);
+  const minutos = parseInt(match[2]);
+  const esPM = match[3].toLowerCase() === 'pm';
+  if (esPM && horas !== 12) horas += 12;
+  if (!esPM && horas === 12) horas = 0;
+  return horas * 60 + minutos;
+};
+
 const calcularTipo = (fechaTexto, horario) => {
   const dia = new Date(fechaTexto + 'T00:00:00').getDay(); // 0 = domingo, 2 = martes, 4 = jueves
   if (dia === 0) {
@@ -362,8 +373,12 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
       if (rolUsuarioActivoGlobal !== 'administrador') {
         consulta = consulta.ilike('nombre_usuario', usuarioActivoGlobal);
       }
-      const { data } = await consulta;
-      setFechas(data || []);
+            const { data } = await consulta;
+      const ordenado = (data || []).sort((a, b) => {
+        if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+        return parsearHorarioMinutos(a.horario) - parsearHorarioMinutos(b.horario);
+      });
+      setFechas(ordenado);
 
       if (rolUsuarioActivoGlobal === 'administrador') {
         const { data: maestros } = await supabase.from('maestros').select('nombre_usuario, nombre_completo');
@@ -384,10 +399,10 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
   const enviarSolicitudApoyo = async (item) => {
     const tipoCalc = calcularTipo(item.fecha, item.horario);
         const { error } = await supabase.from('solicitudes_sustitucion').insert([{
-      mes_anio: formatearFecha(item.fecha),
+            mes_anio: formatearFecha(item.fecha),
       titulo_tema: `${tipoCalc} • ${item.horario}`,
             grupo_clase: 'Predicaciones',
-      maestro_solicitante: usuarioActivoGlobal,
+      maestro_solicitante: item.nombre_usuario,
       programa_servicio_id: item.id,
       fecha_referencia: item.fecha,
     }]);
@@ -401,8 +416,8 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
   const confirmarSolicitarApoyo = (item) => {
     setAlerta({
       visible: true,
-      titulo: "Solicitar apoyo",
-      mensaje: `¿Seguro que quieres pedir que alguien te cubra el ${formatearFecha(item.fecha)}?`,
+            titulo: "Solicitar apoyo",
+      mensaje: item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() ? `¿Seguro que quieres pedir que alguien te cubra el ${formatearFecha(item.fecha)}?` : `¿Solicitar apoyo para ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario} el ${formatearFecha(item.fecha)}?`,
       textoConfirmar: "Sí, solicitar",
       onCancelar: cerrarAlerta,
       isDark: isDark,
@@ -449,7 +464,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                                                                         <Text style={{ fontSize: 11, color: colors.textSub }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
                 </View>
                                          <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{tipoCalculado}</Text>
-                {item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() && (
+                                {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
                   <TouchableOpacity onPress={() => confirmarSolicitarApoyo(item)} style={{ padding: 6, marginLeft: 4 }}>
                     <Feather name="user-plus" size={18} color={colors.textSub} />
                   </TouchableOpacity>
@@ -805,7 +820,7 @@ function TablonScreen({ navigation, route }) {
           </TouchableOpacity>
                     <View style={styles.headerSoloText}>
             <Text style={[styles.titleMini, { color: colors.textMain }]}>SOLICITUDES DE APOYO</Text>
-                        <Text style={[styles.subtitle, { color: colors.textSub }]}>{soloGrupo ? `Solo ${soloGrupo}` : excluirGrupo ? 'Clases de niños' : 'Maestros que necesitan cobertura'}</Text>
+                                                <Text style={[styles.subtitle, { color: colors.textSub }]}>Maestros que necesitan cobertura</Text>>
           </View>
         </View>
         {cargando ? <ActivityIndicator size="large" color={colors.textSub} style={{marginTop: 50}} /> : (
@@ -822,9 +837,10 @@ function TablonScreen({ navigation, route }) {
                 return (
                   <View key={solicitud.id} style={[styles.card, styles.cardLight, { backgroundColor: theme.bgLight, borderColor: 'transparent', opacity: solicitud.estado === 'Cubierta' ? 0.6 : 1 }]}>
                     <View style={styles.textContainer}>
-                                            <Text style={[styles.topicTitle, { color: colors.textMain }]}>{nombreBonito(solicitud.maestro_solicitante)} pide apoyo</Text>
+                      <Text style={[styles.topicTitle, { color: colors.textMain }]}>{nombreBonito(solicitud.maestro_solicitante)} pide apoyo</Text>
                       <Text style={[styles.topicSubtitle, { color: theme.textDark, fontWeight: 'bold' }]}>Grupo: {solicitud.grupo_clase}</Text>
-                      <Text style={[styles.topicSubtitle, { color: colors.textMain }]}>Clase: {solicitud.titulo_tema}</Text>
+                      <Text style={[styles.topicSubtitle, { color: colors.textSub }]}>{solicitud.mes_anio}</Text>
+                      <Text style={[styles.topicSubtitle, { color: colors.textMain }]}>{solicitud.titulo_tema}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 15 }}>
                       {solicitud.maestro_solicitante === usuarioActivoGlobal && solicitud.estado === 'Pendiente' && (
