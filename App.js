@@ -763,7 +763,7 @@ function TablonScreen({ navigation, route }) {
   useEffect(() => {
     obtenerSolicitudes();
     (async () => {
-      const { data } = await supabase.from('maestros').select('nombre_usuario, nombre_completo');
+            const { data } = await supabase.rpc('nombres_publicos');
       const mapa = {};
       (data || []).forEach((m) => { mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo; });
       setMapaNombres(mapa);
