@@ -533,6 +533,144 @@ function GruposScreen({ navigation }) {
 }
 
 // ==========================================
+// PANTALLA: TODOS LOS USUARIOS
+// ==========================================
+function TodosUsuariosScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const [maestros, setMaestros] = useState([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('maestros').select('*').order('nombre_usuario', { ascending: true });
+      setMaestros(data || []);
+      setCargando(false);
+    })();
+  }, []);
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Todos los usuarios</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestros.length} en total</Text>
+          </View>
+        </View>
+
+        <View style={{ width: '95%', maxWidth: 850 }}>
+          {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
+          {!cargando && maestros.map((maestro) => (
+            <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
+                <Text style={[styles.userTextPin, { color: colors.textSub }]}>{maestro.equipo || 'Sin equipo'}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA: TODOS LOS USUARIOS
+// ==========================================
+function TodosUsuariosScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const [maestros, setMaestros] = useState([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('maestros').select('*').order('nombre_usuario', { ascending: true });
+      setMaestros(data || []);
+      setCargando(false);
+    })();
+  }, []);
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Todos los usuarios</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestros.length} en total</Text>
+          </View>
+        </View>
+
+        <View style={{ width: '95%', maxWidth: 850 }}>
+          {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
+          {!cargando && maestros.map((maestro) => (
+            <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
+                <Text style={[styles.userTextPin, { color: colors.textSub }]}>{maestro.equipo || 'Sin equipo'}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA: TODOS LOS USUARIOS
+// ==========================================
+function TodosUsuariosScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const [maestros, setMaestros] = useState([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('maestros').select('*').order('nombre_usuario', { ascending: true });
+      setMaestros(data || []);
+      setCargando(false);
+    })();
+  }, []);
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Todos los usuarios</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestros.length} en total</Text>
+          </View>
+        </View>
+
+        <View style={{ width: '95%', maxWidth: 850 }}>
+          {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
+          {!cargando && maestros.map((maestro) => (
+            <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
+                <Text style={[styles.userTextPin, { color: colors.textSub }]}>{maestro.equipo || 'Sin equipo'}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
 // PANTALLA 2: TEMAS MENSUALES
 // ==========================================
 function TemasScreen({ route, navigation }) {
@@ -1077,13 +1215,19 @@ function AdminScreen({ navigation }) {
         <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
                <Text style={[styles.topicTitle, { color: colors.textMain }]}>Equipos y Usuarios</Text>
 
-        <TextInput
+                <TextInput
           style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 15 }]}
           placeholder="Buscar usuario por nombre..."
           placeholderTextColor={colors.textSub}
           value={busquedaUsuario}
           onChangeText={setBusquedaUsuario}
         />
+
+        <TouchableOpacity style={[styles.equipoFolder, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginBottom: 15 }]} onPress={() => navigation.navigate('TodosUsuarios')}>
+          <Feather name="users" size={24} color={colors.textSub} />
+          <View style={{ marginLeft: 15, flex: 1 }}><Text style={[styles.equipoFolderTitle, { color: colors.textMain }]}>Todos los usuarios</Text><Text style={[styles.equipoFolderSub, { color: colors.textSub }]}>{maestros.length} en total</Text></View>
+          <Feather name="chevron-right" size={20} color={colors.textSub} />
+        </TouchableOpacity>
 
         {busquedaUsuario.trim() !== '' ? (
           <View>
@@ -1230,7 +1374,8 @@ if (cargandoSesion) {
             <Stack.Screen name="Clases" component={ClasesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Tablon" component={TablonScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: false }} />
+                        <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="TodosUsuarios" component={TodosUsuariosScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
       </View>
