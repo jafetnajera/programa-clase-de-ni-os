@@ -885,7 +885,9 @@ function AdminScreen({ navigation }) {
   const [usuarioGenerado, setUsuarioGenerado] = useState('');
   const [pinGenerado, setPinGenerado] = useState('');
   const [numeroEquipoAsignado, setNumeroEquipoAsignado] = useState('');
-  const [esAdmin, setEsAdmin] = useState(false);
+    const [esAdmin, setEsAdmin] = useState(false);
+  const [elegibleClases, setElegibleClases] = useState(false);
+  const [elegiblePredicaciones, setElegiblePredicaciones] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [maestros, setMaestros] = useState([]);
   const [equipoSeleccionadoAdmin, setEquipoSeleccionadoAdmin] = useState(null);
@@ -921,14 +923,14 @@ function AdminScreen({ navigation }) {
         const rolFinal = esAdmin ? 'administrador' : 'maestro';
     const equipoFinal = esAdmin ? 'Administradores' : (numeroEquipoAsignado ? `Equipo ${numeroEquipoAsignado}` : 'Sin equipo');
 
-    const { data: resultado, error } = await supabase.functions.invoke('registrar-maestro', {
-      body: { nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono, nombre_completo: nombreCompleto }
+        const { data: resultado, error } = await supabase.functions.invoke('registrar-maestro', {
+      body: { nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono, nombre_completo: nombreCompleto, elegible_clases_ninos: elegibleClases, elegible_predicaciones: elegiblePredicaciones }
     });
 
         if (error || resultado?.error) { setAlerta({ visible: true, titulo: "Error", mensaje: resultado?.error || error?.message || "Error desconocido.", onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
       setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: "Usuario registrado.", onConfirmar: cerrarAlerta, isDark: isDark });
-      setNombreCompleto(''); setUsuarioGenerado(''); setPinGenerado(''); setNumeroEquipoAsignado(''); setTelefono(''); setEsAdmin(false); obtenerMaestros();
+      setNombreCompleto(''); setUsuarioGenerado(''); setPinGenerado(''); setNumeroEquipoAsignado(''); setTelefono(''); setEsAdmin(false); setElegibleClases(false); setElegiblePredicaciones(false); obtenerMaestros();
     }
     setGuardando(false);
   }
@@ -1040,9 +1042,19 @@ function AdminScreen({ navigation }) {
           <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Ej. 8123456789" placeholderTextColor={colors.textSub} value={telefono} onChangeText={setTelefono} keyboardType="numeric" />
         </View>
 
-        <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
           <Text style={[styles.label, { color: colors.textSub }]}>Es Administrador</Text>
           <Switch trackColor={{ false: colors.cardBorder, true: "#EFBC68" }} thumbColor={"#FFFFFF"} onValueChange={setEsAdmin} value={esAdmin} />
+        </View>
+
+        <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+          <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Clases de niños</Text>
+          <Switch trackColor={{ false: colors.cardBorder, true: "#5FA8A0" }} thumbColor={"#FFFFFF"} onValueChange={setElegibleClases} value={elegibleClases} />
+        </View>
+
+        <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+          <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Predicaciones y Clases</Text>
+          <Switch trackColor={{ false: colors.cardBorder, true: "#7EA0D8" }} thumbColor={"#FFFFFF"} onValueChange={setElegiblePredicaciones} value={elegiblePredicaciones} />
         </View>
         
         {!esAdmin && (
