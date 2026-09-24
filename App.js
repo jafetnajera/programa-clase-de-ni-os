@@ -820,7 +820,7 @@ function TablonScreen({ navigation, route }) {
           </TouchableOpacity>
                     <View style={styles.headerSoloText}>
             <Text style={[styles.titleMini, { color: colors.textMain }]}>SOLICITUDES DE APOYO</Text>
-                                                <Text style={[styles.subtitle, { color: colors.textSub }]}>Maestros que necesitan cobertura</Text>>
+                                                <Text style={[styles.subtitle, { color: colors.textSub }]}>Maestros que necesitan cobertura</Text>
           </View>
         </View>
         {cargando ? <ActivityIndicator size="large" color={colors.textSub} style={{marginTop: 50}} /> : (
