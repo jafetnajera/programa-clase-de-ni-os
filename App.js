@@ -1352,7 +1352,7 @@ if (cargandoSesion) {
       border: colors.background,
     },
   };
-
+  
   return (
     <ThemeContext.Provider value={{ isDark, toggleTheme }}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
