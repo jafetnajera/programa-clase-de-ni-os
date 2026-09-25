@@ -118,6 +118,8 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
   const [nuevoNumeroEquipo, setNuevoNumeroEquipo] = useState('');
     const [nuevoTelefono, setNuevoTelefono] = useState('');
   const [nuevoNombreCompleto, setNuevoNombreCompleto] = useState('');
+  const [nuevoElegibleClases, setNuevoElegibleClases] = useState(false);
+  const [nuevoElegiblePredicaciones, setNuevoElegiblePredicaciones] = useState(false);
   const colors = getColors(isDark);
   
   useEffect(() => { 
@@ -126,6 +128,8 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
       setNuevoNumeroEquipo(soloNumeros);
       setNuevoTelefono(maestro.telefono || '');
       setNuevoNombreCompleto(maestro.nombre_completo || '');
+      setNuevoElegibleClases(!!maestro.elegible_clases_ninos);
+      setNuevoElegiblePredicaciones(!!maestro.elegible_predicaciones);
     } 
   }, [maestro]);
 
@@ -165,11 +169,20 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             keyboardType="numeric" 
           />
 
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+            <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Clases de niños</Text>
+            <Switch trackColor={{ false: colors.cardBorder, true: "#5FA8A0" }} thumbColor={"#FFFFFF"} onValueChange={setNuevoElegibleClases} value={nuevoElegibleClases} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+            <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Predicaciones y Clases</Text>
+            <Switch trackColor={{ false: colors.cardBorder, true: "#7EA0D8" }} thumbColor={"#FFFFFF"} onValueChange={setNuevoElegiblePredicaciones} value={nuevoElegiblePredicaciones} />
+          </View>
+
           <View style={[styles.modalButtons, { marginTop: 20 }]}>
             <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.cardBorder }]} onPress={onCancelar}>
               <Text style={[styles.modalCancelText, { color: colors.textSub }]}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ equipo: nuevoNumeroEquipo ? `Equipo ${nuevoNumeroEquipo}` : 'Sin equipo', telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto }); }}>
+            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ equipo: nuevoNumeroEquipo ? `Equipo ${nuevoNumeroEquipo}` : 'Sin equipo', telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto, elegible_clases_ninos: nuevoElegibleClases, elegible_predicaciones: nuevoElegiblePredicaciones }); }}>
               <Text style={styles.modalConfirmText}>Guardar</Text>
             </TouchableOpacity>
           </View>
@@ -564,16 +577,83 @@ function TodosUsuariosScreen({ navigation }) {
 
         <View style={{ width: '95%', maxWidth: 850 }}>
           {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
-          {!cargando && maestros.map((maestro) => (
-            <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+                    {!cargando && maestros.map((maestro) => (
+            <TouchableOpacity key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => navigation.navigate('DetalleUsuario', { maestro })}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
                 <Text style={[styles.userTextPin, { color: colors.textSub }]}>{maestro.equipo || 'Sin equipo'}</Text>
               </View>
-            </View>
+              <Feather name="chevron-right" size={20} color={colors.textSub} />
+            </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA: DETALLE DE USUARIO
+// ==========================================
+function DetalleUsuarioScreen({ route, navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const [maestro, setMaestro] = useState(route.params.maestro);
+  const [mostrarModal, setMostrarModal] = useState(false);
+
+  const recargar = async () => {
+    const { data } = await supabase.from('maestros').select('*').eq('id', maestro.id).single();
+    if (data) setMaestro(data);
+  };
+
+  const guardarEdicion = async (datos) => {
+    setMostrarModal(false);
+    await supabase.from('maestros').update({
+      equipo: datos.equipo,
+      telefono: datos.telefono,
+      nombre_completo: datos.nombre_completo,
+      elegible_clases_ninos: datos.elegible_clases_ninos,
+      elegible_predicaciones: datos.elegible_predicaciones,
+    }).eq('id', maestro.id);
+    recargar();
+  };
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestro.equipo || 'Sin equipo'}</Text>
+          </View>
+        </View>
+
+        <View style={{ width: '95%', maxWidth: 850 }}>
+          <Text style={[styles.label, { color: colors.textSub }]}>Nombre completo</Text>
+          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 12 }}>{maestro.nombre_completo || '(sin definir)'}</Text>
+
+          <Text style={[styles.label, { color: colors.textSub }]}>Celular</Text>
+          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 12 }}>{maestro.telefono || '(sin definir)'}</Text>
+
+          <Text style={[styles.label, { color: colors.textSub }]}>Usuario de acceso</Text>
+          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 12 }}>{maestro.nombre_usuario}</Text>
+
+          <Text style={[styles.label, { color: colors.textSub }]}>PIN</Text>
+          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 12 }}>{maestro.pin_acceso}</Text>
+
+          <Text style={[styles.label, { color: colors.textSub }]}>Elegible para</Text>
+          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 4 }}>{maestro.elegible_clases_ninos ? '✓' : '✗'} Clases de niños</Text>
+          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 20 }}>{maestro.elegible_predicaciones ? '✓' : '✗'} Predicaciones y Clases</Text>
+
+          <TouchableOpacity style={styles.primaryButton} onPress={() => setMostrarModal(true)}>
+            <Text style={styles.primaryButtonText}>Editar</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+      <ModalEdicion visible={mostrarModal} maestro={maestro} onCancelar={() => setMostrarModal(false)} onGuardar={guardarEdicion} isDark={isDark} />
     </SafeAreaView>
   );
 }
@@ -984,7 +1064,7 @@ function AdminScreen({ navigation }) {
     async function guardarEdicion(datos) {
     setMaestroEditando(null);
     setEquipoSeleccionadoAdmin(null);
-        await supabase.from('maestros').update({ equipo: datos.equipo, telefono: datos.telefono, nombre_completo: datos.nombre_completo }).eq('id', maestroEditando.id);
+                await supabase.from('maestros').update({ equipo: datos.equipo, telefono: datos.telefono, nombre_completo: datos.nombre_completo, elegible_clases_ninos: datos.elegible_clases_ninos, elegible_predicaciones: datos.elegible_predicaciones }).eq('id', maestroEditando.id);
     obtenerMaestros();
   }
 
@@ -1283,7 +1363,8 @@ if (cargandoSesion) {
             <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Tablon" component={TablonScreen} options={{ headerShown: false }} />
                         <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="TodosUsuarios" component={TodosUsuariosScreen} options={{ headerShown: false }} />
+                        <Stack.Screen name="TodosUsuarios" component={TodosUsuariosScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="DetalleUsuario" component={DetalleUsuarioScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
       </View>
