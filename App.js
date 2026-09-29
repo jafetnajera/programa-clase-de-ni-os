@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert, Image, Animated } from 'react-native';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
 import { createClient } from '@supabase/supabase-js';
 import { NavigationContainer, DefaultTheme, useFocusEffect } from '@react-navigation/native';
@@ -248,6 +249,14 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
   );
 };
 
+// Ícono de notificaciones: marco con dos cortes + círculo de aviso
+const IconoNotificacion = ({ size = 26, color, activo }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M3,7 A4,4 0 0 1 7,3 L13,3 M21,9 L21,15 M21,17 A4,4 0 0 1 17,21 L7,21 A4,4 0 0 1 3,17 L3,7" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    <Circle cx={18.5} cy={6.5} r={3.3} fill={activo ? '#E5484D' : 'transparent'} stroke={activo ? '#E5484D' : color} strokeWidth={2} />
+  </Svg>
+);
+
 // ==========================================
 // PANTALLA 0: LOGIN
 // ==========================================
@@ -382,15 +391,7 @@ function MenuPrincipalScreen({ navigation }) {
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 90, height: 64, resizeMode: 'contain' }} />
           </TouchableOpacity>
                     <TouchableOpacity onPress={() => navigation.navigate('Notificaciones')} style={{ padding: 8 }}>
-            <View>
-                            <Image source={require('./notificacion.gif')} style={{ width: 38, height: 38 }} />
-              <View style={{
-                position: 'absolute', top: -2, right: -2, width: 13, height: 13, borderRadius: 7,
-                backgroundColor: hayNotificaciones ? '#E5484D' : 'transparent',
-                borderWidth: hayNotificaciones ? 0 : 2,
-                borderColor: hayNotificaciones ? '#E5484D' : colors.textSub,
-              }} />
-            </View>
+            <IconoNotificacion size={28} color={colors.textSub} activo={hayNotificaciones} />
           </TouchableOpacity>
         </View>
 
@@ -583,10 +584,13 @@ function GruposScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, flexDirection: 'row', alignItems: 'center' }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 8 }}>
+                    <View style={{ flex: 1, marginLeft: 8 }}>
             <Text style={[styles.title, { color: colors.textMain }]}>Clases de niños</Text>
             <Text style={[styles.subtitle, { color: colors.textSub }]}>Selecciona el grupo a impartir</Text>
           </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
         </View>
 
                 <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: 850, marginBottom: 15 }]} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })}>
@@ -631,7 +635,12 @@ function NotificacionesScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textMain, marginLeft: 8 }]}>Notificaciones</Text>
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Notificaciones</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
         </View>
 
         <View style={{ width: '95%', maxWidth: 850, alignItems: 'center', paddingTop: 60 }}>
@@ -696,8 +705,11 @@ function TodosUsuariosScreen({ navigation }) {
             <Text style={[styles.title, { color: colors.textMain }]}>Todos los usuarios</Text>
             <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestros.length} en total</Text>
           </View>
-          <TouchableOpacity onPress={descargarCSV} style={{ padding: 8 }}>
+                    <TouchableOpacity onPress={descargarCSV} style={{ padding: 8 }}>
             <Feather name="download" size={20} color={colors.textSub} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
           </TouchableOpacity>
         </View>
 
@@ -751,10 +763,13 @@ function DetalleUsuarioScreen({ route, navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 8 }}>
+                    <View style={{ flex: 1, marginLeft: 8 }}>
             <Text style={[styles.title, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
             <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestro.equipo || 'Sin equipo'}</Text>
           </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
         </View>
 
         <View style={{ width: '95%', maxWidth: 850 }}>
@@ -826,10 +841,13 @@ function TemasScreen({ route, navigation }) {
               <Text style={[styles.titleMini, { color: colors.textMain }]}>TEMARIO</Text>
               <Text style={[styles.subtitle, { color: theme.textDark }]}>Grupo: {grupo}</Text>
             </View>
-            <View style={styles.toggleContainer}>
+                        <View style={styles.toggleContainer}>
               <Text style={[styles.toggleLabel, { color: colors.textSub }]}>Ver futuros</Text>
               <Switch trackColor={{ false: colors.cardBorder, true: theme.main }} thumbColor={"#FFFFFF"} onValueChange={setVerFuturo} value={verFuturo} />
             </View>
+            <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')} style={{ marginLeft: 10 }}>
+              <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 40, height: 29, resizeMode: 'contain' }} />
+            </TouchableOpacity>
           </View>
           
           {cargando ? (
@@ -879,14 +897,17 @@ function ClasesScreen({ route, navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
       <View style={{ width: '95%', maxWidth: 850, flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+                           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5, justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
-          <View style={styles.headerSoloText}>
+          <View style={[styles.headerSoloText, { flex: 1 }]}>
             <Text style={[styles.titleMini, { color: colors.textMain }]}>{tema.titulo_tema.toUpperCase()}</Text>
             <Text style={[styles.subtitle, { color: theme.textDark }]}>{tema.mes_anio} • {grupo}</Text>
           </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
         </View>
         {cargando ? (
           <View style={styles.center}><ActivityIndicator size="large" color={theme.main} /></View>
@@ -976,9 +997,14 @@ function ClaseDetalleScreen({ route, navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
             <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 5, paddingBottom: 30, width: '95%', maxWidth: 850, alignSelf: 'center' }}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginBottom: 10, alignSelf: 'flex-start' }}>
-          <Feather name="arrow-left" size={22} color={colors.textSub} />
-        </TouchableOpacity>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
+        </View>
         <Text style={[styles.detalleTitleMain, { color: colors.textMain }]}>{clase.titulo_clase}</Text>
         <Text style={[styles.detalleSubtitle, { color: theme.main }]}>Domingo {clase.numero_clase} • {grupo}</Text>
         <Text style={[styles.detalleBase, { color: colors.textSub }]}>Base bíblica: {clase.texto_base}</Text>
@@ -1077,14 +1103,17 @@ function TablonScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
       <View style={{ width: '95%', maxWidth: 850, flex: 1, paddingBottom: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5, justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
-                    <View style={styles.headerSoloText}>
+                    <View style={[styles.headerSoloText, { flex: 1 }]}>
             <Text style={[styles.titleMini, { color: colors.textMain }]}>SOLICITUDES DE APOYO</Text>
                                                 <Text style={[styles.subtitle, { color: colors.textSub }]}>Maestros que necesitan cobertura</Text>
           </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
         </View>
         {cargando ? <ActivityIndicator size="large" color={colors.textSub} style={{marginTop: 50}} /> : (
           <ScrollView style={styles.listContainer}>
@@ -1329,11 +1358,16 @@ function AdminScreen({ navigation }) {
         return (
                <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 15 }}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
-            <Feather name="arrow-left" size={22} color={colors.textSub} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 15, justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
+              <Feather name="arrow-left" size={22} color={colors.textSub} />
+            </TouchableOpacity>
+            <Text style={[styles.title, { color: colors.textMain, marginLeft: 4 }]}>Panel de Control</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textMain, marginLeft: 4 }]}>Panel de Control</Text>
         </View>
         <Text style={[styles.topicTitle, { color: colors.textMain }]}>Registrar Usuario</Text>
         
