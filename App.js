@@ -1050,15 +1050,22 @@ function AdminScreen({ navigation }) {
   const colors = getColors(isDark);
   const [telefono, setTelefono] = useState('');
     const [busquedaUsuario, setBusquedaUsuario] = useState('');
-   const [previaRol, setPreviaRol] = useState([]);
+     const [previaRol, setPreviaRol] = useState([]);
   const [subiendoRol, setSubiendoRol] = useState(false);
+  const [mesBuscarRol, setMesBuscarRol] = useState('');
+  const [anioBuscarRol, setAnioBuscarRol] = useState('');
+  const [resultadosRol, setResultadosRol] = useState([]);
+  const [seleccionadosRol, setSeleccionadosRol] = useState([]);
+  const [buscandoRol, setBuscandoRol] = useState(false);
+  const [eliminandoRol, setEliminandoRol] = useState(false);
   useEffect(() => { obtenerMaestros(); }, []);
   
   function cerrarAlerta() { setAlerta({ ...alerta, visible: false }); }
 
-  const procesarNombre = (texto) => {
+    const procesarNombre = (texto) => {
     setNombreCompleto(texto);
-    const usuarioLimpio = texto.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, '');
+    // Preserva la ñ/Ñ (se descompone en "n" + tilde con NFD) y solo quita acentos del resto de letras
+    const usuarioLimpio = texto.normalize("NFD").replace(/[̀-ͯ]/g, (m) => (m === '\u0303' ? m : '')).normalize("NFC").replace(/\s+/g, '');
     setUsuarioGenerado(usuarioLimpio);
     if (!pinGenerado && texto.length > 0) setPinGenerado(Math.floor(1000 + Math.random() * 9000).toString());
     if (texto.length === 0) setPinGenerado('');
@@ -1163,6 +1170,48 @@ function AdminScreen({ navigation }) {
       setPreviaRol([]);
     }
   };
+
+    async function buscarRol() {
+    const mesNum = parseInt(mesBuscarRol);
+    const anioNum = parseInt(anioBuscarRol);
+    if (!mesNum || mesNum < 1 || mesNum > 12 || !anioNum) {
+      return setAlerta({ visible: true, titulo: "Aviso", mensaje: "Escribe un mes (1-12) y un año válidos.", onConfirmar: cerrarAlerta, isDark: isDark });
+    }
+    setBuscandoRol(true);
+    const desde = `${anioNum}-${String(mesNum).padStart(2, '0')}-01`;
+    const ultimoDia = new Date(anioNum, mesNum, 0).getDate();
+    const hasta = `${anioNum}-${String(mesNum).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
+    const { data, error } = await supabase.from('programa_servicios').select('*').gte('fecha', desde).lte('fecha', hasta).order('fecha', { ascending: true });
+    setBuscandoRol(false);
+    if (error) { return setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo buscar: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark }); }
+    setResultadosRol(data || []);
+    setSeleccionadosRol([]);
+  }
+
+  function toggleSeleccionRol(id) {
+    setSeleccionadosRol((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }
+
+  function seleccionarTodoRol() {
+    setSeleccionadosRol(seleccionadosRol.length === resultadosRol.length ? [] : resultadosRol.map((r) => r.id));
+  }
+
+  function confirmarEliminarSeleccionadosRol() {
+    if (seleccionadosRol.length === 0) return;
+    setAlerta({
+      visible: true, titulo: "Eliminar fechas", mensaje: `¿Eliminar ${seleccionadosRol.length} fecha(s) del rol? Esta acción no se puede deshacer.`,
+      textoConfirmar: "Eliminar", onCancelar: cerrarAlerta, isDark: isDark, themeColor: '#C97A7A',
+      onConfirmar: async () => {
+        cerrarAlerta();
+        setEliminandoRol(true);
+        const { error } = await supabase.from('programa_servicios').delete().in('id', seleccionadosRol);
+        setEliminandoRol(false);
+        if (error) { setTimeout(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo eliminar: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark }), 500); return; }
+        setResultadosRol((prev) => prev.filter((r) => !seleccionadosRol.includes(r.id)));
+        setSeleccionadosRol([]);
+      }
+    });
+  }
 
   const maestrosPorEquipo = maestros.reduce((acc, maestro) => {
     let equipo = maestro.equipo || 'Sin equipo';
@@ -1297,8 +1346,35 @@ function AdminScreen({ navigation }) {
             {previaRol.slice(0, 5).map((fila, index) => (
                             <Text key={index} style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>{fila.fecha} • {fila.horario} • {calcularTipo(fila.fecha, fila.horario)} • {fila.nombre_usuario}</Text>
             ))}
-            {previaRol.length > 5 && <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>...y {previaRol.length - 5} más</Text>}
+                        {previaRol.length > 5 && <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>...y {previaRol.length - 5} más</Text>}
             <TouchableOpacity style={[styles.primaryButton, { marginTop: 15 }]} onPress={confirmarCargaRol}>{subiendoRol ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Confirmar y subir</Text>}</TouchableOpacity>
+          </View>
+        )}
+
+        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
+        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Buscar y eliminar Rol</Text>
+        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Si un rol se subió con errores, búscalo por mes y elimina lo que sobre.</Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarRol} onChangeText={(t) => setMesBuscarRol(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
+          <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2026)" placeholderTextColor={colors.textSub} value={anioBuscarRol} onChangeText={(t) => setAnioBuscarRol(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
+        </View>
+        <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={buscarRol}>{buscandoRol ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Buscar</Text>}</TouchableOpacity>
+
+        {resultadosRol.length > 0 && (
+          <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginTop: 15 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>{resultadosRol.length} fecha(s) encontradas</Text>
+              <TouchableOpacity onPress={seleccionarTodoRol}><Text style={{ color: '#7EA0D8', fontSize: 12, fontWeight: '600' }}>{seleccionadosRol.length === resultadosRol.length ? 'Quitar selección' : 'Seleccionar todo'}</Text></TouchableOpacity>
+            </View>
+            {resultadosRol.map((item) => (
+              <TouchableOpacity key={item.id} onPress={() => toggleSeleccionRol(item.id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+                <Feather name={seleccionadosRol.includes(item.id) ? "check-square" : "square"} size={18} color={seleccionadosRol.includes(item.id) ? '#7EA0D8' : colors.textSub} />
+                <Text style={{ color: colors.textMain, fontSize: 13, marginLeft: 10, flex: 1 }}>{item.fecha} • {item.horario} • {item.nombre_usuario}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={[styles.primaryButton, { marginTop: 15, backgroundColor: '#C97A7A' }]} onPress={confirmarEliminarSeleccionadosRol} disabled={seleccionadosRol.length === 0}>
+              {eliminandoRol ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Eliminar seleccionados ({seleccionadosRol.length})</Text>}
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
