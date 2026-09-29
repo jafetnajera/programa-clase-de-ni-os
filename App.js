@@ -383,7 +383,7 @@ function MenuPrincipalScreen({ navigation }) {
           </TouchableOpacity>
                     <TouchableOpacity onPress={() => navigation.navigate('Notificaciones')} style={{ padding: 8 }}>
             <View>
-              <Image source={{ uri: 'https://i.pinimg.com/originals/bc/2a/4a/bc2a4a3d25c466fe4d97e5877c4226e0.gif' }} style={{ width: 38, height: 38 }} />
+                            <Image source={require('./notificacion.gif')} style={{ width: 38, height: 38 }} />
               <View style={{
                 position: 'absolute', top: -2, right: -2, width: 13, height: 13, borderRadius: 7,
                 backgroundColor: hayNotificaciones ? '#E5484D' : 'transparent',
