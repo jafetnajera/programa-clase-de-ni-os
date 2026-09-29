@@ -516,7 +516,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
-        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+                <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
@@ -524,6 +524,9 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
             <Text style={[styles.title, { color: colors.textMain }]}>{rolUsuarioActivoGlobal === 'administrador' ? 'Rol de predicaciones' : 'Mi rol'}</Text>
             <Text style={[styles.subtitle, { color: colors.textSub }]}>{rolUsuarioActivoGlobal === 'administrador' ? 'Todas las fechas asignadas' : 'Tus próximas fechas'}</Text>
           </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
                 </View>
 
         <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: 850, marginBottom: 15 }]} onPress={() => navigation.navigate('Tablon', { soloGrupo: 'Predicaciones' })}>
