@@ -252,8 +252,8 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
 // Ícono de notificaciones: marco con dos cortes + círculo de aviso
 const IconoNotificacion = ({ size = 26, color, activo }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M3,7 A4,4 0 0 1 7,3 L13,3 M21,9 L21,15 M21,17 A4,4 0 0 1 17,21 L7,21 A4,4 0 0 1 3,17 L3,7" stroke={color} strokeWidth={2} strokeLinecap="round" />
-    <Circle cx={18.5} cy={6.5} r={3.3} fill={activo ? '#E5484D' : 'transparent'} stroke={activo ? '#E5484D' : color} strokeWidth={2} />
+    <Path d="M3,7 A4,4 0 0 1 7,3 L11,3 M21,11 L21,15 M21,17 A4,4 0 0 1 17,21 L7,21 A4,4 0 0 1 3,17 L3,7" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    <Circle cx={17} cy={7} r={2.8} fill={activo ? '#E5484D' : 'transparent'} stroke={activo ? '#E5484D' : color} strokeWidth={2} />
   </Svg>
 );
 
