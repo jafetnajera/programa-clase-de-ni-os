@@ -320,7 +320,9 @@ function MenuPrincipalScreen({ navigation }) {
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
         const [tieneRol, setTieneRol] = useState(false);
   const [tieneClases, setTieneClases] = useState(false);
-  const [mostrarAjustes, setMostrarAjustes] = useState(false);
+    const [mostrarAjustes, setMostrarAjustes] = useState(false);
+  // Placeholder hasta que exista la tabla de notificaciones: por ahora siempre "sin notificaciones"
+  const [hayNotificaciones, setHayNotificaciones] = useState(false);
 
     useFocusEffect(
     React.useCallback(() => {
@@ -379,8 +381,16 @@ function MenuPrincipalScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 90, height: 64, resizeMode: 'contain' }} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Notificaciones')} style={{ padding: 8 }}>
-            <Image source={{ uri: 'https://i.pinimg.com/originals/bc/2a/4a/bc2a4a3d25c466fe4d97e5877c4226e0.gif' }} style={{ width: 26, height: 26 }} />
+                    <TouchableOpacity onPress={() => navigation.navigate('Notificaciones')} style={{ padding: 8 }}>
+            <View>
+              <Image source={{ uri: 'https://i.pinimg.com/originals/bc/2a/4a/bc2a4a3d25c466fe4d97e5877c4226e0.gif' }} style={{ width: 38, height: 38 }} />
+              <View style={{
+                position: 'absolute', top: -2, right: -2, width: 13, height: 13, borderRadius: 7,
+                backgroundColor: hayNotificaciones ? '#E5484D' : 'transparent',
+                borderWidth: hayNotificaciones ? 0 : 2,
+                borderColor: hayNotificaciones ? '#E5484D' : colors.textSub,
+              }} />
+            </View>
           </TouchableOpacity>
         </View>
 
