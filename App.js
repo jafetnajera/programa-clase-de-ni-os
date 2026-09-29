@@ -234,9 +234,8 @@ function LoginScreen({ navigation }) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={[styles.loginBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-                        <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 180, height: 128, resizeMode: 'contain', alignSelf: 'center', marginBottom: 15 }} />
-            <Text style={[styles.subtitle, { color: colors.textSub, textAlign: 'center', marginBottom: 30 }]}>Ingresa tus credenciales</Text>
+                    <View style={{ width: '100%', maxWidth: 450 }}>
+                        <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 180, height: 128, resizeMode: 'contain', alignSelf: 'center', marginBottom: 30 }} />
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.textSub }]}>Usuario</Text>
               <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholderTextColor={colors.textSub} value={usuarioLogin} onChangeText={setUsuarioLogin} autoCapitalize="none"/>
@@ -1201,14 +1200,18 @@ function AdminScreen({ navigation }) {
     setAlerta({
       visible: true, titulo: "Eliminar fechas", mensaje: `¿Eliminar ${seleccionadosRol.length} fecha(s) del rol? Esta acción no se puede deshacer.`,
       textoConfirmar: "Eliminar", onCancelar: cerrarAlerta, isDark: isDark, themeColor: '#C97A7A',
-      onConfirmar: async () => {
+            onConfirmar: async () => {
         cerrarAlerta();
         setEliminandoRol(true);
-        const { error } = await supabase.from('programa_servicios').delete().in('id', seleccionadosRol);
+        const { data, error } = await supabase.from('programa_servicios').delete().in('id', seleccionadosRol).select('id');
         setEliminandoRol(false);
         if (error) { setTimeout(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo eliminar: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark }), 500); return; }
-        setResultadosRol((prev) => prev.filter((r) => !seleccionadosRol.includes(r.id)));
+        const idsBorrados = (data || []).map((r) => r.id);
+        setResultadosRol((prev) => prev.filter((r) => !idsBorrados.includes(r.id)));
         setSeleccionadosRol([]);
+        if (idsBorrados.length < seleccionadosRol.length) {
+          setTimeout(() => setAlerta({ visible: true, titulo: "No se borraron todas", mensaje: `Se eliminaron ${idsBorrados.length} de ${seleccionadosRol.length}. Las demás probablemente están bloqueadas por una regla de seguridad (RLS) en Supabase — parece limitarse a fechas pasadas.`, onConfirmar: cerrarAlerta, isDark: isDark }), 500);
+        }
       }
     });
   }
@@ -1391,6 +1394,21 @@ export default function App() {
   const [isDark, setIsDark] = useState(false);
   const [cargandoSesion, setCargandoSesion] = useState(true);
   const [rutaInicial, setRutaInicial] = useState('Login');
+
+  // Sincroniza la barra de estado del navegador/PWA con el modo oscuro o claro.
+  // app.json trae un themeColor fijo que solo aplica al abrir la app por primera vez;
+  // esto lo actualiza en vivo cada vez que cambia isDark.
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      let meta = document.querySelector('meta[name="theme-color"]');
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.setAttribute('name', 'theme-color');
+        document.head.appendChild(meta);
+      }
+      meta.setAttribute('content', getColors(isDark).background);
+    }
+  }, [isDark]);
 
    // Inicializa OneSignal por su cuenta, sin bloquear el resto de la app si falla
   useEffect(() => {
