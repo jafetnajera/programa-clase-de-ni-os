@@ -1,5 +1,5 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
-import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert, Image } from 'react-native';
+import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
+import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert, Image, Animated } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { createClient } from '@supabase/supabase-js';
 import { NavigationContainer, DefaultTheme, useFocusEffect } from '@react-navigation/native';
@@ -84,6 +84,29 @@ const calcularTipo = (fechaTexto, horario) => {
 };
 
 const Stack = createNativeStackNavigator();
+
+// Mapea cada pantalla a una URL propia para que el navegador registre un paso de historial
+// por cada pantalla. Sin esto, el gesto/botón de regresar del navegador no tiene nada que
+// "deshacer" dentro de la app y termina saliéndose de ella por completo.
+const linking = {
+  prefixes: [],
+  config: {
+    screens: {
+      Login: 'login',
+            MenuPrincipal: 'inicio',
+      Notificaciones: 'notificaciones',
+      Grupos: 'grupos',
+      MiRol: 'mi-rol',
+      Temas: 'temas',
+      Clases: 'clases',
+      ClaseDetalle: 'clase-detalle',
+      Tablon: 'tablon',
+      Admin: 'admin',
+      TodosUsuarios: 'todos-usuarios',
+      DetalleUsuario: 'detalle-usuario',
+    },
+  },
+};
 
 // ==========================================
 // COMPONENTES MODALES
@@ -186,9 +209,42 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
               <Text style={styles.modalConfirmText}>Guardar</Text>
             </TouchableOpacity>
           </View>
-        </View>
+                </View>
       </View>
     </Modal>
+  );
+};
+
+// Panel de Ajustes: se desliza desde la izquierda y cubre solo una parte de la pantalla
+const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }) => {
+  const colors = getColors(isDark);
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: false }).start();
+  }, [visible]);
+
+  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [-300, 0] });
+  const overlayOpacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.4] });
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents={visible ? 'auto' : 'none'}>
+      <TouchableOpacity activeOpacity={1} onPress={onCerrar} style={StyleSheet.absoluteFill}>
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
+      </TouchableOpacity>
+      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '65%', maxWidth: 300, backgroundColor: colors.background, borderRightWidth: 1, borderRightColor: colors.cardBorder, transform: [{ translateX }], paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 30 : 60, paddingHorizontal: 20 }}>
+        <Text style={[styles.title, { color: colors.textMain, marginBottom: 25 }]}>Ajustes</Text>
+        <TouchableOpacity onPress={() => { onCerrar(); toggleTheme(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+          <Feather name={isDark ? "sun" : "moon"} size={20} color={colors.textSub} />
+          <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>{isDark ? 'Modo claro' : 'Modo oscuro'}</Text>
+        </TouchableOpacity>
+        <View style={{ height: 1, backgroundColor: colors.cardBorder, marginVertical: 6 }} />
+        <TouchableOpacity onPress={() => { onCerrar(); onCerrarSesion(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+          <Feather name="log-out" size={20} color={colors.textSub} />
+          <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>Cerrar sesión</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
   );
 };
 
@@ -262,8 +318,9 @@ function MenuPrincipalScreen({ navigation }) {
   const colors = getColors(isDark);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
-    const [tieneRol, setTieneRol] = useState(false);
+        const [tieneRol, setTieneRol] = useState(false);
   const [tieneClases, setTieneClases] = useState(false);
+  const [mostrarAjustes, setMostrarAjustes] = useState(false);
 
     useFocusEffect(
     React.useCallback(() => {
@@ -315,13 +372,15 @@ function MenuPrincipalScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
-        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
-          <TouchableOpacity onPress={confirmarCerrarSesion} style={{ padding: 8 }}>
-            <Feather name="log-out" size={24} color={colors.textSub} />
+                <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => setMostrarAjustes(true)} style={{ padding: 8 }}>
+            <Feather name="settings" size={22} color={colors.textSub} />
           </TouchableOpacity>
-          <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 90, height: 64, resizeMode: 'contain' }} />
-          <TouchableOpacity onPress={toggleTheme} style={{ padding: 8 }}>
-            <Feather name={isDark ? "sun" : "moon"} size={18} color={colors.textSub} />
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 90, height: 64, resizeMode: 'contain' }} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('Notificaciones')} style={{ padding: 8 }}>
+            <Image source={{ uri: 'https://i.pinimg.com/originals/bc/2a/4a/bc2a4a3d25c466fe4d97e5877c4226e0.gif' }} style={{ width: 26, height: 26 }} />
           </TouchableOpacity>
         </View>
 
@@ -361,8 +420,9 @@ function MenuPrincipalScreen({ navigation }) {
             <Text style={[styles.adminButtonText, { color: colors.textSub }]}>Panel Admin</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
+            </ScrollView>
             <AlertaPersonalizada {...alerta} />
+      <PanelAjustes visible={mostrarAjustes} onCerrar={() => setMostrarAjustes(false)} isDark={isDark} toggleTheme={toggleTheme} onCerrarSesion={confirmarCerrarSesion} />
     </SafeAreaView>
   );
 }
@@ -539,6 +599,32 @@ function GruposScreen({ navigation }) {
           </TouchableOpacity>
           
                   </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA: NOTIFICACIONES
+// ==========================================
+function NotificacionesScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textMain, marginLeft: 8 }]}>Notificaciones</Text>
+        </View>
+
+        <View style={{ width: '95%', maxWidth: 850, alignItems: 'center', paddingTop: 60 }}>
+          <Feather name="bell-off" size={40} color={colors.textSub} />
+          <Text style={{ color: colors.textSub, fontSize: 14, marginTop: 15, textAlign: 'center' }}>Aún no tienes notificaciones para revisar aquí.</Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1467,7 +1553,7 @@ if (cargandoSesion) {
     <ThemeContext.Provider value={{ isDark, toggleTheme }}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
-        <NavigationContainer theme={MyTheme}>
+                <NavigationContainer theme={MyTheme} linking={linking}>
           <Stack.Navigator 
             initialRouteName={rutaInicial}
             screenOptions={{
@@ -1477,7 +1563,8 @@ if (cargandoSesion) {
             }}
           >
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="MenuPrincipal" component={MenuPrincipalScreen} options={{ headerShown: false }} />
+                        <Stack.Screen name="MenuPrincipal" component={MenuPrincipalScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Notificaciones" component={NotificacionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Grupos" component={GruposScreen} options={{ headerShown: false }} />
             <Stack.Screen name="MiRol" component={MiRolScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Temas" component={TemasScreen} options={{ headerShown: false }} />
