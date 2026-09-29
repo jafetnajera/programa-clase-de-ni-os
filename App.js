@@ -554,13 +554,38 @@ function TodosUsuariosScreen({ navigation }) {
   const [maestros, setMaestros] = useState([]);
   const [cargando, setCargando] = useState(true);
 
-  useEffect(() => {
+    useEffect(() => {
     (async () => {
       const { data } = await supabase.from('maestros').select('*').order('nombre_usuario', { ascending: true });
       setMaestros(data || []);
       setCargando(false);
     })();
   }, []);
+
+  const descargarCSV = () => {
+    const encabezados = ['Usuario', 'Nombre completo', 'PIN', 'Celular', 'Equipo', 'Rol', 'Elegible Clases de niños', 'Elegible Predicaciones y Clases'];
+    const filas = maestros.map((m) => [
+      m.nombre_usuario,
+      m.nombre_completo || '',
+      m.pin_acceso,
+      m.telefono || '',
+      m.equipo || 'Sin equipo',
+      m.rol,
+      m.elegible_clases_ninos ? 'Sí' : 'No',
+      m.elegible_predicaciones ? 'Sí' : 'No',
+    ]);
+    const escapar = (valor) => `"${String(valor ?? '').replace(/"/g, '""')}"`;
+    const csv = [encabezados, ...filas].map((fila) => fila.map(escapar).join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = `usuarios_indus_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -573,6 +598,9 @@ function TodosUsuariosScreen({ navigation }) {
             <Text style={[styles.title, { color: colors.textMain }]}>Todos los usuarios</Text>
             <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestros.length} en total</Text>
           </View>
+          <TouchableOpacity onPress={descargarCSV} style={{ padding: 8 }}>
+            <Feather name="download" size={20} color={colors.textSub} />
+          </TouchableOpacity>
         </View>
 
         <View style={{ width: '95%', maxWidth: 850 }}>
