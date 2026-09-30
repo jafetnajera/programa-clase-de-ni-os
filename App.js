@@ -562,9 +562,9 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
             }, {})
           ).map(([fecha, items]) => (
             <View key={fecha} style={{ flexDirection: 'row', marginBottom: 14 }}>
-                          <View style={{ width: 52, alignItems: 'center', paddingTop: 14 }}>
-                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.textMain }}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(fecha + 'T00:00:00').getDay()]}</Text>
-                <Text style={{ fontSize: 11, color: colors.textSub }}>{new Date(fecha + 'T00:00:00').getDate()} {new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).replace('.', '')}</Text>
+                                      <View style={{ width: 56, alignItems: 'center', paddingTop: 14 }}>
+                <Text style={{ fontSize: 21, fontWeight: '700', color: colors.textMain }}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(fecha + 'T00:00:00').getDay()]}</Text>
+                <Text style={{ fontSize: 13, color: colors.textSub }}>{new Date(fecha + 'T00:00:00').getDate()} {new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).replace('.', '')}</Text>
               </View>
               <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 10 }}>
                 {items.map((item, idx) => {
@@ -577,9 +577,12 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                       <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
                         <Feather name={esClase ? "calendar" : "mic"} size={16} color={tintText} />
                       </View>
-                      <View style={{ flex: 1 }}>
+                                            <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 13, color: colors.textMain }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
                       </View>
+                      {item.usuario_original && (
+                        <Text style={{ fontSize: 11, color: colors.textSub, textDecorationLine: 'line-through', marginRight: 2 }}>{mapaNombres[item.usuario_original.toLowerCase()] || item.usuario_original}</Text>
+                      )}
                       {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
                         <TouchableOpacity onPress={() => confirmarSolicitarApoyo(item)} style={{ padding: 6, marginLeft: 2 }}>
                           <Feather name="user-plus" size={18} color={colors.textSub} />
