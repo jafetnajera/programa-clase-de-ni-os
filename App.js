@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert, Image, Animated } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
+import * as Clipboard from 'expo-clipboard';
 import { Feather } from '@expo/vector-icons';
 import { createClient } from '@supabase/supabase-js';
 import { NavigationContainer, DefaultTheme, useFocusEffect } from '@react-navigation/native';
@@ -733,11 +734,43 @@ function TodosUsuariosScreen({ navigation }) {
 // ==========================================
 // PANTALLA: DETALLE DE USUARIO
 // ==========================================
-function DetalleUsuarioScreen({ route, navigation }) {
-  const { isDark } = useContext(ThemeContext);
-  const colors = getColors(isDark);
-  const [maestro, setMaestro] = useState(route.params.maestro);
-  const [mostrarModal, setMostrarModal] = useState(false);
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+            <TouchableOpacity style={[styles.primaryButton, { flex: 1, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, marginTop: 0 }]} onPress={compartirWhatsApp}>
+              <Feather name="share-2" size={16} color={colors.textMain} />
+              <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Compartir</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.primaryButton, { flex: 1, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, marginTop: 0 }]} onPress={copiarInfo}>
+              <Feather name="copy" size={16} color={colors.textMain} />
+              <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Copiar</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.primaryButton} onPress={() => setMostrarModal(true)}>
+            <Text style={styles.primaryButtonText}>Editar</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+      <ModalEdicion visible={mostrarModal} maestro={maestro} onCancelar={() => setMostrarModal(false)} onGuardar={guardarEdicion} isDark={isDark} />
+      <AlertaPersonalizada {...alerta} />
+    </SafeAreaView>
+  );
+}
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
+  const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
+
+  const compartirWhatsApp = () => {
+    const numeroLimpio = (maestro.telefono || '').replace(/\D/g, '');
+    if (!numeroLimpio) {
+      return setAlerta({ visible: true, titulo: "Sin número", mensaje: "Esta persona no tiene un número celular guardado.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#EFBC68' });
+    }
+    const mensaje = `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${maestro.nombre_usuario}\n🔑 PIN: ${maestro.pin_acceso}\n🛡️ Equipo: ${maestro.equipo || 'Sin equipo'}`;
+    Linking.openURL(`https://wa.me/52${numeroLimpio}?text=${encodeURIComponent(mensaje)}`);
+  };
+
+  const copiarInfo = async () => {
+    await Clipboard.setStringAsync(`Usuario: ${maestro.nombre_usuario}\nPIN: ${maestro.pin_acceso}\nEquipo: ${maestro.equipo || 'Sin equipo'}`);
+    setAlerta({ visible: true, titulo: "Copiado", mensaje: "La información se copió al portapapeles.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#7EA0D8' });
+  };
 
   const recargar = async () => {
     const { data } = await supabase.from('maestros').select('*').eq('id', maestro.id).single();
@@ -1091,8 +1124,12 @@ function TablonScreen({ navigation, route }) {
             onConfirmar: async () => {
         cerrarAlerta();
         await supabase.from('solicitudes_sustitucion').update({ estado: 'Cubierta', maestro_suplente: usuarioActivoGlobal }).eq('id', solicitud.id);
-        if (solicitud.programa_servicio_id) {
-          await supabase.from('programa_servicios').update({ nombre_usuario: usuarioActivoGlobal }).eq('id', solicitud.programa_servicio_id);
+                if (solicitud.programa_servicio_id) {
+          await supabase.from('programa_servicios').update({
+            nombre_usuario: usuarioActivoGlobal,
+            usuario_original: solicitud.maestro_solicitante,
+            sustituido_en: new Date().toISOString(),
+          }).eq('id', solicitud.programa_servicio_id);
         }
         setTimeout(() => setAlerta({ visible: true, titulo: "¡Gracias!", mensaje: "Has sido asignado a esta clase.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
         obtenerSolicitudes(); 
@@ -1248,7 +1285,7 @@ function AdminScreen({ navigation }) {
     } });
   }
 
-      const compartirWhatsApp = (usuario, pin, equipo, telefono) => {
+            const compartirWhatsApp = (usuario, pin, equipo, telefono) => {
     const numeroLimpio = (telefono || '').replace(/\D/g, '');
     if (!numeroLimpio) {
       setAlerta({ visible: true, titulo: "Sin número", mensaje: "Esta persona no tiene un número celular guardado.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#EFBC68' });
@@ -1256,6 +1293,11 @@ function AdminScreen({ navigation }) {
     }
     const mensaje = `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${usuario}\n🔑 PIN: ${pin}\n🛡️ Equipo: ${equipo}`;
     Linking.openURL(`https://wa.me/52${numeroLimpio}?text=${encodeURIComponent(mensaje)}`);
+  };
+
+  const copiarInfo = async (usuario, pin, equipo) => {
+    await Clipboard.setStringAsync(`Usuario: ${usuario}\nPIN: ${pin}\nEquipo: ${equipo}`);
+    setAlerta({ visible: true, titulo: "Copiado", mensaje: "La información se copió al portapapeles.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#7EA0D8' });
   };
 
   // Lee el texto del CSV y lo convierte en una lista de filas
@@ -1436,7 +1478,13 @@ function AdminScreen({ navigation }) {
               <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                 <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso} • {maestro.equipo || 'Sin equipo'}</Text></View>
                 <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
+                                                <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
                                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>
+                <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ) : !equipoSeleccionadoAdmin ? (
                 <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
               </View>
             ))}
@@ -1461,7 +1509,8 @@ function AdminScreen({ navigation }) {
                 <View style={{ flex: 1 }}>
               <Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text>
               <Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text></View>
-                                <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
+                                                                <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
+                <TouchableOpacity style={styles.actionBtnGray} onPress={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)}><Feather name="copy" size={18} color={colors.textSub} /></TouchableOpacity>
                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>                <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
               </View>
             ))}
