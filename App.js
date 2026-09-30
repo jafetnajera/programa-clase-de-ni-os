@@ -734,27 +734,11 @@ function TodosUsuariosScreen({ navigation }) {
 // ==========================================
 // PANTALLA: DETALLE DE USUARIO
 // ==========================================
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-            <TouchableOpacity style={[styles.primaryButton, { flex: 1, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, marginTop: 0 }]} onPress={compartirWhatsApp}>
-              <Feather name="share-2" size={16} color={colors.textMain} />
-              <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Compartir</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.primaryButton, { flex: 1, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, marginTop: 0 }]} onPress={copiarInfo}>
-              <Feather name="copy" size={16} color={colors.textMain} />
-              <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Copiar</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity style={styles.primaryButton} onPress={() => setMostrarModal(true)}>
-            <Text style={styles.primaryButtonText}>Editar</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-      <ModalEdicion visible={mostrarModal} maestro={maestro} onCancelar={() => setMostrarModal(false)} onGuardar={guardarEdicion} isDark={isDark} />
-      <AlertaPersonalizada {...alerta} />
-    </SafeAreaView>
-  );
-}
+function DetalleUsuarioScreen({ route, navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const [maestro, setMaestro] = useState(route.params.maestro);
+  const [mostrarModal, setMostrarModal] = useState(false);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 
@@ -822,12 +806,24 @@ function TodosUsuariosScreen({ navigation }) {
           <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 4 }}>{maestro.elegible_clases_ninos ? '✓' : '✗'} Clases de niños</Text>
           <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 20 }}>{maestro.elegible_predicaciones ? '✓' : '✗'} Predicaciones y Clases</Text>
 
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+            <TouchableOpacity style={[styles.primaryButton, { flex: 1, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, marginTop: 0 }]} onPress={compartirWhatsApp}>
+              <Feather name="share-2" size={16} color={colors.textMain} />
+              <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Compartir</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.primaryButton, { flex: 1, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, marginTop: 0 }]} onPress={copiarInfo}>
+              <Feather name="copy" size={16} color={colors.textMain} />
+              <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Copiar</Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity style={styles.primaryButton} onPress={() => setMostrarModal(true)}>
             <Text style={styles.primaryButtonText}>Editar</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
       <ModalEdicion visible={mostrarModal} maestro={maestro} onCancelar={() => setMostrarModal(false)} onGuardar={guardarEdicion} isDark={isDark} />
+      <AlertaPersonalizada {...alerta} />
     </SafeAreaView>
   );
 }
@@ -1477,14 +1473,9 @@ function AdminScreen({ navigation }) {
             {maestros.filter(m => m.nombre_usuario.toLowerCase().includes(busquedaUsuario.trim().toLowerCase())).map((maestro) => (
               <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                 <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso} • {maestro.equipo || 'Sin equipo'}</Text></View>
-                <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
-                                                <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
+                                <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
+                <TouchableOpacity style={styles.actionBtnGray} onPress={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)}><Feather name="copy" size={18} color={colors.textSub} /></TouchableOpacity>
                                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        ) : !equipoSeleccionadoAdmin ? (
                 <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
               </View>
             ))}
