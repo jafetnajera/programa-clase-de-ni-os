@@ -562,8 +562,9 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
             }, {})
           ).map(([fecha, items]) => (
             <View key={fecha} style={{ flexDirection: 'row', marginBottom: 14 }}>
-              <View style={{ width: 85, paddingTop: 12 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textMain, textTransform: 'capitalize' }}>{formatearFecha(fecha)}</Text>
+                          <View style={{ width: 52, alignItems: 'center', paddingTop: 14 }}>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.textMain }}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(fecha + 'T00:00:00').getDay()]}</Text>
+                <Text style={{ fontSize: 11, color: colors.textSub }}>{new Date(fecha + 'T00:00:00').getDate()} {new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).replace('.', '')}</Text>
               </View>
               <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 10 }}>
                 {items.map((item, idx) => {
@@ -572,14 +573,13 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                   const tintBg = esClase ? '#EDF2FA' : '#FBEAE0';
                   const tintText = esClase ? '#3A5A8A' : '#A65A2E';
                   return (
-                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: idx === 0 ? 0 : 1, borderTopColor: colors.cardBorder }}>
+                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}>
                       <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
                         <Feather name={esClase ? "calendar" : "mic"} size={16} color={tintText} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 13, color: colors.textMain }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
                       </View>
-                      <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{tipoCalculado}</Text>
                       {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
                         <TouchableOpacity onPress={() => confirmarSolicitarApoyo(item)} style={{ padding: 6, marginLeft: 2 }}>
                           <Feather name="user-plus" size={18} color={colors.textSub} />
