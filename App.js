@@ -555,29 +555,42 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                     {!cargando && fechas.length === 0 && (
             <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>{rolUsuarioActivoGlobal === 'administrador' ? 'No hay fechas programadas.' : 'No tienes fechas próximas.'}</Text>
           )}
-          {fechas.map((item) => {
-                        const tipoCalculado = calcularTipo(item.fecha, item.horario);
-            const esClase = tipoCalculado === 'Clase';
-            const tintBg = esClase ? '#EDF2FA' : '#FBEAE0';
-            const tintText = esClase ? '#3A5A8A' : '#A65A2E';
-            return (
-              <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
-                <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
-                  <Feather name={esClase ? "calendar" : "mic"} size={18} color={tintText} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '500', color: colors.textMain, textTransform: 'capitalize' }}>{formatearFecha(item.fecha)}</Text>
-                                                                        <Text style={{ fontSize: 11, color: colors.textSub }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
-                </View>
-                                         <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{tipoCalculado}</Text>
-                                {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
-                  <TouchableOpacity onPress={() => confirmarSolicitarApoyo(item)} style={{ padding: 6, marginLeft: 4 }}>
-                    <Feather name="user-plus" size={18} color={colors.textSub} />
-                  </TouchableOpacity>
-                )}
+                    {Object.entries(
+            fechas.reduce((acc, item) => {
+              (acc[item.fecha] = acc[item.fecha] || []).push(item);
+              return acc;
+            }, {})
+          ).map(([fecha, items]) => (
+            <View key={fecha} style={{ flexDirection: 'row', marginBottom: 14 }}>
+              <View style={{ width: 85, paddingTop: 12 }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textMain, textTransform: 'capitalize' }}>{formatearFecha(fecha)}</Text>
               </View>
-            );
-          })}
+              <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 10 }}>
+                {items.map((item, idx) => {
+                  const tipoCalculado = calcularTipo(item.fecha, item.horario);
+                  const esClase = tipoCalculado === 'Clase';
+                  const tintBg = esClase ? '#EDF2FA' : '#FBEAE0';
+                  const tintText = esClase ? '#3A5A8A' : '#A65A2E';
+                  return (
+                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: idx === 0 ? 0 : 1, borderTopColor: colors.cardBorder }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Feather name={esClase ? "calendar" : "mic"} size={16} color={tintText} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, color: colors.textMain }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
+                      </View>
+                      <Text style={{ fontSize: 10, fontWeight: '500', paddingVertical: 3, paddingHorizontal: 9, borderRadius: 10, backgroundColor: tintBg, color: tintText }}>{tipoCalculado}</Text>
+                      {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
+                        <TouchableOpacity onPress={() => confirmarSolicitarApoyo(item)} style={{ padding: 6, marginLeft: 2 }}>
+                          <Feather name="user-plus" size={18} color={colors.textSub} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
                 </View>
       </ScrollView>
       <AlertaPersonalizada {...alerta} />
