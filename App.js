@@ -258,6 +258,20 @@ const IconoNotificacion = ({ size = 26, color, activo }) => (
   </Svg>
 );
 
+// Ícono de "muchas personas" para las carpetas de equipos, en el mismo estilo que "users" de Feather
+const IconoGrupoGrande = ({ size = 24, color }) => (
+  <Svg width={size} height={size} viewBox="0 0 36 24" fill="none">
+    <Path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    <Circle cx={9} cy={7} r={4} stroke={color} strokeWidth={2} />
+    <Path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    <Path d="M16 3.13a4 4 0 0 1 0 7.75" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    <Path d="M28 21v-2a4 4 0 0 0-4-4H16a4 4 0 0 0-4 4v2" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    <Circle cx={20} cy={7} r={4} stroke={color} strokeWidth={2} />
+    <Path d="M34 21v-2a4 4 0 0 0-3-3.87" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    <Path d="M27 3.13a4 4 0 0 1 0 7.75" stroke={color} strokeWidth={2} strokeLinecap="round" />
+  </Svg>
+);
+
 // ==========================================
 // PANTALLA 0: LOGIN
 // ==========================================
@@ -1485,7 +1499,7 @@ function AdminScreen({ navigation }) {
             <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Selecciona un equipo para ver a sus miembros.</Text>
             {listaEquipos.map((equipo, index) => (
               <TouchableOpacity key={index} style={[styles.equipoFolder, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => setEquipoSeleccionadoAdmin(equipo)}>
-                <Feather name={equipo === 'Administradores' ? "shield" : "folder"} size={24} color={colors.textSub} />
+                                {equipo === 'Administradores' ? <Feather name="shield" size={24} color={colors.textSub} /> : <IconoGrupoGrande size={24} color={colors.textSub} />}
                 <View style={{ marginLeft: 15, flex: 1 }}><Text style={[styles.equipoFolderTitle, { color: colors.textMain }]}>{equipo}</Text><Text style={[styles.equipoFolderSub, { color: colors.textSub }]}>{maestrosPorEquipo[equipo].length} miembro(s)</Text></View>
                 <Feather name="chevron-right" size={20} color={colors.textSub} />
               </TouchableOpacity>
