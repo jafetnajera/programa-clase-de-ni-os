@@ -235,7 +235,8 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
       </TouchableOpacity>
       <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '65%', maxWidth: 300, backgroundColor: colors.background, borderRightWidth: 1, borderRightColor: colors.cardBorder, transform: [{ translateX }], paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 30 : 60, paddingHorizontal: 20 }}>
-        <Text style={[styles.title, { color: colors.textMain, marginBottom: 25 }]}>Ajustes</Text>
+                <Text style={[styles.titleMini, { color: colors.textMain, marginBottom: 6 }]}>Ajustes</Text>
+        <Text style={{ color: colors.textSub, fontSize: 12, marginBottom: 20 }}>Tu usuario: {usuarioActivoGlobal}</Text>
         <TouchableOpacity onPress={() => { onCerrar(); toggleTheme(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
           <Feather name={isDark ? "sun" : "moon"} size={20} color={colors.textSub} />
           <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>{isDark ? 'Modo claro' : 'Modo oscuro'}</Text>
@@ -271,6 +272,108 @@ const IconoGrupoGrande = ({ size = 24, color }) => (
     <Path d="M27 3.13a4 4 0 0 1 0 7.75" stroke={color} strokeWidth={2} strokeLinecap="round" />
   </Svg>
 );
+
+// Modal para solicitar apoyo: cualquiera elegible, o alguien específico (cobertura o intercambio de fechas)
+const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark, onCancelar, onConfirmar }) => {
+  const colors = getColors(isDark);
+  const [paso, setPaso] = useState('inicio');
+  const [texto, setTexto] = useState('');
+  const [destino, setDestino] = useState(null);
+  const [fechasDestino, setFechasDestino] = useState([]);
+  const [cargandoFechas, setCargandoFechas] = useState(false);
+
+  useEffect(() => {
+    if (visible) { setPaso('inicio'); setTexto(''); setDestino(null); setFechasDestino([]); }
+  }, [visible]);
+
+  const formatearFechaCorta = (fechaTexto) => new Date(fechaTexto + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const resultados = texto.length > 0
+    ? maestrosElegibles.filter((m) => m.nombre_usuario.toLowerCase() !== usuarioPropio.toLowerCase() && (m.nombre_completo || m.nombre_usuario).toLowerCase().includes(texto.toLowerCase()))
+    : [];
+
+  const elegirIntercambio = async () => {
+    setCargandoFechas(true);
+    setPaso('fecha');
+    const hoy = new Date().toISOString().split('T')[0];
+    const { data } = await supabase.from('programa_servicios').select('*').ilike('nombre_usuario', destino.nombre_usuario).gte('fecha', hoy).order('fecha', { ascending: true });
+    setFechasDestino(data || []);
+    setCargandoFechas(false);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}>
+          <Text style={[styles.title, { color: colors.textMain, marginBottom: 15 }]}>Solicitar apoyo</Text>
+
+          {paso === 'inicio' && (
+            <>
+              <Text style={{ color: colors.textSub, marginBottom: 20 }}>¿Tienes a alguien específico en mente para pedirle el cambio?</Text>
+              <TouchableOpacity style={styles.primaryButton} onPress={() => setPaso('buscar')}>
+                <Text style={styles.primaryButtonText}>Sí, alguien específico</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder }]} onPress={() => onConfirmar({ destino: null, tipo: null, fechaIntercambioId: null })}>
+                <Text style={[styles.primaryButtonText, { color: colors.textMain }]}>No, cualquiera elegible</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {paso === 'buscar' && (
+            <>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 10 }]} placeholder="Escribe un nombre..." placeholderTextColor={colors.textSub} value={texto} onChangeText={setTexto} autoFocus />
+              <ScrollView style={{ maxHeight: 180 }}>
+                {resultados.map((m) => (
+                  <TouchableOpacity key={m.nombre_usuario} onPress={() => { setDestino(m); setPaso('tipo'); }} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                    <Text style={{ color: colors.textMain, fontSize: 14 }}>{m.nombre_completo || m.nombre_usuario}</Text>
+                  </TouchableOpacity>
+                ))}
+                {texto.length > 0 && resultados.length === 0 && (
+                  <Text style={{ color: colors.textSub, fontSize: 13, paddingVertical: 10 }}>Nadie elegible coincide con ese nombre.</Text>
+                )}
+              </ScrollView>
+            </>
+          )}
+
+          {paso === 'tipo' && destino && (
+            <>
+              <Text style={{ color: colors.textSub, marginBottom: 15 }}>Se lo pedirás a {destino.nombre_completo || destino.nombre_usuario}. ¿Cómo?</Text>
+              <TouchableOpacity style={styles.primaryButton} onPress={() => onConfirmar({ destino: destino.nombre_usuario, tipo: 'cobertura', fechaIntercambioId: null })}>
+                <Text style={styles.primaryButtonText}>Solo que me cubra</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder }]} onPress={elegirIntercambio}>
+                <Text style={[styles.primaryButtonText, { color: colors.textMain }]}>Intercambio de fechas</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {paso === 'fecha' && (
+            <>
+              <Text style={{ color: colors.textSub, marginBottom: 15 }}>¿Cuál de sus fechas te gustaría tomar a cambio?</Text>
+              {cargandoFechas ? (
+                <ActivityIndicator color={colors.textSub} />
+              ) : fechasDestino.length === 0 ? (
+                <Text style={{ color: colors.textSub, fontSize: 13 }}>Esta persona no tiene fechas próximas para intercambiar.</Text>
+              ) : (
+                <ScrollView style={{ maxHeight: 180 }}>
+                  {fechasDestino.map((f) => (
+                    <TouchableOpacity key={f.id} onPress={() => onConfirmar({ destino: destino.nombre_usuario, tipo: 'intercambio', fechaIntercambioId: f.id })} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                      <Text style={{ color: colors.textMain, fontSize: 14 }}>{formatearFechaCorta(f.fecha)} • {f.horario}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </>
+          )}
+
+          <TouchableOpacity onPress={onCancelar} style={{ marginTop: 20, alignItems: 'center' }}>
+            <Text style={{ color: colors.textSub, fontSize: 14 }}>Cancelar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 // ==========================================
 // PANTALLA 0: LOGIN
@@ -464,6 +567,9 @@ function MiRolScreen({ navigation }) {
   const [mapaNombres, setMapaNombres] = useState({});
 const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
 const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
+  const [mostrarModalApoyo, setMostrarModalApoyo] = useState(false);
+  const [itemApoyo, setItemApoyo] = useState(null);
+  const [maestrosElegibles, setMaestrosElegibles] = useState([]);
     useEffect(() => {
     (async () => {
       const hoy = new Date().toISOString().split('T')[0];
@@ -478,12 +584,15 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
       });
       setFechas(ordenado);
 
-      if (rolUsuarioActivoGlobal === 'administrador') {
+            if (rolUsuarioActivoGlobal === 'administrador') {
         const { data: maestros } = await supabase.from('maestros').select('nombre_usuario, nombre_completo');
         const mapa = {};
         (maestros || []).forEach((m) => { mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo; });
         setMapaNombres(mapa);
       }
+
+      const { data: elegibles } = await supabase.from('maestros').select('nombre_usuario, nombre_completo').eq('elegible_predicaciones', true);
+      setMaestrosElegibles(elegibles || []);
 
       setCargando(false);
     })();
@@ -494,7 +603,8 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
     return fecha.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
   };
 
-    const enviarSolicitudApoyo = async (item) => {
+        const enviarSolicitudApoyo = async (item, opciones = {}) => {
+    const { destino = null, tipo = null, fechaIntercambioId = null } = opciones;
     const { data: existente } = await supabase.from('solicitudes_sustitucion').select('id').eq('programa_servicio_id', item.id).eq('estado', 'Pendiente');
     if (existente && existente.length > 0) {
       setAlerta({ visible: true, titulo: "Ya existe", mensaje: "Ya hay una solicitud de apoyo pendiente para esta fecha.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' });
@@ -508,25 +618,15 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
       maestro_solicitante: item.nombre_usuario,
       programa_servicio_id: item.id,
       fecha_referencia: item.fecha,
+      maestro_destino: destino,
+      tipo_intercambio: tipo,
+      programa_servicio_id_intercambio: fechaIntercambioId,
     }]);
     if (error) {
       setAlerta({ visible: true, titulo: "Error", mensaje: error.message, onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
-      setAlerta({ visible: true, titulo: "Listo", mensaje: "Tu solicitud ya aparece en el tablón de apoyo.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' });
+      setAlerta({ visible: true, titulo: "Listo", mensaje: destino ? "Tu solicitud se envió directamente a esa persona." : "Tu solicitud ya aparece en el tablón de apoyo.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' });
     }
-  };
-
-  const confirmarSolicitarApoyo = (item) => {
-    setAlerta({
-      visible: true,
-            titulo: "Solicitar apoyo",
-      mensaje: item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() ? `¿Seguro que quieres pedir que alguien te cubra el ${formatearFecha(item.fecha)}?` : `¿Solicitar apoyo para ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario} el ${formatearFecha(item.fecha)}?`,
-      textoConfirmar: "Sí, solicitar",
-      onCancelar: cerrarAlerta,
-      isDark: isDark,
-      themeColor: '#2C4A73',
-      onConfirmar: () => { cerrarAlerta(); enviarSolicitudApoyo(item); }
-    });
   };
 
   return (
@@ -583,9 +683,9 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                       {item.usuario_original && (
                         <Text style={{ fontSize: 11, color: colors.textSub, textDecorationLine: 'line-through', marginRight: 2 }}>{mapaNombres[item.usuario_original.toLowerCase()] || item.usuario_original}</Text>
                       )}
-                      {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
-                        <TouchableOpacity onPress={() => confirmarSolicitarApoyo(item)} style={{ padding: 6, marginLeft: 2 }}>
-                          <Feather name="user-plus" size={18} color={colors.textSub} />
+                                            {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
+                        <TouchableOpacity onPress={() => { setItemApoyo(item); setMostrarModalApoyo(true); }} style={{ padding: 6, marginLeft: 2 }}>
+                          <Feather name="repeat" size={18} color={colors.textSub} />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -595,8 +695,16 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
             </View>
           ))}
                 </View>
-      </ScrollView>
+            </ScrollView>
       <AlertaPersonalizada {...alerta} />
+      <ModalSolicitarApoyo
+        visible={mostrarModalApoyo}
+        maestrosElegibles={maestrosElegibles}
+        usuarioPropio={usuarioActivoGlobal}
+        isDark={isDark}
+        onCancelar={() => setMostrarModalApoyo(false)}
+        onConfirmar={async (opciones) => { setMostrarModalApoyo(false); await enviarSolicitudApoyo(itemApoyo, opciones); }}
+      />
     </SafeAreaView>
   );
 }
@@ -1127,7 +1235,10 @@ function TablonScreen({ navigation, route }) {
     let consulta = supabase.from('solicitudes_sustitucion').select('*').order('creado_en', { ascending: false });
     if (soloGrupo) { consulta = consulta.eq('grupo_clase', soloGrupo); }
     if (excluirGrupo) { consulta = consulta.neq('grupo_clase', excluirGrupo); }
-    consulta = consulta.or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`);
+        consulta = consulta.or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`);
+    if (rolUsuarioActivoGlobal !== 'administrador') {
+      consulta = consulta.or(`maestro_destino.is.null,maestro_destino.ilike.${usuarioActivoGlobal}`);
+    }
     let { data } = await consulta;
     setSolicitudes(data || []);
     setCargando(false);
@@ -1150,12 +1261,19 @@ function TablonScreen({ navigation, route }) {
             onConfirmar: async () => {
         cerrarAlerta();
         await supabase.from('solicitudes_sustitucion').update({ estado: 'Cubierta', maestro_suplente: usuarioActivoGlobal }).eq('id', solicitud.id);
-                if (solicitud.programa_servicio_id) {
+                                if (solicitud.programa_servicio_id) {
           await supabase.from('programa_servicios').update({
             nombre_usuario: usuarioActivoGlobal,
             usuario_original: solicitud.maestro_solicitante,
             sustituido_en: new Date().toISOString(),
           }).eq('id', solicitud.programa_servicio_id);
+        }
+        if (solicitud.tipo_intercambio === 'intercambio' && solicitud.programa_servicio_id_intercambio) {
+          await supabase.from('programa_servicios').update({
+            nombre_usuario: solicitud.maestro_solicitante,
+            usuario_original: usuarioActivoGlobal,
+            sustituido_en: new Date().toISOString(),
+          }).eq('id', solicitud.programa_servicio_id_intercambio);
         }
         setTimeout(() => setAlerta({ visible: true, titulo: "¡Gracias!", mensaje: "Has sido asignado a esta clase.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
         obtenerSolicitudes(); 
@@ -1195,7 +1313,10 @@ function TablonScreen({ navigation, route }) {
                       <Text style={[styles.topicTitle, { color: colors.textMain }]}>{nombreBonito(solicitud.maestro_solicitante)} pide apoyo</Text>
                       <Text style={[styles.topicSubtitle, { color: theme.textDark, fontWeight: 'bold' }]}>Grupo: {solicitud.grupo_clase}</Text>
                       <Text style={[styles.topicSubtitle, { color: colors.textSub }]}>{solicitud.mes_anio}</Text>
-                      <Text style={[styles.topicSubtitle, { color: colors.textMain }]}>{solicitud.titulo_tema}</Text>
+                                            <Text style={[styles.topicSubtitle, { color: colors.textMain }]}>{solicitud.titulo_tema}</Text>
+                      {solicitud.maestro_destino && (
+                        <Text style={[styles.topicSubtitle, { color: colors.textSub, fontStyle: 'italic' }]}>Para: {nombreBonito(solicitud.maestro_destino)}{solicitud.tipo_intercambio === 'intercambio' ? ' • Intercambio de fechas' : ''}</Text>
+                      )}
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 15 }}>
                       {solicitud.maestro_solicitante === usuarioActivoGlobal && solicitud.estado === 'Pendiente' && (
@@ -1710,7 +1831,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   headerSoloText: { paddingBottom: 10, paddingTop: 5 },
   headerRowSpaceBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 5, paddingBottom: 10 },
-  title: { fontSize: 22, letterSpacing: 1, fontFamily: 'serif', fontWeight: 'bold', marginRight: 10 },
+    title: { fontSize: 22, letterSpacing: 1, fontWeight: 'bold', marginRight: 10 },
   titleMini: { fontSize: 18, letterSpacing: 1.5, fontFamily: 'serif' },
   subtitle: { fontSize: 14, marginTop: 5 },
   toggleContainer: { alignItems: 'center', justifyContent: 'center' },
