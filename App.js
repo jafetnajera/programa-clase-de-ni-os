@@ -1236,10 +1236,10 @@ function TablonScreen({ navigation, route }) {
     if (soloGrupo) { consulta = consulta.eq('grupo_clase', soloGrupo); }
     if (excluirGrupo) { consulta = consulta.neq('grupo_clase', excluirGrupo); }
         consulta = consulta.or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`);
-    if (rolUsuarioActivoGlobal !== 'administrador') {
-      consulta = consulta.or(`maestro_destino.is.null,maestro_destino.ilike.${usuarioActivoGlobal}`);
-    }
     let { data } = await consulta;
+    if (rolUsuarioActivoGlobal !== 'administrador') {
+      data = (data || []).filter((s) => !s.maestro_destino || s.maestro_destino.toLowerCase() === usuarioActivoGlobal.toLowerCase());
+    }
     setSolicitudes(data || []);
     setCargando(false);
   }
