@@ -448,7 +448,6 @@ function MenuPrincipalScreen({ navigation }) {
         const [tieneRol, setTieneRol] = useState(false);
   const [tieneClases, setTieneClases] = useState(false);
     const [mostrarAjustes, setMostrarAjustes] = useState(false);
-  // Placeholder hasta que exista la tabla de notificaciones: por ahora siempre "sin notificaciones"
   const [hayNotificaciones, setHayNotificaciones] = useState(false);
 
     useFocusEffect(
@@ -470,6 +469,10 @@ function MenuPrincipalScreen({ navigation }) {
           return fecha && fecha >= inicio && fecha <= limite;
         });
         setTieneClases(tieneAlgunoEnRango);
+      })();
+      (async () => {
+        const { data } = await supabase.from('solicitudes_sustitucion').select('id').eq('estado', 'Pendiente').ilike('maestro_destino', usuarioActivoGlobal);
+        setHayNotificaciones(data && data.length > 0);
       })();
     }, [])
   );
@@ -766,6 +769,23 @@ function GruposScreen({ navigation }) {
 function NotificacionesScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [mapaNombres, setMapaNombres] = useState({});
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('solicitudes_sustitucion').select('*').eq('estado', 'Pendiente').ilike('maestro_destino', usuarioActivoGlobal).order('creado_en', { ascending: false });
+      setSolicitudes(data || []);
+      const { data: nombres } = await supabase.rpc('nombres_publicos');
+      const mapa = {};
+      (nombres || []).forEach((m) => { mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo; });
+      setMapaNombres(mapa);
+      setCargando(false);
+    })();
+  }, []);
+
+  const nombreBonito = (usuario) => mapaNombres[(usuario || '').toLowerCase()] || usuario;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -782,9 +802,28 @@ function NotificacionesScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <View style={{ width: '95%', maxWidth: 850, alignItems: 'center', paddingTop: 60 }}>
-          <Feather name="bell-off" size={40} color={colors.textSub} />
-          <Text style={{ color: colors.textSub, fontSize: 14, marginTop: 15, textAlign: 'center' }}>Aún no tienes notificaciones para revisar aquí.</Text>
+        <View style={{ width: '95%', maxWidth: 850, paddingTop: 20 }}>
+          {cargando ? (
+            <ActivityIndicator color={colors.textSub} style={{ marginTop: 40 }} />
+          ) : solicitudes.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingTop: 40 }}>
+              <Feather name="bell-off" size={40} color={colors.textSub} />
+              <Text style={{ color: colors.textSub, fontSize: 14, marginTop: 15, textAlign: 'center' }}>Aún no tienes notificaciones para revisar aquí.</Text>
+            </View>
+          ) : (
+            <>
+              <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 15 }}>Solicitudes de apoyo dirigidas a ti:</Text>
+              {solicitudes.map((s) => (
+                <View key={s.id} style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 12, padding: 15, marginBottom: 12 }}>
+                  <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 15 }}>{nombreBonito(s.maestro_solicitante)} pide apoyo</Text>
+                  <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 2 }}>{s.titulo_tema}{s.tipo_intercambio === 'intercambio' ? ' • Intercambio de fechas' : ''}</Text>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Tablon', {})}>
+                <Text style={styles.primaryButtonText}>Ver y responder</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
