@@ -573,7 +573,8 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
   const [mostrarModalApoyo, setMostrarModalApoyo] = useState(false);
   const [itemApoyo, setItemApoyo] = useState(null);
   const [maestrosElegibles, setMaestrosElegibles] = useState([]);
-    useEffect(() => {
+        useFocusEffect(
+    React.useCallback(() => {
     (async () => {
       const hoy = new Date().toISOString().split('T')[0];
       let consulta = supabase.from('programa_servicios').select('*').gte('fecha', hoy).order('fecha', { ascending: true });
@@ -599,7 +600,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 
       setCargando(false);
     })();
-  }, []);
+  }, []));
 
     const formatearFecha = (fechaTexto) => {
     const fecha = new Date(fechaTexto + 'T00:00:00');
