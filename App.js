@@ -1297,24 +1297,32 @@ function TablonScreen({ navigation, route }) {
     setAlerta({
       visible: true, titulo: "Confirmar", mensaje: `¿Aceptas apoyar con "${solicitud.titulo_tema}"?`, isDark: isDark, themeColor: theme.main,
       textoConfirmar: "Aceptar", onCancelar: cerrarAlerta,
-            onConfirmar: async () => {
+                        onConfirmar: async () => {
         cerrarAlerta();
-        await supabase.from('solicitudes_sustitucion').update({ estado: 'Cubierta', maestro_suplente: usuarioActivoGlobal }).eq('id', solicitud.id);
+        const { error: error1 } = await supabase.from('solicitudes_sustitucion').update({ estado: 'Cubierta', maestro_suplente: usuarioActivoGlobal }).eq('id', solicitud.id);
+        let error2 = null, error3 = null;
                                 if (solicitud.programa_servicio_id) {
-          await supabase.from('programa_servicios').update({
+          const r = await supabase.from('programa_servicios').update({
             nombre_usuario: usuarioActivoGlobal,
             usuario_original: solicitud.maestro_solicitante,
             sustituido_en: new Date().toISOString(),
           }).eq('id', solicitud.programa_servicio_id);
+          error2 = r.error;
         }
         if (solicitud.tipo_intercambio === 'intercambio' && solicitud.programa_servicio_id_intercambio) {
-          await supabase.from('programa_servicios').update({
+          const r = await supabase.from('programa_servicios').update({
             nombre_usuario: solicitud.maestro_solicitante,
             usuario_original: usuarioActivoGlobal,
             sustituido_en: new Date().toISOString(),
           }).eq('id', solicitud.programa_servicio_id_intercambio);
+          error3 = r.error;
         }
-        setTimeout(() => setAlerta({ visible: true, titulo: "¡Gracias!", mensaje: "Has sido asignado a esta clase.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+        const errorReal = error1 || error2 || error3;
+        if (errorReal) {
+          setTimeout(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo completar: " + errorReal.message, onConfirmar: cerrarAlerta, isDark: isDark }), 500);
+        } else {
+          setTimeout(() => setAlerta({ visible: true, titulo: "¡Gracias!", mensaje: "Has sido asignado a esta clase.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+        }
         obtenerSolicitudes(); 
       }
     });
