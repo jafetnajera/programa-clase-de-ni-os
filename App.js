@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
-import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert, Image, Animated } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert, Image, Animated, RefreshControl } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import { Feather } from '@expo/vector-icons';
@@ -572,10 +572,10 @@ const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', 
 const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
   const [mostrarModalApoyo, setMostrarModalApoyo] = useState(false);
   const [itemApoyo, setItemApoyo] = useState(null);
-  const [maestrosElegibles, setMaestrosElegibles] = useState([]);
-        useFocusEffect(
-    React.useCallback(() => {
-    (async () => {
+    const [maestrosElegibles, setMaestrosElegibles] = useState([]);
+  const [refrescando, setRefrescando] = useState(false);
+
+  const cargarRol = async () => {
       const hoy = new Date().toISOString().split('T')[0];
       let consulta = supabase.from('programa_servicios').select('*').gte('fecha', hoy).order('fecha', { ascending: true });
       if (rolUsuarioActivoGlobal !== 'administrador') {
@@ -595,12 +595,26 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
         setMapaNombres(mapa);
       }
 
-            const { data: elegibles } = await supabase.rpc('nombres_publicos');
+      const { data: elegibles } = await supabase.rpc('nombres_publicos');
       setMaestrosElegibles((elegibles || []).filter((m) => m.elegible_predicaciones));
+  };
 
-      setCargando(false);
-    })();
-  }, []));
+    useFocusEffect(
+    React.useCallback(() => {
+      cargarRol().then(() => setCargando(false));
+    }, [])
+  );
+
+    const onRefresh = React.useCallback(async () => {
+    setRefrescando(true);
+    await cargarRol();
+    setRefrescando(false);
+  }, []);
+
+  const confirmarAsistencia = async (item) => {
+    await supabase.from('programa_servicios').update({ estado_confirmacion: 'confirmado' }).eq('id', item.id);
+    setFechas((prev) => prev.map((f) => f.id === item.id ? { ...f, estado_confirmacion: 'confirmado' } : f));
+  };
 
     const formatearFecha = (fechaTexto) => {
     const fecha = new Date(fechaTexto + 'T00:00:00');
@@ -634,8 +648,8 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
                 <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -684,8 +698,19 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                                             <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 13, color: colors.textMain }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
                       </View>
-                      {item.usuario_original && (
+                                            {item.usuario_original && (
                         <Text style={{ fontSize: 11, color: colors.textSub, textDecorationLine: 'line-through', marginRight: 2 }}>{mapaNombres[item.usuario_original.toLowerCase()] || item.usuario_original}</Text>
+                      )}
+                                                                  {item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() ? (
+                        item.estado_confirmacion !== 'confirmado' && (
+                          <TouchableOpacity onPress={() => confirmarAsistencia(item)} style={{ padding: 6 }}>
+                            <Feather name="thumbs-up" size={18} color={colors.textSub} />
+                          </TouchableOpacity>
+                        )
+                      ) : (
+                        rolUsuarioActivoGlobal === 'administrador' && item.estado_confirmacion !== 'confirmado' && (
+                          <Feather name="clock" size={16} color="#C9A227" />
+                        )
                       )}
                                             {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
                         <TouchableOpacity onPress={() => { setItemApoyo(item); setMostrarModalApoyo(true); }} style={{ padding: 6, marginLeft: 2 }}>
@@ -1256,14 +1281,24 @@ function TablonScreen({ navigation, route }) {
     const soloGrupo = route?.params?.soloGrupo;
   const excluirGrupo = route?.params?.excluirGrupo;
 
-  useEffect(() => {
-    obtenerSolicitudes();
-    (async () => {
-            const { data } = await supabase.rpc('nombres_publicos');
-      const mapa = {};
-      (data || []).forEach((m) => { mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo; });
-      setMapaNombres(mapa);
-    })();
+    const [refrescando, setRefrescando] = useState(false);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      obtenerSolicitudes();
+      (async () => {
+              const { data } = await supabase.rpc('nombres_publicos');
+        const mapa = {};
+        (data || []).forEach((m) => { mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo; });
+        setMapaNombres(mapa);
+      })();
+    }, [])
+  );
+
+  const onRefresh = React.useCallback(async () => {
+    setRefrescando(true);
+    await obtenerSolicitudes();
+    setRefrescando(false);
   }, []);
 
   const nombreBonito = (usuario) => mapaNombres[(usuario || '').toLowerCase()] || usuario;
@@ -1302,11 +1337,12 @@ function TablonScreen({ navigation, route }) {
         cerrarAlerta();
         const { error: error1 } = await supabase.from('solicitudes_sustitucion').update({ estado: 'Cubierta', maestro_suplente: usuarioActivoGlobal }).eq('id', solicitud.id);
         let error2 = null, error3 = null;
-                                if (solicitud.programa_servicio_id) {
+                                                                if (solicitud.programa_servicio_id) {
           const r = await supabase.from('programa_servicios').update({
             nombre_usuario: usuarioActivoGlobal,
             usuario_original: solicitud.maestro_solicitante,
             sustituido_en: new Date().toISOString(),
+            estado_confirmacion: 'pendiente',
           }).eq('id', solicitud.programa_servicio_id);
           error2 = r.error;
         }
@@ -1315,6 +1351,7 @@ function TablonScreen({ navigation, route }) {
             nombre_usuario: solicitud.maestro_solicitante,
             usuario_original: usuarioActivoGlobal,
             sustituido_en: new Date().toISOString(),
+            estado_confirmacion: 'pendiente',
           }).eq('id', solicitud.programa_servicio_id_intercambio);
           error3 = r.error;
         }
@@ -1594,7 +1631,7 @@ function AdminScreen({ navigation }) {
 
         return (
                <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }}>
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 15, justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
