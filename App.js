@@ -595,8 +595,8 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
         setMapaNombres(mapa);
       }
 
-      const { data: elegibles } = await supabase.from('maestros').select('nombre_usuario, nombre_completo').eq('elegible_predicaciones', true);
-      setMaestrosElegibles(elegibles || []);
+            const { data: elegibles } = await supabase.rpc('nombres_publicos');
+      setMaestrosElegibles((elegibles || []).filter((m) => m.elegible_predicaciones));
 
       setCargando(false);
     })();
