@@ -1381,8 +1381,8 @@ function TablonScreen({ navigation, route }) {
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
           </TouchableOpacity>
         </View>
-        {cargando ? <ActivityIndicator size="large" color={colors.textSub} style={{marginTop: 50}} /> : (
-          <ScrollView style={styles.listContainer}>
+                {cargando ? <ActivityIndicator size="large" color={colors.textSub} style={{marginTop: 50}} /> : (
+          <ScrollView style={styles.listContainer} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
             {solicitudes.length === 0 ? (
               <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                 <Feather name="check-circle" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
@@ -1631,7 +1631,7 @@ function AdminScreen({ navigation }) {
 
         return (
                <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-            <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
+                        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 15, justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
