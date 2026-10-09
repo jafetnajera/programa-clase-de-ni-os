@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
-import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert, Image, Animated, RefreshControl } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Share, Linking, Platform, StatusBar, KeyboardAvoidingView, Alert, Image, Animated, RefreshControl, useWindowDimensions } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import { Feather } from '@expo/vector-icons';
@@ -86,6 +86,12 @@ const calcularTipo = (fechaTexto, horario) => {
 };
 
 const Stack = createNativeStackNavigator();
+
+// Detecta pantallas anchas (tablet) para acomodar el contenido de otra forma
+const useEsTablet = () => {
+  const { width } = useWindowDimensions();
+  return width >= 768;
+};
 
 // Mapea cada pantalla a una URL propia para que el navegador registre un paso de historial
 // por cada pantalla. Sin esto, el gesto/botón de regresar del navegador no tiene nada que
@@ -235,8 +241,8 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
       </TouchableOpacity>
       <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '65%', maxWidth: 300, backgroundColor: colors.background, borderRightWidth: 1, borderRightColor: colors.cardBorder, transform: [{ translateX }], paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 30 : 60, paddingHorizontal: 20 }}>
-                <Text style={[styles.titleMini, { color: colors.textMain, marginBottom: 6 }]}>Ajustes</Text>
-        <Text style={{ color: colors.textSub, fontSize: 12, marginBottom: 20 }}>Tu usuario: {usuarioActivoGlobal}</Text>
+                <Text style={{ color: colors.textMain, fontSize: 20, fontWeight: '700', marginBottom: 18 }}>Hola, {usuarioActivoGlobal}</Text>
+        <Text style={[styles.titleMini, { color: colors.textSub, marginBottom: 14 }]}>Ajustes</Text>
         <TouchableOpacity onPress={() => { onCerrar(); toggleTheme(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
           <Feather name={isDark ? "sun" : "moon"} size={20} color={colors.textSub} />
           <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>{isDark ? 'Modo claro' : 'Modo oscuro'}</Text>
@@ -303,7 +309,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
 
   return (
     <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.modalOverlay}>
+            <View style={[styles.modalOverlay, { justifyContent: 'flex-start', paddingTop: 40 }]}>
         <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}>
           <Text style={[styles.title, { color: colors.textMain, marginBottom: 15 }]}>Solicitar apoyo</Text>
 
@@ -421,7 +427,7 @@ function LoginScreen({ navigation }) {
                         <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 180, height: 128, resizeMode: 'contain', alignSelf: 'center', marginBottom: 30 }} />
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.textSub }]}>Usuario</Text>
-              <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholderTextColor={colors.textSub} value={usuarioLogin} onChangeText={setUsuarioLogin} autoCapitalize="none"/>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholderTextColor={colors.textSub} value={usuarioLogin} onChangeText={(t) => setUsuarioLogin(t.replace(/\s/g, '').toLowerCase())} autoCapitalize="none" autoCorrect={false} spellCheck={false}/>
             </View>
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.textSub }]}>PIN</Text>
@@ -448,7 +454,8 @@ function MenuPrincipalScreen({ navigation }) {
         const [tieneRol, setTieneRol] = useState(false);
   const [tieneClases, setTieneClases] = useState(false);
     const [mostrarAjustes, setMostrarAjustes] = useState(false);
-  const [hayNotificaciones, setHayNotificaciones] = useState(false);
+    const [hayNotificaciones, setHayNotificaciones] = useState(false);
+  const esTablet = useEsTablet();
 
     useFocusEffect(
     React.useCallback(() => {
@@ -504,7 +511,7 @@ function MenuPrincipalScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
-                <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+                <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: esTablet ? 1100 : 850, alignItems: 'center' }]}>
           <TouchableOpacity onPress={() => setMostrarAjustes(true)} style={{ padding: 8 }}>
             <Feather name="settings" size={22} color={colors.textSub} />
           </TouchableOpacity>
@@ -516,33 +523,33 @@ function MenuPrincipalScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-                <View style={[styles.gruposContainer, { width: '95%', maxWidth: 850 }]}>
+                                <View style={[styles.gruposContainer, { width: '95%', maxWidth: esTablet ? 1100 : 850 }, esTablet && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
           {tieneClases && (
-            <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Clases de niños', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Grupos')}>
-              <Feather name="smile" size={32} color={getThemeColors('Clases de niños', isDark).textDark} style={styles.grupoIcon} />
-              <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Clases de niños', isDark).textDark }]}>Clases de niños</Text>
+            <TouchableOpacity style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Clases de niños', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Grupos')}>
+              <Feather name="smile" size={esTablet ? 44 : 32} color={getThemeColors('Clases de niños', isDark).textDark} style={styles.grupoIcon} />
+              <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Clases de niños', isDark).textDark }]}>Clases de niños</Text>
             </TouchableOpacity>
           )}
                     {tieneRol && (
             <TouchableOpacity
-              style={[styles.card, { backgroundColor: getThemeColors('Predicaciones', isDark).bgLight, borderColor: 'transparent' }]}
+              style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Predicaciones', isDark).bgLight, borderColor: 'transparent' }]}
               onPress={() => navigation.navigate('MiRol')}
             >
-              <Feather name="calendar" size={32} color={getThemeColors('Predicaciones', isDark).textDark} style={styles.grupoIcon} />
-              <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Predicaciones', isDark).textDark }]}>Rol de predicaciones</Text>
+              <Feather name="calendar" size={esTablet ? 44 : 32} color={getThemeColors('Predicaciones', isDark).textDark} style={styles.grupoIcon} />
+              <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Predicaciones', isDark).textDark }]}>Rol de predicaciones</Text>
             </TouchableOpacity>
           )}
-                                        <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Anuncios', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Anuncios', isDark).textDark)}>
-            <Feather name="volume-2" size={32} color={getThemeColors('Anuncios', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Anuncios', isDark).textDark }]}>Anuncios</Text>
+                                        <TouchableOpacity style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Anuncios', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Anuncios', isDark).textDark)}>
+            <Feather name="volume-2" size={esTablet ? 44 : 32} color={getThemeColors('Anuncios', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Anuncios', isDark).textDark }]}>Anuncios</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Petición', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Petición', isDark).textDark)}>
-            <Feather name="heart" size={32} color={getThemeColors('Petición', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Petición', isDark).textDark }]}>Petición de oración</Text>
+          <TouchableOpacity style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Petición', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Petición', isDark).textDark)}>
+            <Feather name="heart" size={esTablet ? 44 : 32} color={getThemeColors('Petición', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Petición', isDark).textDark }]}>Petición de oración</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Calendario', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Calendario', isDark).textDark)}>
-            <Feather name="calendar" size={32} color={getThemeColors('Calendario', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Calendario', isDark).textDark }]}>Calendario de actividades</Text>
+          <TouchableOpacity style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Calendario', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Calendario', isDark).textDark)}>
+            <Feather name="calendar" size={esTablet ? 44 : 32} color={getThemeColors('Calendario', isDark).textDark} style={styles.grupoIcon} />
+            <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Calendario', isDark).textDark }]}>Calendario de actividades</Text>
           </TouchableOpacity>
         </View>
 
