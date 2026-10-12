@@ -47,14 +47,20 @@ const PALETA_MENU = {
     'Predicaciones': { fondo: '#C6BCDD', texto: '#3E3360' },
     'Anuncios': { fondo: '#E8C57A', texto: '#5A4010' },
     'Petición': { fondo: '#D6A5AF', texto: '#5C2433' },
-    'Calendario': { fondo: '#B3C3CE', texto: '#26404F' },
+        'Calendario': { fondo: '#B3C3CE', texto: '#26404F' },
+    'Niños': { fondo: '#D6A5AF', texto: '#5C2433' },
+    'Pre adolescentes': { fondo: '#E8C57A', texto: '#5A4010' },
+    'Adolescentes': { fondo: '#A9CFC8', texto: '#1F4F4A' },
   },
   oscuro: {
     'Clases de niños': { fondo: '#8FB9B1', texto: '#173B37' },
     'Predicaciones': { fondo: '#B0A4CE', texto: '#2E2550' },
     'Anuncios': { fondo: '#D9B15F', texto: '#45300A' },
     'Petición': { fondo: '#C58C98', texto: '#4A1B28' },
-    'Calendario': { fondo: '#9DB0BD', texto: '#1B3341' },
+        'Calendario': { fondo: '#9DB0BD', texto: '#1B3341' },
+    'Niños': { fondo: '#C58C98', texto: '#4A1B28' },
+    'Pre adolescentes': { fondo: '#D9B15F', texto: '#45300A' },
+    'Adolescentes': { fondo: '#8FB9B1', texto: '#173B37' },
   },
 };
 
@@ -83,6 +89,29 @@ const parsearMesAnio = (texto) => {
   if (mes === undefined || isNaN(anio)) return null;
   return new Date(anio, mes, 1);
 };
+
+// Clases de niños: cada columna del CSV representa un grupo
+const GRUPOS_CLASES = [
+  { columna: 'grupo_3_6', grupo: 'Niños', horario: 'mañana' },
+  { columna: 'grupo_7_9', grupo: 'Pre adolescentes', horario: 'mañana' },
+  { columna: 'grupo_10_13', grupo: 'Adolescentes', horario: 'mañana' },
+  { columna: 'grupo_3_8', grupo: 'Tarde 3 a 8', horario: 'tarde' },
+  { columna: 'grupo_9_13', grupo: 'Tarde 9 a 13', horario: 'tarde' },
+];
+const NOMBRES_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const fechaISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const domingosDelMes = (anio, mes) => {
+  const fechas = [];
+  const d = new Date(anio, mes, 1);
+  while (d.getMonth() === mes) {
+    if (d.getDay() === 0) fechas.push(fechaISO(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return fechas;
+};
+// Convierte "Neri Sánchez" en "nerisanchez" (conserva la ñ), igual que los usuarios
+const normalizarUsuario = (texto) => (texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, (m) => (m === '\u0303' ? m : '')).normalize('NFC').replace(/\s+/g, '').toLowerCase();
+const normalizarEncabezado = (texto) => (texto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
 const parsearHorarioMinutos = (horario) => {
   const match = (horario || '').match(/(\d+):(\d+)\s*(am|pm)/i);
@@ -400,7 +429,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
 };
 
 // Tarjeta del menú principal: esquinas muy redondeadas, ícono en círculo y título
-const TarjetaMenu = ({ icono, titulo, categoria, pronto, isDark, columnas, esUltima, total, onPress }) => {
+const TarjetaMenu = ({ icono, titulo, subtitulo, categoria, pronto, isDark, columnas, esUltima, total, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
   const m = columnas === 3
     ? { alto: 236, radio: 54, circulo: 54, icono: 26, texto: 25, vertical: 24, lateral: 30, pill: 12 }
@@ -431,7 +460,10 @@ const TarjetaMenu = ({ icono, titulo, categoria, pronto, isDark, columnas, esUlt
         <Feather name={icono} size={m.icono} color={paleta.texto} />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
-        <Text style={{ flex: 1, fontSize: m.texto, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
+                <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: m.texto, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
+          {subtitulo ? <Text style={{ fontSize: Math.round(m.texto * 0.68), fontWeight: '500', marginTop: 2, color: paleta.texto }}>{subtitulo}</Text> : null}
+        </View>
         {pronto && (
           <View style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: pastillaFondo }}>
             <Text style={{ fontSize: m.pill, fontWeight: '700', color: paleta.texto }}>Pronto</Text>
@@ -439,6 +471,210 @@ const TarjetaMenu = ({ icono, titulo, categoria, pronto, isDark, columnas, esUlt
         )}
       </View>
     </TouchableOpacity>
+  );
+};
+
+// Tarjeta para listas (temario y clases): mismo estilo redondeado que las del menú
+const TarjetaLista = ({ icono, titulo, subtitulo, detalle, categoria, isDark, ancho, onPress }) => {
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Niños'];
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={{ width: ancho || '100%', borderRadius: 38, backgroundColor: paleta.fondo, overflow: 'hidden', paddingVertical: 18, paddingHorizontal: 22, marginBottom: 14 }}>
+      <View style={{ pointerEvents: 'none', position: 'absolute', right: -50, top: -60, width: 160, height: 160, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.30)' }} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isDark ? 'rgba(255,255,255,0.50)' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+          <Feather name={icono} size={22} color={paleta.texto} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
+          {subtitulo ? <Text style={{ fontSize: 13, fontWeight: '500', marginTop: 3, color: paleta.texto }}>{subtitulo}</Text> : null}
+          {detalle ? <Text style={{ fontSize: 12.5, fontStyle: 'italic', marginTop: 3, color: paleta.texto }}>{detalle}</Text> : null}
+        </View>
+        <Feather name="chevron-right" size={22} color={paleta.texto} />
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// Botón para elegir un archivo CSV (reemplaza al botón nativo del navegador)
+const SelectorArchivo = ({ onArchivo, isDark, etiqueta }) => {
+  const colors = getColors(isDark);
+  const inputRef = useRef(null);
+  const [nombre, setNombre] = useState('');
+  if (Platform.OS !== 'web') return null;
+  return (
+    <View style={{ marginBottom: 15 }}>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const archivo = e.target.files[0];
+          setNombre(archivo ? archivo.name : '');
+          onArchivo(e);
+          e.target.value = '';
+        }}
+      />
+      <TouchableOpacity onPress={() => inputRef.current && inputRef.current.click()} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.textSub, backgroundColor: colors.cardBg }}>
+        <Feather name="upload" size={20} color={colors.textSub} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 14 }}>{nombre || etiqueta || 'Elegir archivo CSV'}</Text>
+          <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 2 }}>{nombre ? 'Toca para elegir otro archivo' : 'Formato .csv'}</Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// Ventana para tomar lista de una clase: buscar a un niño, o agregarlo si no existe
+const ModalAsistencia = ({ visible, onCerrar, fecha, grupo, isDark, usuario }) => {
+  const colors = getColors(isDark);
+  const [paso, setPaso] = useState('inicio');
+  const [texto, setTexto] = useState('');
+  const [resultados, setResultados] = useState([]);
+  const [asistentes, setAsistentes] = useState([]);
+  const [mensaje, setMensaje] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const cargarAsistentes = async () => {
+    if (!fecha) return;
+    const { data } = await supabase.from('asistencia_clases').select('id, nino_id, ninos(nombre_completo)').eq('fecha', fecha).eq('grupo', grupo).order('created_at', { ascending: true });
+    setAsistentes(data || []);
+  };
+
+  useEffect(() => {
+    if (visible) { setPaso('inicio'); setTexto(''); setResultados([]); setMensaje(''); cargarAsistentes(); }
+  }, [visible]);
+
+  useEffect(() => {
+    if (paso !== 'buscar' || texto.trim().length < 2) { setResultados([]); return; }
+    let cancelado = false;
+    const espera = setTimeout(async () => {
+      const { data } = await supabase.from('ninos').select('id, nombre_completo, grupo').ilike('nombre_completo', `%${texto.trim()}%`).order('nombre_completo', { ascending: true }).limit(15);
+      if (!cancelado) setResultados(data || []);
+    }, 250);
+    return () => { cancelado = true; clearTimeout(espera); };
+  }, [texto, paso]);
+
+  const registrar = async (nino) => {
+    if (asistentes.some((a) => a.nino_id === nino.id)) { setMensaje(`${nino.nombre_completo} ya está en la lista.`); return false; }
+    const { error } = await supabase.from('asistencia_clases').insert([{ fecha, grupo, nino_id: nino.id, registrado_por: usuario }]);
+    if (error) { setMensaje(error.code === '23505' ? `${nino.nombre_completo} ya está en la lista.` : 'No se pudo guardar: ' + error.message); return false; }
+    await cargarAsistentes();
+    return true;
+  };
+
+  const marcar = async (nino) => {
+    setGuardando(true);
+    const ok = await registrar(nino);
+    setGuardando(false);
+    if (ok) { setMensaje(`Registrado: ${nino.nombre_completo}`); setTexto(''); setResultados([]); }
+  };
+
+  const agregarYMarcar = async () => {
+    const nombre = texto.trim().replace(/\s+/g, ' ');
+    if (nombre.length < 3) { setMensaje('Escribe el nombre completo del niño.'); return; }
+    setGuardando(true);
+    const { data: existente } = await supabase.from('ninos').select('id, nombre_completo').ilike('nombre_completo', nombre).limit(1);
+    if (existente && existente.length > 0) { setGuardando(false); setMensaje(`Ya existe "${existente[0].nombre_completo}". Búscalo y márcalo.`); return; }
+    const { data: nuevo, error } = await supabase.from('ninos').insert([{ nombre_completo: nombre, grupo, creado_por: usuario }]).select('id, nombre_completo').single();
+    if (error) { setGuardando(false); setMensaje('No se pudo agregar: ' + error.message); return; }
+    const ok = await registrar(nuevo);
+    setGuardando(false);
+    if (ok) { setMensaje(`Registrado: ${nuevo.nombre_completo}`); setTexto(''); setPaso('inicio'); }
+  };
+
+  const quitar = async (id) => {
+    const { data } = await supabase.from('asistencia_clases').delete().eq('id', id).select('id');
+    if (!data || data.length === 0) setMensaje('No se pudo quitar de la lista.');
+    await cargarAsistentes();
+  };
+
+  const fechaTexto = fecha ? new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const fechaBonita = fechaTexto.charAt(0).toUpperCase() + fechaTexto.slice(1);
+  const estiloInput = { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 10 };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
+      <View style={[styles.modalOverlay, { justifyContent: 'flex-start', paddingTop: 40 }]}>
+        <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.cardBorder, maxHeight: '88%' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Tomar lista</Text>
+            <TouchableOpacity onPress={onCerrar} style={{ padding: 6 }}><Feather name="x" size={22} color={colors.textSub} /></TouchableOpacity>
+          </View>
+          <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 16 }}>{fechaBonita} • {grupo}</Text>
+
+          {paso === 'inicio' && (
+            <>
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 0 }]} onPress={() => { setMensaje(''); setTexto(''); setPaso('buscar'); }}>
+                <Feather name="search" size={16} color="#FFFFFF" />
+                <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>Buscar niño</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder }]} onPress={() => { setMensaje(''); setTexto(''); setPaso('agregar'); }}>
+                <Feather name="user-plus" size={16} color={colors.textMain} />
+                <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Agregar niño</Text>
+              </TouchableOpacity>
+              {mensaje ? <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 12 }}>{mensaje}</Text> : null}
+              <Text style={{ color: colors.textMain, fontWeight: '700', marginTop: 20, marginBottom: 8 }}>Asistencia ({asistentes.length})</Text>
+              <ScrollView style={{ maxHeight: 220 }}>
+                {asistentes.length === 0 ? (
+                  <Text style={{ color: colors.textSub, fontSize: 13 }}>Todavía no hay niños registrados en esta clase.</Text>
+                ) : asistentes.map((a) => (
+                  <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                    <Text style={{ flex: 1, color: colors.textMain, fontSize: 14 }}>{a.ninos ? a.ninos.nombre_completo : '—'}</Text>
+                    <TouchableOpacity onPress={() => quitar(a.id)} style={{ padding: 6 }}><Feather name="x" size={16} color={colors.textSub} /></TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            </>
+          )}
+
+          {paso === 'buscar' && (
+            <>
+              <TextInput style={[styles.input, estiloInput]} placeholder="Nombre del niño..." placeholderTextColor={colors.textSub} value={texto} onChangeText={(t) => { setTexto(t); setMensaje(''); }} autoFocus />
+              {mensaje ? <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 8 }}>{mensaje}</Text> : null}
+              <ScrollView style={{ maxHeight: 200 }}>
+                {resultados.map((n) => (
+                  <TouchableOpacity key={n.id} onPress={() => marcar(n)} disabled={guardando} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.textMain, fontSize: 14 }}>{n.nombre_completo}</Text>
+                      <Text style={{ color: colors.textSub, fontSize: 12 }}>{n.grupo}</Text>
+                    </View>
+                    {asistentes.some((a) => a.nino_id === n.id) ? <Feather name="check-circle" size={18} color={colors.textSub} /> : <Feather name="plus-circle" size={18} color={colors.textMain} />}
+                  </TouchableOpacity>
+                ))}
+                {texto.trim().length >= 2 && resultados.length === 0 && (
+                  <View style={{ paddingVertical: 10 }}>
+                    <Text style={{ color: colors.textSub, fontSize: 13 }}>No encontré a "{texto.trim()}".</Text>
+                    <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={() => setPaso('agregar')}>
+                      <Feather name="user-plus" size={16} color="#FFFFFF" />
+                      <Text style={[styles.primaryButtonText, { marginLeft: 8, fontSize: 14 }]}>Agregarlo como niño nuevo</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+              <TouchableOpacity onPress={() => { setPaso('inicio'); setTexto(''); setMensaje(''); }} style={{ marginTop: 16, alignItems: 'center' }}>
+                <Text style={{ color: colors.textSub, fontSize: 14 }}>Listo, volver a la lista</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {paso === 'agregar' && (
+            <>
+              <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 8 }}>Nombre completo del niño (quedará en el grupo {grupo}):</Text>
+              <TextInput style={[styles.input, estiloInput]} placeholder="Nombre y apellido" placeholderTextColor={colors.textSub} value={texto} onChangeText={(t) => { setTexto(t); setMensaje(''); }} autoFocus />
+              {mensaje ? <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 8 }}>{mensaje}</Text> : null}
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 4 }]} onPress={agregarYMarcar} disabled={guardando}>
+                {guardando ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Guardar y marcar asistencia</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setPaso('inicio'); setTexto(''); setMensaje(''); }} style={{ marginTop: 16, alignItems: 'center' }}>
+                <Text style={{ color: colors.textSub, fontSize: 14 }}>Cancelar</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 };
 
@@ -796,11 +1032,18 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 function GruposScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const anchoMax = columnas >= 2 ? 1100 : 850;
+  const grupos = [
+    { icono: 'smile', titulo: 'Niños', subtitulo: '3 a 6 años', categoria: 'Niños', onPress: () => navigation.navigate('Temas', { grupo: 'Niños' }) },
+    { icono: 'users', titulo: 'Pre adolescentes', subtitulo: '7 a 9 años', categoria: 'Pre adolescentes', onPress: () => navigation.navigate('Temas', { grupo: 'Pre adolescentes' }) },
+    { icono: 'book', titulo: 'Adolescentes', subtitulo: '10 a 13 años', categoria: 'Adolescentes', onPress: () => navigation.navigate('Temas', { grupo: 'Adolescentes' }) },
+  ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
-        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: anchoMax, alignItems: 'center' }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, flexDirection: 'row', alignItems: 'center' }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
@@ -813,29 +1056,16 @@ function GruposScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-                <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: 850, marginBottom: 15 }]} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })}>
+                                <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })}>
           <Feather name="clipboard" size={20} color={colors.textSub} />
           <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
         </TouchableOpacity>
 
-        <View style={[styles.gruposContainer, { width: '95%', maxWidth: 850 }]}>
-                    <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Niños', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Niños' })}>
-            <Feather name="smile" size={32} color={getThemeColors('Niños', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Niños', isDark).textDark }]}>Niños</Text>
-            <Text style={[styles.grupoEdadBlanco, { color: getThemeColors('Niños', isDark).textDark }]}>3 a 6 años</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Pre adolescentes', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Pre adolescentes' })}>
-            <Feather name="users" size={32} color={getThemeColors('Pre adolescentes', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Pre adolescentes', isDark).textDark }]}>Pre adolescentes</Text>
-            <Text style={[styles.grupoEdadBlanco, { color: getThemeColors('Pre adolescentes', isDark).textDark }]}>7 a 9 años</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, { backgroundColor: getThemeColors('Adolescentes', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Temas', { grupo: 'Adolescentes' })}>
-            <Feather name="book" size={32} color={getThemeColors('Adolescentes', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, { color: getThemeColors('Adolescentes', isDark).textDark }]}>Adolescentes</Text>
-            <Text style={[styles.grupoEdadBlanco, { color: getThemeColors('Adolescentes', isDark).textDark }]}>10 a 13 años</Text>
-          </TouchableOpacity>
-          
-                  </View>
+        <View style={[styles.gruposContainer, { width: '95%', maxWidth: anchoMax }, columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
+          {grupos.map((g, i) => (
+            <TarjetaMenu key={g.titulo} {...g} isDark={isDark} columnas={columnas} esUltima={i === grupos.length - 1} total={grupos.length} />
+          ))}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1091,7 +1321,8 @@ function TemasScreen({ route, navigation }) {
   const { isDark } = useContext(ThemeContext);
   const [temas, setTemas] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [verFuturo, setVerFuturo] = useState(false);
+    const [verFuturo, setVerFuturo] = useState(false);
+  const columnas = useColumnas();
   const theme = getThemeColors(grupo, isDark);
   const colors = getColors(isDark);
 
@@ -1116,7 +1347,7 @@ function TemasScreen({ route, navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center' }}>
-        <View style={{ width: '95%', maxWidth: 850, flex: 1, paddingBottom: 20 }}>
+                <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, flex: 1, paddingBottom: 20 }}>
                     <View style={styles.headerRowSpaceBetween}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
               <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -1125,11 +1356,7 @@ function TemasScreen({ route, navigation }) {
               <Text style={[styles.titleMini, { color: colors.textMain }]}>TEMARIO</Text>
               <Text style={[styles.subtitle, { color: theme.textDark }]}>Grupo: {grupo}</Text>
             </View>
-                        <View style={styles.toggleContainer}>
-              <Text style={[styles.toggleLabel, { color: colors.textSub }]}>Ver futuros</Text>
-              <Switch trackColor={{ false: colors.cardBorder, true: theme.main }} thumbColor={"#FFFFFF"} onValueChange={setVerFuturo} value={verFuturo} />
-            </View>
-            <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')} style={{ marginLeft: 10 }}>
+                                    <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')} style={{ marginLeft: 10 }}>
               <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 40, height: 29, resizeMode: 'contain' }} />
             </TouchableOpacity>
           </View>
@@ -1137,18 +1364,9 @@ function TemasScreen({ route, navigation }) {
           {cargando ? (
             <View style={styles.center}><ActivityIndicator size="large" color={theme.main} /></View>
           ) : (
-            <View style={styles.listContainer}>
+                        <View style={[styles.listContainer, columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
               {temasFiltrados.map((tema) => (
-                <TouchableOpacity key={tema.id} style={[styles.card, styles.cardLight, { backgroundColor: theme.bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Clases', { tema: tema, grupo: grupo })}>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.textContainer}><Text style={[styles.topicTitle, { color: colors.textMain }]}>{tema.titulo_tema}</Text></View>
-                    <Feather name="chevron-right" size={24} color={theme.main} />
-                  </View>
-                  <View style={[styles.cardFooter, { borderTopColor: colors.cardBorder }]}>
-                    <View style={styles.iconText}><Feather name="calendar" size={16} color={colors.textSub} /><Text style={[styles.monthText, { color: colors.textSub }]}>{tema.mes_anio}</Text></View>
-                    <View style={styles.iconText}><Feather name="users" size={16} color={colors.textSub} /><Text style={[styles.teacherText, { color: colors.textSub }]}>{tema.equipo_asignado || 'Sin asignar'}</Text></View>
-                  </View>
-                </TouchableOpacity>
+                <TarjetaLista key={tema.id} icono="calendar" titulo={tema.titulo_tema} subtitulo={tema.mes_anio} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('Clases', { tema: tema, grupo: grupo })} />
               ))}
             </View>
           )}
@@ -1164,7 +1382,8 @@ function TemasScreen({ route, navigation }) {
 function ClasesScreen({ route, navigation }) {
   const { tema, grupo } = route.params;
   const { isDark } = useContext(ThemeContext);
-  const [clasesReales, setClasesReales] = useState([]);
+    const [clasesReales, setClasesReales] = useState([]);
+  const columnas = useColumnas();
   const [cargando, setCargando] = useState(true);
   const theme = getThemeColors(grupo, isDark);
   const colors = getColors(isDark);
@@ -1180,7 +1399,7 @@ function ClasesScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
-      <View style={{ width: '95%', maxWidth: 850, flex: 1 }}>
+            <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, flex: 1 }}>
                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5, justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -1204,18 +1423,11 @@ function ClasesScreen({ route, navigation }) {
                 <Text style={[styles.emptyText, { color: colors.textSub }]}>Las clases para este mes aún no han sido cargadas.</Text>
               </View>
             ) : (
-              clasesReales.map((clase) => (
-                <TouchableOpacity key={clase.id} style={[styles.card, styles.cardLight, { backgroundColor: theme.bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })}>
-                   <View style={styles.cardHeader}>
-                      <View style={styles.textContainer}>
-                        <Text style={[styles.topicTitle, { color: colors.textMain }]}>{clase.titulo_clase}</Text>
-                        <Text style={[styles.topicSubtitle, { color: colors.textSub }]}>Domingo {clase.numero_clase}</Text>
-                        {clase.texto_base && <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 4, fontStyle: 'italic' }}>Base: {clase.texto_base}</Text>}
-                      </View>
-                      <Feather name="book-open" size={20} color={theme.main} />
-                   </View>
-                </TouchableOpacity>
-              ))
+                            <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                {clasesReales.map((clase) => (
+                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={`Domingo ${clase.numero_clase}`} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
+                ))}
+              </View>
             )}
           </ScrollView>
         )}
@@ -1235,6 +1447,20 @@ function ClaseDetalleScreen({ route, navigation }) {
   const colors = getColors(isDark);
 
   function cerrarAlerta() { setAlerta({ ...alerta, visible: false }); }
+
+    const [mostrarLista, setMostrarLista] = useState(false);
+  const paletaGrupo = PALETA_MENU[isDark ? 'oscuro' : 'claro'][grupo] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Niños'];
+  // La fecha de la clase es el domingo número N del mes del tema
+  const fechaClase = (() => {
+    const mes = parsearMesAnio(tema.mes_anio);
+    if (!mes) return null;
+    return domingosDelMes(mes.getFullYear(), mes.getMonth())[clase.numero_clase - 1] || null;
+  })();
+
+  function abrirLista() {
+    if (!fechaClase) return setAlerta({ visible: true, titulo: "Aviso", mensaje: "No se pudo determinar la fecha de esta clase.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main });
+    setMostrarLista(true);
+  }
 
   function solicitarCobertura() {
     setAlerta({
@@ -1291,7 +1517,11 @@ function ClaseDetalleScreen({ route, navigation }) {
         </View>
         <Text style={[styles.detalleTitleMain, { color: colors.textMain }]}>{clase.titulo_clase}</Text>
         <Text style={[styles.detalleSubtitle, { color: theme.main }]}>Domingo {clase.numero_clase} • {grupo}</Text>
-        <Text style={[styles.detalleBase, { color: colors.textSub }]}>Base bíblica: {clase.texto_base}</Text>
+                <Text style={[styles.detalleBase, { color: colors.textSub }]}>Base bíblica: {clase.texto_base}</Text>
+        <TouchableOpacity onPress={abrirLista} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, backgroundColor: paletaGrupo.fondo }}>
+          <Feather name="check-circle" size={18} color={paletaGrupo.texto} />
+          <Text style={{ color: paletaGrupo.texto, fontWeight: '700', fontSize: 14 }}>Tomar lista</Text>
+        </TouchableOpacity>
         
         <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
 
@@ -1315,7 +1545,8 @@ function ClaseDetalleScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
       </ScrollView>
-      <AlertaPersonalizada {...alerta} />
+            <AlertaPersonalizada {...alerta} />
+      <ModalAsistencia visible={mostrarLista} onCerrar={() => setMostrarLista(false)} fecha={fechaClase} grupo={grupo} isDark={isDark} usuario={usuarioActivoGlobal} />
     </SafeAreaView>
   );
 }
@@ -1505,7 +1736,19 @@ function AdminScreen({ navigation }) {
   const [resultadosRol, setResultadosRol] = useState([]);
   const [seleccionadosRol, setSeleccionadosRol] = useState([]);
   const [buscandoRol, setBuscandoRol] = useState(false);
-  const [eliminandoRol, setEliminandoRol] = useState(false);
+    const [eliminandoRol, setEliminandoRol] = useState(false);
+  const [previaClases, setPreviaClases] = useState(null);
+  const [subiendoClases, setSubiendoClases] = useState(false);
+    const [mesBorrarClases, setMesBorrarClases] = useState('');
+  const [mesBuscarClases, setMesBuscarClases] = useState('');
+  const [anioBuscarClases, setAnioBuscarClases] = useState('');
+  const [resultadosClases, setResultadosClases] = useState([]);
+  const [seleccionadasClases, setSeleccionadasClases] = useState([]);
+  const [buscandoClases, setBuscandoClases] = useState(false);
+  const [eliminandoClases, setEliminandoClases] = useState(false);
+  const [grupoAsistencia, setGrupoAsistencia] = useState('Todos');
+  const [mesAsistencia, setMesAsistencia] = useState('');
+  const [descargandoAsistencia, setDescargandoAsistencia] = useState(false);
   useEffect(() => { obtenerMaestros(); }, []);
   
   function cerrarAlerta() { setAlerta({ ...alerta, visible: false }); }
@@ -1624,6 +1867,213 @@ function AdminScreen({ navigation }) {
     }
   };
 
+    // ---- Clases de niños: carga por CSV ----
+  const parsearCSVClases = (texto) => {
+    const lineas = texto.replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n').filter((l) => l.trim() !== '');
+    if (lineas.length < 2) return [];
+    const separador = (lineas[0].match(/;/g) || []).length > (lineas[0].match(/,/g) || []).length ? ';' : ',';
+    const partir = (linea) => {
+      const celdas = [];
+      let actual = '';
+      let entreComillas = false;
+      for (const c of linea) {
+        if (c === '"') entreComillas = !entreComillas;
+        else if (c === separador && !entreComillas) { celdas.push(actual.trim()); actual = ''; }
+        else actual += c;
+      }
+      celdas.push(actual.trim());
+      return celdas;
+    };
+    const encabezados = partir(lineas[0]).map(normalizarEncabezado);
+    return lineas.slice(1).map((linea) => {
+      const valores = partir(linea);
+      const fila = {};
+      encabezados.forEach((h, i) => { fila[h] = valores[i] || ''; });
+      return fila;
+    });
+  };
+
+  const prepararCargaClases = async (texto) => {
+    const filasCSV = parsearCSVClases(texto);
+    const errores = [];
+    const avisos = [];
+    const filas = [];
+    if (filasCSV.length === 0) return { filas, errores: ['El archivo está vacío o no tiene el formato esperado.'], avisos, meses: [], personas: 0 };
+
+    const porUsuario = {};
+    maestros.forEach((m) => { porUsuario[normalizarUsuario(m.nombre_usuario)] = m; });
+    const buscarMaestro = (t) => porUsuario[normalizarUsuario(t)];
+    const gruposPorPersonaMes = {};
+
+    filasCSV.forEach((fila, idx) => {
+      const numero = idx + 2;
+      const fechaMes = parsearMesAnio(fila.mes);
+      if (!fechaMes) { errores.push(`Fila ${numero}: el mes "${fila.mes || ''}" no se entiende (usa por ejemplo "Octubre 2026").`); return; }
+      const mesAnio = `${NOMBRES_MESES[fechaMes.getMonth()]} ${fechaMes.getFullYear()}`;
+      const domingos = domingosDelMes(fechaMes.getFullYear(), fechaMes.getMonth());
+      let coordinador = null;
+      if (fila.coordinador) {
+        const c = buscarMaestro(fila.coordinador);
+        if (!c) errores.push(`Fila ${numero}: el coordinador "${fila.coordinador}" no existe como usuario.`);
+        else coordinador = c.nombre_usuario;
+      }
+      GRUPOS_CLASES.forEach((g) => {
+        (fila[g.columna] || '').split(/[\/;|]/).map((n) => n.trim()).filter(Boolean).forEach((nombre) => {
+          const m = buscarMaestro(nombre);
+          if (!m) { errores.push(`Fila ${numero}: "${nombre}" (${g.grupo}) no existe como usuario.`); return; }
+          if (!m.elegible_clases_ninos) avisos.push(`${m.nombre_usuario} no está marcado como elegible para Clases de niños.`);
+          const clave = `${mesAnio}|${m.nombre_usuario}`;
+          (gruposPorPersonaMes[clave] = gruposPorPersonaMes[clave] || []).push(g.grupo);
+          domingos.forEach((d) => filas.push({ fecha: d, grupo: g.grupo, horario: g.horario, nombre_usuario: m.nombre_usuario, coordinador, equipo: fila.equipo || null, mes_anio: mesAnio }));
+        });
+      });
+    });
+
+    Object.entries(gruposPorPersonaMes).forEach(([clave, grupos]) => {
+      if (grupos.length > 1) avisos.push(`${clave.split('|')[1]} aparece en ${grupos.length} grupos en ${clave.split('|')[0]}: ${grupos.join(', ')}.`);
+    });
+    if (filas.length === 0 && errores.length === 0) errores.push('No se encontró ninguna persona asignada en el archivo.');
+
+    const meses = [...new Set(filas.map((f) => f.mes_anio))];
+    if (meses.length > 0) {
+      const { data: existentes } = await supabase.from('clases_asignadas').select('mes_anio').in('mes_anio', meses);
+      [...new Set((existentes || []).map((x) => x.mes_anio))].forEach((mes) => errores.push(`Ya hay clases cargadas para ${mes}. Bórralas primero con "Borrar clases de un mes".`));
+    }
+    return { filas, errores: [...new Set(errores)], avisos: [...new Set(avisos)], meses, personas: new Set(filas.map((f) => f.nombre_usuario)).size };
+  };
+
+  const manejarArchivoClases = (evento) => {
+    const archivo = evento.target.files[0];
+    if (!archivo) return;
+    const lector = new FileReader();
+    lector.onload = async (e) => {
+      try {
+        setPreviaClases(await prepararCargaClases(e.target.result));
+      } catch (error) {
+        setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo leer el archivo. Revisa que sea un CSV válido.", onConfirmar: cerrarAlerta, isDark: isDark });
+      }
+    };
+    lector.readAsText(archivo);
+  };
+
+  const confirmarCargaClases = async () => {
+    if (!previaClases || previaClases.errores.length > 0 || previaClases.filas.length === 0) return;
+    setSubiendoClases(true);
+    const { error } = await supabase.from('clases_asignadas').insert(previaClases.filas);
+    setSubiendoClases(false);
+    if (error) {
+      setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudieron subir las clases: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark });
+    } else {
+      setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: `Se guardaron ${previaClases.filas.length} clases de ${previaClases.personas} maestros.`, onConfirmar: cerrarAlerta, isDark: isDark });
+      setPreviaClases(null);
+    }
+  };
+
+    const buscarClases = async () => {
+    const mesNum = parseInt(mesBuscarClases);
+    const anioNum = parseInt(anioBuscarClases);
+    if (!mesNum || mesNum < 1 || mesNum > 12 || !anioNum) {
+      return setAlerta({ visible: true, titulo: "Aviso", mensaje: "Escribe un mes (1-12) y un año válidos.", onConfirmar: cerrarAlerta, isDark: isDark });
+    }
+    setBuscandoClases(true);
+    const desde = fechaISO(new Date(anioNum, mesNum - 1, 1));
+    const hasta = fechaISO(new Date(anioNum, mesNum, 0));
+    const { data, error } = await supabase.from('clases_asignadas').select('*').gte('fecha', desde).lte('fecha', hasta).order('fecha', { ascending: true }).order('grupo', { ascending: true }).range(0, 999);
+    setBuscandoClases(false);
+    if (error) { return setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo buscar: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark }); }
+    setResultadosClases(data || []);
+    setSeleccionadasClases([]);
+  };
+
+  const toggleSeleccionClase = (id) => {
+    setSeleccionadasClases((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const seleccionarTodoClases = () => {
+    setSeleccionadasClases(seleccionadasClases.length === resultadosClases.length ? [] : resultadosClases.map((r) => r.id));
+  };
+
+  const confirmarEliminarSeleccionadasClases = () => {
+    if (seleccionadasClases.length === 0) return;
+    setAlerta({
+      visible: true, titulo: "Eliminar clases", mensaje: `¿Eliminar ${seleccionadasClases.length} clase(s)? Esta acción no se puede deshacer.`,
+      textoConfirmar: "Eliminar", onCancelar: cerrarAlerta, isDark: isDark, themeColor: '#C97A7A',
+      onConfirmar: async () => {
+        cerrarAlerta();
+        setEliminandoClases(true);
+        const { data, error } = await supabase.from('clases_asignadas').delete().in('id', seleccionadasClases).select('id');
+        setEliminandoClases(false);
+        if (error) { setTimeout(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo eliminar: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark }), 500); return; }
+        const idsBorrados = (data || []).map((r) => r.id);
+        setResultadosClases((prev) => prev.filter((r) => !idsBorrados.includes(r.id)));
+        setSeleccionadasClases([]);
+        if (idsBorrados.length < seleccionadasClases.length) {
+          setTimeout(() => setAlerta({ visible: true, titulo: "No se borraron todas", mensaje: `Se eliminaron ${idsBorrados.length} de ${seleccionadasClases.length}. Las demás probablemente están bloqueadas por una regla de seguridad (RLS) en Supabase.`, onConfirmar: cerrarAlerta, isDark: isDark }), 500);
+        }
+      }
+    });
+  };
+
+  const descargarAsistenciaCSV = async () => {
+    let desde = null;
+    let hasta = null;
+    if (mesAsistencia.trim()) {
+      const fechaMes = parsearMesAnio(mesAsistencia);
+      if (!fechaMes) {
+        return setAlerta({ visible: true, titulo: "Aviso", mensaje: 'Escribe el mes así: "Enero 2027", o déjalo vacío para descargar todo.', onConfirmar: cerrarAlerta, isDark: isDark });
+      }
+      desde = fechaISO(fechaMes);
+      hasta = fechaISO(new Date(fechaMes.getFullYear(), fechaMes.getMonth() + 1, 0));
+    }
+    setDescargandoAsistencia(true);
+    const filas = [];
+    for (let inicio = 0; ; inicio += 1000) {
+      let consulta = supabase.from('asistencia_clases').select('fecha, grupo, registrado_por, ninos(nombre_completo)').order('fecha', { ascending: true }).order('grupo', { ascending: true }).order('id', { ascending: true });
+      if (grupoAsistencia !== 'Todos') consulta = consulta.eq('grupo', grupoAsistencia);
+      if (desde) consulta = consulta.gte('fecha', desde).lte('fecha', hasta);
+      const { data, error } = await consulta.range(inicio, inicio + 999);
+      if (error) {
+        setDescargandoAsistencia(false);
+        return setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo descargar: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark });
+      }
+      filas.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    setDescargandoAsistencia(false);
+    if (filas.length === 0) {
+      return setAlerta({ visible: true, titulo: "Sin datos", mensaje: "No hay asistencia registrada con ese filtro.", onConfirmar: cerrarAlerta, isDark: isDark });
+    }
+    const escapar = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const csv = ['fecha,grupo,niño,registrado_por', ...filas.map((f) => [f.fecha, f.grupo, f.ninos ? f.ninos.nombre_completo : '', f.registrado_por].map(escapar).join(','))].join('\r\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = `asistencia_${grupoAsistencia.replace(/\s+/g, '-').toLowerCase()}_${fechaISO(new Date())}.csv`;
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+    URL.revokeObjectURL(url);
+  };
+
+  const confirmarBorrarClasesMes = () => {
+    const fechaMes = parsearMesAnio(mesBorrarClases);
+    if (!fechaMes) {
+      return setAlerta({ visible: true, titulo: "Aviso", mensaje: 'Escribe el mes así: "Octubre 2026".', onConfirmar: cerrarAlerta, isDark: isDark });
+    }
+    const mesAnio = `${NOMBRES_MESES[fechaMes.getMonth()]} ${fechaMes.getFullYear()}`;
+    setAlerta({
+      visible: true, titulo: "Borrar clases", mensaje: `¿Borrar todas las clases asignadas de ${mesAnio}? Esta acción no se puede deshacer.`,
+      textoConfirmar: "Borrar", onCancelar: cerrarAlerta, isDark: isDark, themeColor: '#C97A7A',
+      onConfirmar: async () => {
+        cerrarAlerta();
+        const { data, error } = await supabase.from('clases_asignadas').delete().eq('mes_anio', mesAnio).select('id');
+        const mensaje = error ? "No se pudo borrar: " + error.message : (data && data.length > 0 ? `Se borraron ${data.length} clases de ${mesAnio}.` : `No se encontró nada para borrar en ${mesAnio}.`);
+        setTimeout(() => setAlerta({ visible: true, titulo: error ? "Error" : "Listo", mensaje, onConfirmar: cerrarAlerta, isDark: isDark }), 500);
+      }
+    });
+  };
+
     async function buscarRol() {
     const mesNum = parseInt(mesBuscarRol);
     const anioNum = parseInt(anioBuscarRol);
@@ -1677,7 +2127,7 @@ function AdminScreen({ navigation }) {
     acc[equipo].push(maestro); return acc;
   }, {});
   
-  const listaEquipos = Object.keys(maestrosPorEquipo).sort((a, b) => {
+    const listaEquipos = Object.keys(maestrosPorEquipo).filter((e) => e === 'Administradores').sort((a, b) => {
     if (a === 'Administradores') return -1; if (b === 'Administradores') return 1; return a.localeCompare(b);
   });
 
@@ -1740,7 +2190,7 @@ function AdminScreen({ navigation }) {
         <TouchableOpacity style={styles.primaryButton} onPress={registrarMaestro}>{guardando ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Guardar</Text>}</TouchableOpacity>
         
         <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
-               <Text style={[styles.topicTitle, { color: colors.textMain }]}>Equipos y Usuarios</Text>
+               <Text style={[styles.topicTitle, { color: colors.textMain }]}>Usuarios</Text>
 
                 <TextInput
           style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 15 }]}
@@ -1750,11 +2200,13 @@ function AdminScreen({ navigation }) {
           onChangeText={setBusquedaUsuario}
         />
 
-        <TouchableOpacity style={[styles.equipoFolder, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginBottom: 15 }]} onPress={() => navigation.navigate('TodosUsuarios')}>
-          <Feather name="users" size={24} color={colors.textSub} />
-          <View style={{ marginLeft: 15, flex: 1 }}><Text style={[styles.equipoFolderTitle, { color: colors.textMain }]}>Todos los usuarios</Text><Text style={[styles.equipoFolderSub, { color: colors.textSub }]}>{maestros.length} en total</Text></View>
-          <Feather name="chevron-right" size={20} color={colors.textSub} />
-        </TouchableOpacity>
+                {busquedaUsuario.trim() === '' && (
+          <TouchableOpacity style={[styles.equipoFolder, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginBottom: 15 }]} onPress={() => navigation.navigate('TodosUsuarios')}>
+            <Feather name="users" size={24} color={colors.textSub} />
+            <View style={{ marginLeft: 15, flex: 1 }}><Text style={[styles.equipoFolderTitle, { color: colors.textMain }]}>Todos los usuarios</Text><Text style={[styles.equipoFolderSub, { color: colors.textSub }]}>{maestros.length} en total</Text></View>
+            <Feather name="chevron-right" size={20} color={colors.textSub} />
+          </TouchableOpacity>
+        )}
 
         {busquedaUsuario.trim() !== '' ? (
           <View>
@@ -1765,12 +2217,17 @@ function AdminScreen({ navigation }) {
                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)}><Feather name="copy" size={18} color={colors.textSub} /></TouchableOpacity>
                                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>
                 <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
-              </View>
+                            </View>
             ))}
+            <TouchableOpacity style={[styles.equipoFolder, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginTop: 5, marginBottom: 15 }]} onPress={() => navigation.navigate('TodosUsuarios')}>
+              <Feather name="users" size={24} color={colors.textSub} />
+              <View style={{ marginLeft: 15, flex: 1 }}><Text style={[styles.equipoFolderTitle, { color: colors.textMain }]}>Todos los usuarios</Text><Text style={[styles.equipoFolderSub, { color: colors.textSub }]}>{maestros.length} en total</Text></View>
+              <Feather name="chevron-right" size={20} color={colors.textSub} />
+            </TouchableOpacity>
           </View>
         ) : !equipoSeleccionadoAdmin ? (
           <View>
-            <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Selecciona un equipo para ver a sus miembros.</Text>
+            <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Toca la tarjeta para ver a los administradores.</Text>
             {listaEquipos.map((equipo, index) => (
               <TouchableOpacity key={index} style={[styles.equipoFolder, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => setEquipoSeleccionadoAdmin(equipo)}>
                                 {equipo === 'Administradores' ? <Feather name="shield" size={24} color={colors.textSub} /> : <IconoGrupoGrande size={24} color={colors.textSub} />}
@@ -1801,7 +2258,7 @@ function AdminScreen({ navigation }) {
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las fechas del periodo.</Text>
 
         {Platform.OS === 'web' && (
-          <input type="file" accept=".csv" onChange={manejarArchivoCSV} style={{ marginBottom: 15, color: colors.textMain }} />
+                    <SelectorArchivo isDark={isDark} onArchivo={manejarArchivoCSV} etiqueta="Elegir CSV del Rol" />
         )}
 
         {previaRol.length > 0 && (
@@ -1839,8 +2296,88 @@ function AdminScreen({ navigation }) {
             <TouchableOpacity style={[styles.primaryButton, { marginTop: 15, backgroundColor: '#C97A7A' }]} onPress={confirmarEliminarSeleccionadosRol} disabled={seleccionadosRol.length === 0}>
               {eliminandoRol ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Eliminar seleccionados ({seleccionadosRol.length})</Text>}
             </TouchableOpacity>
+                    </View>
+        )}
+
+        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
+        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Cargar Clases de niños</Text>
+        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el CSV con equipo, mes, coordinador y grupos. Se crea una clase por cada domingo del mes.</Text>
+
+        {Platform.OS === 'web' && (
+                    <SelectorArchivo isDark={isDark} onArchivo={manejarArchivoClases} etiqueta="Elegir CSV de clases" />
+        )}
+
+        {previaClases && (
+          <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+            {previaClases.errores.length > 0 ? (
+              <>
+                <Text style={[styles.autoGenTitle, { color: '#C97A7A' }]}>Corrige esto antes de subir:</Text>
+                {previaClases.errores.map((t, i) => <Text key={i} style={{ color: '#C97A7A', fontSize: 12, marginTop: 4 }}>• {t}</Text>)}
+              </>
+            ) : (
+              <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Se van a crear {previaClases.filas.length} clases para {previaClases.personas} maestros en {previaClases.meses.join(', ')}:</Text>
+            )}
+            {previaClases.avisos.length > 0 && (
+              <>
+                <Text style={[styles.autoGenTitle, { color: '#C9A227', marginTop: 10 }]}>Avisos (no impiden subir):</Text>
+                {previaClases.avisos.map((t, i) => <Text key={i} style={{ color: '#C9A227', fontSize: 12, marginTop: 4 }}>• {t}</Text>)}
+              </>
+            )}
+            {previaClases.errores.length === 0 && previaClases.filas.slice(0, 5).map((f, i) => (
+              <Text key={i} style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>{f.fecha} • {f.grupo} • {f.nombre_usuario}</Text>
+            ))}
+            {previaClases.errores.length === 0 && previaClases.filas.length > 5 && <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>...y {previaClases.filas.length - 5} más</Text>}
+            {previaClases.errores.length === 0 && (
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 15 }]} onPress={confirmarCargaClases}>{subiendoClases ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Confirmar y subir</Text>}</TouchableOpacity>
+            )}
           </View>
         )}
+
+                <Text style={[styles.topicSubtitle, { color: colors.textSub, marginTop: 20, marginBottom: 10 }]}>Buscar y eliminar clases: búscalas por mes y elimina las que sobren.</Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarClases} onChangeText={(t) => setMesBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
+          <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2027)" placeholderTextColor={colors.textSub} value={anioBuscarClases} onChangeText={(t) => setAnioBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
+        </View>
+        <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={buscarClases}>{buscandoClases ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Buscar</Text>}</TouchableOpacity>
+
+        {resultadosClases.length > 0 && (
+          <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginTop: 15 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>{resultadosClases.length} clase(s) encontradas</Text>
+              <TouchableOpacity onPress={seleccionarTodoClases}><Text style={{ color: '#7EA0D8', fontSize: 12, fontWeight: '600' }}>{seleccionadasClases.length === resultadosClases.length ? 'Quitar selección' : 'Seleccionar todo'}</Text></TouchableOpacity>
+            </View>
+            {resultadosClases.map((item) => (
+              <TouchableOpacity key={item.id} onPress={() => toggleSeleccionClase(item.id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+                <Feather name={seleccionadasClases.includes(item.id) ? "check-square" : "square"} size={18} color={seleccionadasClases.includes(item.id) ? '#7EA0D8' : colors.textSub} />
+                <Text style={{ color: colors.textMain, fontSize: 13, marginLeft: 10, flex: 1 }}>{item.fecha} • {item.grupo} • {item.nombre_usuario}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={[styles.primaryButton, { marginTop: 15, backgroundColor: '#C97A7A' }]} onPress={confirmarEliminarSeleccionadasClases} disabled={seleccionadasClases.length === 0}>
+              {eliminandoClases ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Eliminar seleccionadas ({seleccionadasClases.length})</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginTop: 20, marginBottom: 10 }]}>Borrar clases de un mes (por si el archivo se subió con errores)</Text>
+        <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (ej. Octubre 2026)" placeholderTextColor={colors.textSub} value={mesBorrarClases} onChangeText={setMesBorrarClases} />
+        <TouchableOpacity style={[styles.primaryButton, { marginTop: 12, backgroundColor: '#C97A7A' }]} onPress={confirmarBorrarClasesMes}>
+                    <Text style={styles.primaryButtonText}>Borrar clases del mes</Text>
+        </TouchableOpacity>
+
+        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
+        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Asistencia de Clases de niños</Text>
+        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Descarga la asistencia en CSV: de un grupo o de todos juntos.</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          {['Todos', 'Niños', 'Pre adolescentes', 'Adolescentes'].map((g) => (
+            <TouchableOpacity key={g} onPress={() => setGrupoAsistencia(g)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: grupoAsistencia === g ? colors.textMain : colors.cardBorder, backgroundColor: grupoAsistencia === g ? colors.textMain : colors.cardBg }}>
+              <Text style={{ color: grupoAsistencia === g ? colors.background : colors.textMain, fontWeight: '600', fontSize: 13 }}>{g}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (opcional, ej. Enero 2027)" placeholderTextColor={colors.textSub} value={mesAsistencia} onChangeText={setMesAsistencia} />
+        <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={descargarAsistenciaCSV}>
+          {descargandoAsistencia ? <ActivityIndicator color="#FFFFFF" /> : (<><Feather name="download" size={16} color="#FFFFFF" /><Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>Descargar CSV</Text></>)}
+        </TouchableOpacity>
       </ScrollView>
       <ModalEdicion visible={!!maestroEditando} maestro={maestroEditando} onCancelar={() => setMaestroEditando(null)} onGuardar={guardarEdicion} isDark={isDark} />
       <AlertaPersonalizada {...alerta} />
