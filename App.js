@@ -30,15 +30,33 @@ const ThemeContext = createContext();
 
 // Paleta de Colores Dinámica
 const getColors = (isDark) => ({
-  background: isDark ? '#2C313C' : '#FFFFFF',
-  cardBg: isDark ? '#3B424D' : '#FFFFFF',
-  cardBorder: isDark ? '#4A5568' : '#C8CFD6',
-  textMain: isDark ? '#FFFFFF' : '#2C313C',
-  textSub: isDark ? '#A0AEC0' : '#4A5568',
-  inputBg: isDark ? '#4A5568' : '#FFFFFF',
-  inputBorder: isDark ? '#718096' : '#C8CFD6',
-  inputText: isDark ? '#FFFFFF' : '#2C313C',
+  background: isDark ? '#1C1B19' : '#EAE9E5',
+  cardBg: isDark ? '#2A2927' : '#FFFFFF',
+  cardBorder: isDark ? '#3C3A36' : '#D6D3CC',
+  textMain: isDark ? '#F2F0EA' : '#2B2A27',
+  textSub: isDark ? '#B9B6AE' : '#5B5A56',
+  inputBg: isDark ? '#2A2927' : '#FFFFFF',
+  inputBorder: isDark ? '#4A4742' : '#D6D3CC',
+  inputText: isDark ? '#F2F0EA' : '#2B2A27',
 });
+
+// Paleta "pastel apagado" para las tarjetas del menú principal
+const PALETA_MENU = {
+  claro: {
+    'Clases de niños': { fondo: '#A9CFC8', texto: '#1F4F4A' },
+    'Predicaciones': { fondo: '#C6BCDD', texto: '#3E3360' },
+    'Anuncios': { fondo: '#E8C57A', texto: '#5A4010' },
+    'Petición': { fondo: '#D6A5AF', texto: '#5C2433' },
+    'Calendario': { fondo: '#B3C3CE', texto: '#26404F' },
+  },
+  oscuro: {
+    'Clases de niños': { fondo: '#8FB9B1', texto: '#173B37' },
+    'Predicaciones': { fondo: '#B0A4CE', texto: '#2E2550' },
+    'Anuncios': { fondo: '#D9B15F', texto: '#45300A' },
+    'Petición': { fondo: '#C58C98', texto: '#4A1B28' },
+    'Calendario': { fondo: '#9DB0BD', texto: '#1B3341' },
+  },
+};
 
 // Función para obtener el color dinámico del grupo
 const getThemeColors = (grupo, isDark) => {
@@ -87,10 +105,10 @@ const calcularTipo = (fechaTexto, horario) => {
 
 const Stack = createNativeStackNavigator();
 
-// Detecta pantallas anchas (tablet) para acomodar el contenido de otra forma
-const useEsTablet = () => {
+// Columnas según el ancho de pantalla: 1 en celular, 2 en tablet, 3 en PC
+const useColumnas = () => {
   const { width } = useWindowDimensions();
-  return width >= 768;
+  return width >= 1100 ? 3 : width >= 768 ? 2 : 1;
 };
 
 // Mapea cada pantalla a una URL propia para que el navegador registre un paso de historial
@@ -381,6 +399,49 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
   );
 };
 
+// Tarjeta del menú principal: esquinas muy redondeadas, ícono en círculo y título
+const TarjetaMenu = ({ icono, titulo, categoria, pronto, isDark, columnas, esUltima, total, onPress }) => {
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
+  const m = columnas === 3
+    ? { alto: 236, radio: 54, circulo: 54, icono: 26, texto: 25, vertical: 24, lateral: 30, pill: 12 }
+    : columnas === 2
+    ? { alto: 260, radio: 58, circulo: 60, icono: 28, texto: 28, vertical: 26, lateral: 32, pill: 13 }
+    : { alto: 120, radio: 46, circulo: 44, icono: 22, texto: 19, vertical: 16, lateral: 20, pill: 11 };
+
+  // La última tarjeta ocupa el espacio que queda libre en su fila
+  let ancho = columnas === 3 ? '31.9%' : columnas === 2 ? '48.5%' : '100%';
+  const resto = total % columnas;
+  if (esUltima && columnas >= 2 && resto !== 0) {
+    ancho = (columnas - resto + 1) === columnas ? '100%' : '65.9%';
+  }
+
+  const circuloClaro = isDark ? 'rgba(255,255,255,0.50)' : '#FFFFFF';
+  const pastillaFondo = isDark ? 'rgba(255,255,255,0.50)' : 'rgba(255,255,255,0.62)';
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      accessibilityLabel={titulo}
+      onPress={onPress}
+      style={{ width: ancho, minHeight: m.alto, borderRadius: m.radio, backgroundColor: paleta.fondo, overflow: 'hidden', paddingVertical: m.vertical, paddingHorizontal: m.lateral, justifyContent: 'space-between' }}
+    >
+      <View style={{ pointerEvents: 'none', position: 'absolute', right: -m.alto * 0.275, top: -m.alto * 0.35, width: m.alto * 1.25, height: m.alto * 1.25, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.30)' }} />
+      <View style={{ pointerEvents: 'none', position: 'absolute', right: m.alto * 0.55, bottom: -m.alto * 0.425, width: m.alto * 0.85, height: m.alto * 0.85, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.18)' }} />
+      <View style={{ width: m.circulo, height: m.circulo, borderRadius: m.circulo / 2, backgroundColor: circuloClaro, alignItems: 'center', justifyContent: 'center' }}>
+        <Feather name={icono} size={m.icono} color={paleta.texto} />
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
+        <Text style={{ flex: 1, fontSize: m.texto, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
+        {pronto && (
+          <View style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: pastillaFondo }}>
+            <Text style={{ fontSize: m.pill, fontWeight: '700', color: paleta.texto }}>Pronto</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+};
+
 // ==========================================
 // PANTALLA 0: LOGIN
 // ==========================================
@@ -455,7 +516,15 @@ function MenuPrincipalScreen({ navigation }) {
   const [tieneClases, setTieneClases] = useState(false);
     const [mostrarAjustes, setMostrarAjustes] = useState(false);
     const [hayNotificaciones, setHayNotificaciones] = useState(false);
-  const esTablet = useEsTablet();
+    const columnas = useColumnas();
+  const esTablet = columnas >= 2;
+  const tarjetas = [
+    tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') },
+    tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones', categoria: 'Predicaciones', onPress: () => navigation.navigate('MiRol') },
+    { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) },
+    { icono: 'heart', titulo: 'Petición de oración', categoria: 'Petición', pronto: true, onPress: () => proximamente(getThemeColors('Petición', isDark).textDark) },
+    { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', pronto: true, onPress: () => proximamente(getThemeColors('Calendario', isDark).textDark) },
+  ].filter(Boolean);
 
     useFocusEffect(
     React.useCallback(() => {
@@ -523,34 +592,10 @@ function MenuPrincipalScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-                                <View style={[styles.gruposContainer, { width: '95%', maxWidth: esTablet ? 1100 : 850 }, esTablet && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
-          {tieneClases && (
-            <TouchableOpacity style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Clases de niños', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => navigation.navigate('Grupos')}>
-              <Feather name="smile" size={esTablet ? 44 : 32} color={getThemeColors('Clases de niños', isDark).textDark} style={styles.grupoIcon} />
-              <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Clases de niños', isDark).textDark }]}>Clases de niños</Text>
-            </TouchableOpacity>
-          )}
-                    {tieneRol && (
-            <TouchableOpacity
-              style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Predicaciones', isDark).bgLight, borderColor: 'transparent' }]}
-              onPress={() => navigation.navigate('MiRol')}
-            >
-              <Feather name="calendar" size={esTablet ? 44 : 32} color={getThemeColors('Predicaciones', isDark).textDark} style={styles.grupoIcon} />
-              <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Predicaciones', isDark).textDark }]}>Rol de predicaciones</Text>
-            </TouchableOpacity>
-          )}
-                                        <TouchableOpacity style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Anuncios', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Anuncios', isDark).textDark)}>
-            <Feather name="volume-2" size={esTablet ? 44 : 32} color={getThemeColors('Anuncios', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Anuncios', isDark).textDark }]}>Anuncios</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Petición', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Petición', isDark).textDark)}>
-            <Feather name="heart" size={esTablet ? 44 : 32} color={getThemeColors('Petición', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Petición', isDark).textDark }]}>Petición de oración</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.card, esTablet && { width: '48.5%', minHeight: 170, justifyContent: 'flex-end', padding: 28 }, { backgroundColor: getThemeColors('Calendario', isDark).bgLight, borderColor: 'transparent' }]} onPress={() => proximamente(getThemeColors('Calendario', isDark).textDark)}>
-            <Feather name="calendar" size={esTablet ? 44 : 32} color={getThemeColors('Calendario', isDark).textDark} style={styles.grupoIcon} />
-            <Text style={[styles.grupoTitleBlanco, esTablet && { fontSize: 24 }, { color: getThemeColors('Calendario', isDark).textDark }]}>Calendario de actividades</Text>
-          </TouchableOpacity>
+                                                                <View style={[styles.gruposContainer, { width: '95%', maxWidth: esTablet ? 1100 : 850 }, esTablet && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
+          {tarjetas.map((t, i) => (
+            <TarjetaMenu key={t.titulo} {...t} isDark={isDark} columnas={columnas} esUltima={i === tarjetas.length - 1} total={tarjetas.length} />
+          ))}
         </View>
 
         {rolUsuarioActivoGlobal === 'administrador' && (
