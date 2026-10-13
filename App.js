@@ -269,7 +269,11 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
   useEffect(() => {
     Animated.timing(anim, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: false }).start();
     if (!visible) return;
-    if (usuarioActivoGlobal) { setNombreVisible(usuarioActivoGlobal); return; }
+        if (usuarioActivoGlobal) {
+      setNombreVisible(usuarioActivoGlobal);
+      cargarMapaNombres().then((mapa) => { const n = mapa[usuarioActivoGlobal.toLowerCase()]; if (n) setNombreVisible(ponerMayusculas(n)); });
+      return;
+    }
     (async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -328,6 +332,17 @@ const IconoGrupoGrande = ({ size = 24, color }) => (
 );
 
 // Modal para solicitar apoyo: cualquiera elegible, o alguien específico (cobertura o intercambio de fechas)
+// Pone la primera letra de cada palabra en mayúscula (para mostrar nombres)
+const ponerMayusculas = (t) => (t || '').split(' ').map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : p)).join(' ');
+
+// Devuelve un mapa { usuario en minúsculas: nombre completo } con la lista pública de usuarios
+const cargarMapaNombres = async () => {
+  const { data } = await supabase.rpc('nombres_publicos');
+  const mapa = {};
+  (data || []).forEach((m) => { mapa[(m.nombre_usuario || '').toLowerCase()] = m.nombre_completo || m.nombre_usuario; });
+  return mapa;
+};
+
 // Revisa si una persona ya tiene predicación o clase de niños en una fecha.
 // Devuelve un texto (por ejemplo "una clase con Niños ese día") o null si está libre.
 // "ignorar" permite no contar la fecha que esa persona entregaría en un intercambio.
@@ -1077,7 +1092,10 @@ function GruposScreen({ navigation }) {
     const esAdmin = rolUsuarioActivoGlobal === 'administrador';
   const [asignaciones, setAsignaciones] = useState([]);
     const [cargandoAsig, setCargandoAsig] = useState(true);
-  const [coordinadoresAdmin, setCoordinadoresAdmin] = useState([]);
+    const [coordinadoresAdmin, setCoordinadoresAdmin] = useState([]);
+  const [mapaNombres, setMapaNombres] = useState({});
+  useEffect(() => { cargarMapaNombres().then(setMapaNombres); }, []);
+  const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
   useFocusEffect(
     React.useCallback(() => {
                           if (esAdmin) {
@@ -1137,14 +1155,14 @@ function GruposScreen({ navigation }) {
           <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15, flexDirection: 'column', alignItems: 'flex-start', borderRadius: 28, paddingHorizontal: 22 }]}>
             <Text style={[styles.tablonButtonText, { color: colors.textSub, marginLeft: 0, marginBottom: 4 }]}>Coordinadores por mes</Text>
             {coordinadoresAdmin.map((c) => (
-              <Text key={c.mes_anio + c.coordinador} style={{ color: colors.textMain, fontSize: 14, marginTop: 4 }}>{c.mes_anio}: {c.coordinador}</Text>
+              <Text key={c.mes_anio + c.coordinador} style={{ color: colors.textMain, fontSize: 14, marginTop: 4 }}>{c.mes_anio}: {nombreDe(c.coordinador)}</Text>
             ))}
           </View>
         ) : null}
         {!esAdmin && coordinador ? (
           <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]}>
             <Feather name="user" size={20} color={colors.textSub} />
-            <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Mi coordinador: {coordinador}</Text>
+            <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Mi coordinador: {nombreDe(coordinador)}</Text>
           </View>
         ) : null}
         {!esAdmin && !cargandoAsig && gruposAsignados.length === 0 ? (
@@ -1958,6 +1976,7 @@ function AdminScreen({ navigation }) {
       if (error && error.context && typeof error.context.json === 'function') {
         try { const cuerpo = await error.context.json(); detalle = cuerpo.error || cuerpo.message || JSON.stringify(cuerpo); } catch (e) {}
       }
+      if (/already been registered|already registered/i.test(detalle)) detalle = "Ya existe un usuario con ese nombre. Prueba con otro nombre o agrega un apellido.";
       setAlerta({ visible: true, titulo: "Error", mensaje: detalle, onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
       setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: "Usuario registrado.", onConfirmar: cerrarAlerta, isDark: isDark });
