@@ -1953,7 +1953,12 @@ function AdminScreen({ navigation }) {
       body: { nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono, nombre_completo: nombreCompleto, elegible_clases_ninos: elegibleClases, elegible_predicaciones: elegiblePredicaciones }
     });
 
-        if (error || resultado?.error) { setAlerta({ visible: true, titulo: "Error", mensaje: resultado?.error || error?.message || "Error desconocido.", onConfirmar: cerrarAlerta, isDark: isDark });
+        if (error || resultado?.error) {
+      let detalle = resultado?.error || error?.message || "Error desconocido.";
+      if (error && error.context && typeof error.context.json === 'function') {
+        try { const cuerpo = await error.context.json(); detalle = cuerpo.error || cuerpo.message || JSON.stringify(cuerpo); } catch (e) {}
+      }
+      setAlerta({ visible: true, titulo: "Error", mensaje: detalle, onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
       setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: "Usuario registrado.", onConfirmar: cerrarAlerta, isDark: isDark });
       setNombreCompleto(''); setUsuarioGenerado(''); setPinGenerado(''); setNumeroEquipoAsignado(''); setTelefono(''); setEsAdmin(false); setElegibleClases(false); setElegiblePredicaciones(false); obtenerMaestros();
