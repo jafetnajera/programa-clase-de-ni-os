@@ -289,7 +289,7 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
       </TouchableOpacity>
       <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '65%', maxWidth: 300, backgroundColor: colors.background, borderTopRightRadius: 44, borderBottomRightRadius: 44, overflow: 'hidden', transform: [{ translateX }], paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 30 : 60, paddingHorizontal: 20 }}>
-                <Text style={{ color: colors.textMain, fontSize: 20, fontWeight: '700', marginBottom: 18 }}>Hola, {usuarioActivoGlobal}</Text>
+                <Text style={{ color: colors.textMain, fontSize: 20, fontWeight: '700', marginBottom: 18 }}>Hola, {nombreVisible}</Text>
         <Text style={[styles.titleMini, { color: colors.textSub, marginBottom: 14 }]}>Ajustes</Text>
         <TouchableOpacity onPress={() => { onCerrar(); toggleTheme(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
           <Feather name={isDark ? "sun" : "moon"} size={20} color={colors.textSub} />
@@ -977,7 +977,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                 <Text style={{ fontSize: 21, fontWeight: '700', color: colors.textMain }}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(fecha + 'T00:00:00').getDay()]}</Text>
                 <Text style={{ fontSize: 13, color: colors.textSub }}>{new Date(fecha + 'T00:00:00').getDate()} {new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).replace('.', '')}</Text>
               </View>
-              <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 10 }}>
+              <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 16 }}>
                 {items.map((item, idx) => {
                   const tipoCalculado = calcularTipo(item.fecha, item.horario);
                   const esClase = tipoCalculado === 'Clase';
@@ -985,8 +985,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                   const tintText = esClase ? '#3A5A8A' : '#A65A2E';
                   return (
                     <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}>
-                      <View style={{   const [cargandoAsig, setCargandoAsig] = useState(true);
-  const [coordinadoresAdmin, setCoordinadoresAdmin] = useState([]); alignItems: 'center', justifyContent: 'center' }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 14, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
                         <Feather name={esClase ? "calendar" : "mic"} size={16} color={tintText} />
                       </View>
                                             <View style={{ flex: 1 }}>
@@ -1042,18 +1041,21 @@ function GruposScreen({ navigation }) {
   const anchoMax = columnas >= 2 ? 1100 : 850;
     const esAdmin = rolUsuarioActivoGlobal === 'administrador';
   const [asignaciones, setAsignaciones] = useState([]);
-  const [cargandoAsig, setCargandoAsig] = useState(true);
+    const [cargandoAsig, setCargandoAsig] = useState(true);
+  const [coordinadoresAdmin, setCoordinadoresAdmin] = useState([]);
   useFocusEffect(
     React.useCallback(() => {
-                    {esAdmin && coordinadoresAdmin.length > 0 ? (
-          <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15, flexDirection: 'column', alignItems: 'flex-start', borderRadius: 28, paddingHorizontal: 22 }]}>
-            <Text style={[styles.tablonButtonText, { color: colors.textSub, marginLeft: 0, marginBottom: 4 }]}>Coordinadores por mes</Text>
-            {coordinadoresAdmin.map((c) => (
-              <Text key={c.mes_anio + c.coordinador} style={{ color: colors.textMain, fontSize: 14, marginTop: 4 }}>{c.mes_anio}: {c.coordinador}</Text>
-            ))}
-          </View>
-        ) : null}
-        {!esAdmin && coordinador ? (
+                          if (esAdmin) {
+        (async () => {
+          const hoy = new Date();
+          const { data } = await supabase.from('clases_asignadas').select('mes_anio, coordinador, fecha').gte('fecha', fechaISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1))).order('fecha', { ascending: true }).range(0, 4999);
+          const lista = [];
+          (data || []).forEach((r) => { if (r.coordinador && !lista.some((x) => x.mes_anio === r.mes_anio && x.coordinador === r.coordinador)) lista.push({ mes_anio: r.mes_anio, coordinador: r.coordinador }); });
+          setCoordinadoresAdmin(lista);
+          setCargandoAsig(false);
+        })();
+        return;
+      }
       (async () => {
         const { data } = await supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', fechaISO(new Date())).in('grupo', ['Niños', 'Pre adolescentes', 'Adolescentes']).order('fecha', { ascending: true });
         setAsignaciones(data || []);
@@ -1096,7 +1098,15 @@ function GruposScreen({ navigation }) {
           <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
         </TouchableOpacity>
 
-                {!esAdmin && coordinador ? (
+                        {esAdmin && coordinadoresAdmin.length > 0 ? (
+          <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15, flexDirection: 'column', alignItems: 'flex-start', borderRadius: 28, paddingHorizontal: 22 }]}>
+            <Text style={[styles.tablonButtonText, { color: colors.textSub, marginLeft: 0, marginBottom: 4 }]}>Coordinadores por mes</Text>
+            {coordinadoresAdmin.map((c) => (
+              <Text key={c.mes_anio + c.coordinador} style={{ color: colors.textMain, fontSize: 14, marginTop: 4 }}>{c.mes_anio}: {c.coordinador}</Text>
+            ))}
+          </View>
+        ) : null}
+        {!esAdmin && coordinador ? (
           <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]}>
             <Feather name="user" size={20} color={colors.textSub} />
             <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Mi coordinador: {coordinador}</Text>
@@ -2558,7 +2568,7 @@ const styles = StyleSheet.create({
   grupoEdadBlanco: { fontSize: 14, color: '#FFFFFF', marginTop: 4, opacity: 0.95, textShadowColor: 'rgba(0, 0, 0, 0.3)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   
   listContainer: { width: '100%' },
-  card: { borderRadius: 16, padding: 20 },
+    card: { borderRadius: 30, padding: 22 },
   cardLight: { borderWidth: 1, marginBottom: 16 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
   textContainer: { flex: 1, paddingRight: 10 },
@@ -2588,7 +2598,7 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold', letterSpacing: 0.5 },
   solicitarBtnClaro: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, paddingVertical: 14, paddingHorizontal: 15, borderRadius: 999, justifyContent: 'center' },
   solicitarBtnClaroText: { fontWeight: 'bold', fontSize: 14, marginLeft: 8 },
-  tablonButton: {   card: { borderRadius: 30, padding: 22 }, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  tablonButton: { marginTop: 10, borderWidth: 1, padding: 16, borderRadius: 999, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   tablonButtonText: { fontSize: 16, fontWeight: 'bold', marginLeft: 10 },
   aceptarDiscreto: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, marginLeft: 10 },
   aceptarDiscretoText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 13 },
@@ -2599,17 +2609,17 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '80%', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, marginRight: 10, borderWidth: 1 }, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  modalContent: { width: '80%', maxWidth: 400, borderRadius: 32, padding: 24, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
   modalMessage: { fontSize: 15, textAlign: 'center', marginBottom: 25, lineHeight: 22 },
   modalButtons: { flexDirection: 'row', justifyContent: 'center' },
-  modalCancelBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, marginRight: 10, borderWidth: 1 },
+  modalCancelBtn: { borderWidth: 1, padding: 15, borderRadius: 24, marginBottom: 10 },
   modalCancelText: { fontWeight: 'bold', fontSize: 15 },
   modalConfirmBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999 },
   modalConfirmText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 15 },
   divider: { height: 1, marginVertical: 25 },
   
-  equipoFolder: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, padding: 18, borderRadius: 12, marginBottom: 12 },
+  equipoFolder: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, padding: 18, borderRadius: 28, marginBottom: 12 },
   equipoFolderTitle: { fontSize: 16, fontWeight: 'bold' },
   equipoFolderSub: { fontSize: 13, marginTop: 2 },
   backToEquiposBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, paddingVertical: 5 },
@@ -2625,5 +2635,5 @@ const styles = StyleSheet.create({
   autoGenTitle: { fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 10 },
   autoGenRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   autoGenLabel: { width: 100, fontSize: 14, fontWeight: '500' },
-  autoGenInput: { flex: 1, borderRadius: 28, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 16 }}>
+  autoGenInput: { flex: 1, borderWidth: 1, borderRadius: 12, padding: 8, fontSize: 14 }
 });
