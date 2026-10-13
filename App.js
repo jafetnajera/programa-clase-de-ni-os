@@ -328,19 +328,52 @@ const IconoGrupoGrande = ({ size = 24, color }) => (
 );
 
 // Modal para solicitar apoyo: cualquiera elegible, o alguien específico (cobertura o intercambio de fechas)
-const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark, onCancelar, onConfirmar }) => {
+// Revisa si una persona ya tiene predicación o clase de niños en una fecha.
+// Devuelve un texto (por ejemplo "una clase con Niños ese día") o null si está libre.
+// "ignorar" permite no contar la fecha que esa persona entregaría en un intercambio.
+const buscarConflictoDia = async (usuario, fecha, ignorar = {}) => {
+  if (!usuario || !fecha) return null;
+  const [roles, clases] = await Promise.all([
+    supabase.from('programa_servicios').select('id, horario').ilike('nombre_usuario', usuario).eq('fecha', fecha),
+    supabase.from('clases_asignadas').select('id, grupo').ilike('nombre_usuario', usuario).eq('fecha', fecha),
+  ]);
+  const rol = (roles.data || []).find((r) => !(ignorar.rolId && r.id === ignorar.rolId));
+  if (rol) return `una predicación ese día (${rol.horario})`;
+  const clase = (clases.data || []).find((c) => !(ignorar.claseId && c.id === ignorar.claseId));
+  if (clase) return `una clase con ${clase.grupo} ese día`;
+  return null;
+};
+
+const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark, onCancelar, onConfirmar, tipoItem = 'rol', item = null }) => {
   const colors = getColors(isDark);
   const [paso, setPaso] = useState('inicio');
   const [texto, setTexto] = useState('');
   const [destino, setDestino] = useState(null);
   const [fechasDestino, setFechasDestino] = useState([]);
-  const [cargandoFechas, setCargandoFechas] = useState(false);
+    const [cargandoFechas, setCargandoFechas] = useState(false);
+  const [aviso, setAviso] = useState('');
 
   useEffect(() => {
-    if (visible) { setPaso('inicio'); setTexto(''); setDestino(null); setFechasDestino([]); }
+    if (visible) { setPaso('inicio'); setTexto(''); setDestino(null); setFechasDestino([]); setAviso(''); }
   }, [visible]);
 
   const formatearFechaCorta = (fechaTexto) => new Date(fechaTexto + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const confirmarConChequeo = async (tipo, fechaOtra, idOtro) => {
+    setAviso('');
+    if (item) {
+      const nombreDestino = destino.nombre_completo || destino.nombre_usuario;
+      const ignDestino = tipo === 'intercambio' ? (tipoItem === 'clase' ? { claseId: idOtro } : { rolId: idOtro }) : {};
+      const c1 = await buscarConflictoDia(destino.nombre_usuario, item.fecha, ignDestino);
+      if (c1) return setAviso(`${nombreDestino} ya tiene ${c1}, así que no puede cubrirte.`);
+      if (tipo === 'intercambio' && fechaOtra) {
+        const ignPropio = tipoItem === 'clase' ? { claseId: item.id } : { rolId: item.id };
+        const c2 = await buscarConflictoDia(item.nombre_usuario || usuarioPropio, fechaOtra, ignPropio);
+        if (c2) return setAviso(`Ya tienes ${c2}, no puedes tomar esa fecha.`);
+      }
+    }
+    onConfirmar({ destino: destino.nombre_usuario, tipo, fechaIntercambioId: tipo === 'intercambio' ? idOtro : null });
+  };
 
   const resultados = texto.length > 0
     ? maestrosElegibles.filter((m) => m.nombre_usuario.toLowerCase() !== usuarioPropio.toLowerCase() && (m.nombre_completo || m.nombre_usuario).toLowerCase().includes(texto.toLowerCase()))
@@ -350,7 +383,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
     setCargandoFechas(true);
     setPaso('fecha');
     const hoy = new Date().toISOString().split('T')[0];
-    const { data } = await supabase.from('programa_servicios').select('*').ilike('nombre_usuario', destino.nombre_usuario).gte('fecha', hoy).order('fecha', { ascending: true });
+    const { data } = await supabase.from(tipoItem === 'clase' ? 'clases_asignadas' : 'programa_servicios').select('*').ilike('nombre_usuario', destino.nombre_usuario).gte('fecha', hoy).order('fecha', { ascending: true });
     setFechasDestino(data || []);
     setCargandoFechas(false);
   };
@@ -392,7 +425,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
           {paso === 'tipo' && destino && (
             <>
               <Text style={{ color: colors.textSub, marginBottom: 15 }}>Se lo pedirás a {destino.nombre_completo || destino.nombre_usuario}. ¿Cómo?</Text>
-              <TouchableOpacity style={styles.primaryButton} onPress={() => onConfirmar({ destino: destino.nombre_usuario, tipo: 'cobertura', fechaIntercambioId: null })}>
+              <TouchableOpacity style={styles.primaryButton} onPress={() => confirmarConChequeo('cobertura', null, null)}>
                 <Text style={styles.primaryButtonText}>Solo que me cubra</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder }]} onPress={elegirIntercambio}>
@@ -411,8 +444,8 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
               ) : (
                 <ScrollView style={{ maxHeight: 180 }}>
                   {fechasDestino.map((f) => (
-                    <TouchableOpacity key={f.id} onPress={() => onConfirmar({ destino: destino.nombre_usuario, tipo: 'intercambio', fechaIntercambioId: f.id })} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
-                      <Text style={{ color: colors.textMain, fontSize: 14 }}>{formatearFechaCorta(f.fecha)} • {f.horario}</Text>
+                    <TouchableOpacity key={f.id} onPress={() => confirmarConChequeo('intercambio', f.fecha, f.id)} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                      <Text style={{ color: colors.textMain, fontSize: 14 }}>{formatearFechaCorta(f.fecha)} • {tipoItem === 'clase' ? f.grupo : f.horario}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -420,6 +453,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
             </>
           )}
 
+          {aviso ? <Text style={{ color: '#C97A7A', marginTop: 14, fontSize: 13 }}>{aviso}</Text> : null}
           <TouchableOpacity onPress={onCancelar} style={{ marginTop: 20, alignItems: 'center' }}>
             <Text style={{ color: colors.textSub, fontSize: 14 }}>Cancelar</Text>
           </TouchableOpacity>
@@ -1025,6 +1059,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
         usuarioPropio={usuarioActivoGlobal}
         isDark={isDark}
         onCancelar={() => setMostrarModalApoyo(false)}
+        item={itemApoyo}
         onConfirmar={async (opciones) => { setMostrarModalApoyo(false); await enviarSolicitudApoyo(itemApoyo, opciones); }}
       />
     </SafeAreaView>
@@ -1258,7 +1293,6 @@ function TodosUsuariosScreen({ navigation }) {
             <TouchableOpacity key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => navigation.navigate('DetalleUsuario', { maestro })}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
-                <Text style={[styles.userTextPin, { color: colors.textSub }]}>{maestro.rol === 'administrador' ? 'Administrador' : 'Maestro'}</Text>
               </View>
               <Feather name="chevron-right" size={20} color={colors.textSub} />
             </TouchableOpacity>
@@ -1319,7 +1353,6 @@ function DetalleUsuarioScreen({ route, navigation }) {
           </TouchableOpacity>
                     <View style={{ flex: 1, marginLeft: 8 }}>
             <Text style={[styles.title, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestro.rol === 'administrador' ? 'Administrador' : 'Maestro'}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
@@ -1500,7 +1533,10 @@ function ClaseDetalleScreen({ route, navigation }) {
 
   function cerrarAlerta() { setAlerta({ ...alerta, visible: false }); }
 
-    const [mostrarLista, setMostrarLista] = useState(false);
+        const [mostrarLista, setMostrarLista] = useState(false);
+  const [asignacion, setAsignacion] = useState(null);
+  const [mostrarApoyo, setMostrarApoyo] = useState(false);
+  const [maestrosElegibles, setMaestrosElegibles] = useState([]);
   const paletaGrupo = PALETA_MENU[isDark ? 'oscuro' : 'claro'][grupo] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Niños'];
   // La fecha de la clase es el domingo número N del mes del tema
   const fechaClase = (() => {
@@ -1508,6 +1544,50 @@ function ClaseDetalleScreen({ route, navigation }) {
     if (!mes) return null;
     return domingosDelMes(mes.getFullYear(), mes.getMonth())[clase.numero_clase - 1] || null;
   })();
+
+    const cargarAsignacion = async () => {
+    if (!fechaClase) return;
+    const { data } = await supabase.from('clases_asignadas').select('*').eq('fecha', fechaClase).eq('grupo', grupo).limit(1);
+    setAsignacion(data && data.length > 0 ? data[0] : null);
+  };
+
+  useEffect(() => {
+    cargarAsignacion();
+    (async () => {
+      const { data } = await supabase.rpc('nombres_publicos');
+      setMaestrosElegibles((data || []).filter((m) => m.elegible_clases_ninos));
+    })();
+  }, []);
+
+  function abrirApoyo() {
+    const aviso = (mensaje) => setAlerta({ visible: true, titulo: "Aviso", mensaje, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main });
+    if (!fechaClase) return aviso("No se pudo determinar la fecha de esta clase.");
+    if (!asignacion) return aviso("Esta clase todavía no tiene a nadie asignado, así que no se puede pedir apoyo.");
+    if (rolUsuarioActivoGlobal !== 'administrador' && asignacion.nombre_usuario.toLowerCase() !== usuarioActivoGlobal.toLowerCase()) return aviso("Solo la persona asignada a esta clase puede pedir apoyo.");
+    setMostrarApoyo(true);
+  }
+
+  const enviarSolicitudClase = async (opciones = {}) => {
+    const { destino = null, tipo = null, fechaIntercambioId = null } = opciones;
+    setMostrarApoyo(false);
+    const mostrar = (titulo, mensaje) => setTimeout(() => setAlerta({ visible: true, titulo, mensaje, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+    const { data: existente } = await supabase.from('solicitudes_sustitucion').select('id').eq('clase_asignada_id', asignacion.id).eq('estado', 'Pendiente');
+    if (existente && existente.length > 0) return mostrar("Ya existe", "Ya hay una solicitud de apoyo pendiente para esta clase.");
+    const fechaBonita = new Date(fechaClase + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+    const { error } = await supabase.from('solicitudes_sustitucion').insert([{
+      mes_anio: asignacion.mes_anio,
+      titulo_tema: fechaBonita,
+      grupo_clase: grupo,
+      maestro_solicitante: asignacion.nombre_usuario,
+      clase_asignada_id: asignacion.id,
+      fecha_referencia: fechaClase,
+      maestro_destino: destino,
+      tipo_intercambio: tipo,
+      clase_asignada_id_intercambio: fechaIntercambioId,
+    }]);
+    if (error) mostrar("Error", error.message);
+    else mostrar("Enviado", destino ? "Tu solicitud se envió directamente a esa persona." : "Tu solicitud ya aparece en las Solicitudes de Apoyo.");
+  };
 
   function abrirLista() {
     if (!fechaClase) return setAlerta({ visible: true, titulo: "Aviso", mensaje: "No se pudo determinar la fecha de esta clase.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main });
@@ -1587,7 +1667,7 @@ function ClaseDetalleScreen({ route, navigation }) {
         <RenderSeccion titulo="Actividad Sugerida (25 min)" texto={clase.actividad_sugerida} />
 
         <View style={{ flexDirection: 'column', gap: 12, marginTop: 20 }}>
-          <TouchableOpacity onPress={solicitarCobertura} style={[styles.solicitarBtnClaro, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}>
+          <TouchableOpacity onPress={abrirApoyo} style={[styles.solicitarBtnClaro, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}>
             <Feather name="life-buoy" size={16} color={colors.textSub} />
             <Text style={[styles.solicitarBtnClaroText, { color: colors.textSub }]}>Solicitar apoyo para esta clase</Text>
           </TouchableOpacity>
@@ -1598,6 +1678,7 @@ function ClaseDetalleScreen({ route, navigation }) {
         </View>
       </ScrollView>
             <AlertaPersonalizada {...alerta} />
+      <ModalSolicitarApoyo visible={mostrarApoyo} tipoItem="clase" item={asignacion} maestrosElegibles={maestrosElegibles} usuarioPropio={usuarioActivoGlobal} isDark={isDark} onCancelar={() => setMostrarApoyo(false)} onConfirmar={enviarSolicitudClase} />
       <ModalAsistencia visible={mostrarLista} onCerrar={() => setMostrarLista(false)} fecha={fechaClase} grupo={grupo} isDark={isDark} usuario={usuarioActivoGlobal} />
     </SafeAreaView>
   );
@@ -1670,7 +1751,40 @@ function TablonScreen({ navigation, route }) {
       textoConfirmar: "Aceptar", onCancelar: cerrarAlerta,
                         onConfirmar: async () => {
         cerrarAlerta();
-        const { error: error1 } = await supabase.from('solicitudes_sustitucion').update({ estado: 'Cubierta', maestro_suplente: usuarioActivoGlobal }).eq('id', solicitud.id);
+        if ((solicitud.maestro_solicitante || '').toLowerCase() === usuarioActivoGlobal.toLowerCase()) {
+          setTimeout(() => setAlerta({ visible: true, titulo: "Aviso", mensaje: "No puedes aceptar tu propia solicitud.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+          return;
+        }
+        if (solicitud.programa_servicio_id || solicitud.clase_asignada_id) {
+          const esClase = !!solicitud.clase_asignada_id;
+          const esIntercambio = solicitud.tipo_intercambio === 'intercambio';
+          const idOtro = esClase ? solicitud.clase_asignada_id_intercambio : solicitud.programa_servicio_id_intercambio;
+          let fechaOtra = null;
+          if (esIntercambio && idOtro) {
+            const { data: otro } = await supabase.from(esClase ? 'clases_asignadas' : 'programa_servicios').select('fecha').eq('id', idOtro).single();
+            fechaOtra = otro ? otro.fecha : null;
+          }
+          const ignAceptante = esIntercambio && idOtro ? (esClase ? { claseId: idOtro } : { rolId: idOtro }) : {};
+          const c1 = await buscarConflictoDia(usuarioActivoGlobal, solicitud.fecha_referencia, ignAceptante);
+          if (c1) {
+            setTimeout(() => setAlerta({ visible: true, titulo: "No se puede aceptar", mensaje: `Ya tienes ${c1}.`, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+            return;
+          }
+          if (fechaOtra) {
+            const ignSolicitante = esClase ? { claseId: solicitud.clase_asignada_id } : { rolId: solicitud.programa_servicio_id };
+            const c2 = await buscarConflictoDia(solicitud.maestro_solicitante, fechaOtra, ignSolicitante);
+            if (c2) {
+              setTimeout(() => setAlerta({ visible: true, titulo: "No se puede aceptar", mensaje: `${nombreBonito(solicitud.maestro_solicitante)} ya tiene ${c2} en la fecha que tomaría con el intercambio.`, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+              return;
+            }
+          }
+        }
+        const { data: tomada, error: error1 } = await supabase.from('solicitudes_sustitucion').update({ estado: 'Cubierta', maestro_suplente: usuarioActivoGlobal }).eq('id', solicitud.id).eq('estado', 'Pendiente').select('id');
+        if (!error1 && (!tomada || tomada.length === 0)) {
+          setTimeout(() => setAlerta({ visible: true, titulo: "Ya no está disponible", mensaje: "Alguien más ya aceptó esta solicitud.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+          obtenerSolicitudes();
+          return;
+        }
         let error2 = null, error3 = null;
                                                                 if (solicitud.programa_servicio_id) {
           const r = await supabase.from('programa_servicios').update({
@@ -1689,6 +1803,14 @@ function TablonScreen({ navigation, route }) {
             estado_confirmacion: 'pendiente',
           }).eq('id', solicitud.programa_servicio_id_intercambio);
           error3 = r.error;
+        }
+        if (solicitud.clase_asignada_id) {
+          const r = await supabase.from('clases_asignadas').update({ nombre_usuario: usuarioActivoGlobal, usuario_original: solicitud.maestro_solicitante, sustituido_en: new Date().toISOString() }).eq('id', solicitud.clase_asignada_id);
+          error2 = error2 || r.error;
+        }
+        if (solicitud.tipo_intercambio === 'intercambio' && solicitud.clase_asignada_id_intercambio) {
+          const r = await supabase.from('clases_asignadas').update({ nombre_usuario: solicitud.maestro_solicitante, usuario_original: usuarioActivoGlobal, sustituido_en: new Date().toISOString() }).eq('id', solicitud.clase_asignada_id_intercambio);
+          error3 = error3 || r.error;
         }
         const errorReal = error1 || error2 || error3;
         if (errorReal) {
@@ -2258,7 +2380,7 @@ function AdminScreen({ navigation }) {
           <View>
             {maestros.filter(m => m.nombre_usuario.toLowerCase().includes(busquedaUsuario.trim().toLowerCase())).map((maestro) => (
               <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-                <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text></View>
+                <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('DetalleUsuario', { maestro })}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text></TouchableOpacity>
                                 <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)}><Feather name="copy" size={18} color={colors.textSub} /></TouchableOpacity>
                                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>
@@ -2284,7 +2406,7 @@ function AdminScreen({ navigation }) {
           </View>
         ) : (
           <View>
-            <TouchableOpacity style={styles.backToEquiposBtn} onPress={() => setEquipoSeleccionadoAdmin(null)}><Feather name="arrow-left" size={18} color={colors.textSub} /><Text style={[styles.backToEquiposText, { color: colors.textSub }]}>Volver a todos los equipos</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.backToEquiposBtn} onPress={() => setEquipoSeleccionadoAdmin(null)}><Feather name="arrow-left" size={18} color={colors.textSub} /><Text style={[styles.backToEquiposText, { color: colors.textSub }]}>Volver</Text></TouchableOpacity>
             <Text style={[styles.topicTitle, { color: '#EFBC68', marginTop: 10 }]}>{equipoSeleccionadoAdmin}</Text>
             {(maestrosPorEquipo[equipoSeleccionadoAdmin] || []).map((maestro) => (
               <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
@@ -2624,7 +2746,7 @@ const styles = StyleSheet.create({
   equipoFolderSub: { fontSize: 13, marginTop: 2 },
   backToEquiposBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, paddingVertical: 5 },
   backToEquiposText: { marginLeft: 8, fontSize: 14, fontWeight: 'bold' },
-  userRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, padding: 15, borderRadius: 24, marginBottom: 10 },
+  userRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, paddingVertical: 15, paddingHorizontal: 22, borderRadius: 32, marginBottom: 10 },
   userTextName: { fontSize: 16, fontWeight: 'bold' },
   userTextPin: { fontSize: 13, marginTop: 2 },
   actionBtnBlue: { padding: 10, backgroundColor: 'rgba(74, 85, 104, 0.2)', borderRadius: 14, marginLeft: 6 },
