@@ -770,17 +770,9 @@ function MenuPrincipalScreen({ navigation }) {
         const { data } = await supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy);
         setTieneRol(data && data.length > 0);
       })();
-      (async () => {
-        if (!equipoActivoGlobal || equipoActivoGlobal === 'Sin equipo') { setTieneClases(false); return; }
-        const { data } = await supabase.from('temas_mensuales').select('mes_anio').eq('equipo_asignado', equipoActivoGlobal);
-        const hoy = new Date();
-        const limite = new Date(hoy.getFullYear(), hoy.getMonth() + 2, 1);
-        const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-        const tieneAlgunoEnRango = (data || []).some((tema) => {
-          const fecha = parsearMesAnio(tema.mes_anio);
-          return fecha && fecha >= inicio && fecha <= limite;
-        });
-        setTieneClases(tieneAlgunoEnRango);
+            (async () => {
+        const { data } = await supabase.from('clases_asignadas').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', fechaISO(new Date())).limit(1);
+        setTieneClases(!!(data && data.length > 0));
       })();
       (async () => {
         const { data } = await supabase.from('solicitudes_sustitucion').select('id').eq('estado', 'Pendiente').ilike('maestro_destino', usuarioActivoGlobal);
@@ -1034,7 +1026,28 @@ function GruposScreen({ navigation }) {
   const colors = getColors(isDark);
   const columnas = useColumnas();
   const anchoMax = columnas >= 2 ? 1100 : 850;
-  const grupos = [
+    const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const [asignaciones, setAsignaciones] = useState([]);
+  const [cargandoAsig, setCargandoAsig] = useState(true);
+  useFocusEffect(
+    React.useCallback(() => {
+      if (esAdmin) { setCargandoAsig(false); return; }
+      (async () => {
+        const { data } = await supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', fechaISO(new Date())).in('grupo', ['Niños', 'Pre adolescentes', 'Adolescentes']).order('fecha', { ascending: true });
+        setAsignaciones(data || []);
+        setCargandoAsig(false);
+      })();
+    }, [])
+  );
+  const iconosGrupo = { 'Niños': 'smile', 'Pre adolescentes': 'users', 'Adolescentes': 'book' };
+  const gruposAsignados = [];
+  asignaciones.forEach((a) => {
+    const clave = `${a.mes_anio}|${a.grupo}`;
+    if (gruposAsignados.some((g) => g.clave === clave)) return;
+    gruposAsignados.push({ clave, icono: iconosGrupo[a.grupo] || 'smile', titulo: a.grupo, subtitulo: a.mes_anio, categoria: a.grupo, onPress: () => navigation.navigate('Temas', { grupo: a.grupo }) });
+  });
+  const coordinador = asignaciones.length > 0 ? asignaciones[0].coordinador : null;
+  const gruposAdmin = [
     { icono: 'smile', titulo: 'Niños', subtitulo: '3 a 6 años', categoria: 'Niños', onPress: () => navigation.navigate('Temas', { grupo: 'Niños' }) },
     { icono: 'users', titulo: 'Pre adolescentes', subtitulo: '7 a 9 años', categoria: 'Pre adolescentes', onPress: () => navigation.navigate('Temas', { grupo: 'Pre adolescentes' }) },
     { icono: 'book', titulo: 'Adolescentes', subtitulo: '10 a 13 años', categoria: 'Adolescentes', onPress: () => navigation.navigate('Temas', { grupo: 'Adolescentes' }) },
@@ -1061,9 +1074,18 @@ function GruposScreen({ navigation }) {
           <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
         </TouchableOpacity>
 
+                {!esAdmin && coordinador ? (
+          <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]}>
+            <Feather name="user" size={20} color={colors.textSub} />
+            <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Mi coordinador: {coordinador}</Text>
+          </View>
+        ) : null}
+        {!esAdmin && !cargandoAsig && gruposAsignados.length === 0 ? (
+          <Text style={{ color: colors.textSub, fontSize: 14, marginTop: 20, textAlign: 'center' }}>No tienes clases asignadas por ahora.</Text>
+        ) : null}
         <View style={[styles.gruposContainer, { width: '95%', maxWidth: anchoMax }, columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
-          {grupos.map((g, i) => (
-            <TarjetaMenu key={g.titulo} {...g} isDark={isDark} columnas={columnas} esUltima={i === grupos.length - 1} total={grupos.length} />
+          {(esAdmin ? gruposAdmin : gruposAsignados).map((g, i, arr) => (
+            <TarjetaMenu key={g.clave || g.titulo} {...g} isDark={isDark} columnas={columnas} esUltima={i === arr.length - 1} total={arr.length} />
           ))}
         </View>
       </ScrollView>
