@@ -227,16 +227,6 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             placeholderTextColor={colors.textSub}
           />
 
-                    <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Número de equipo</Text>
-          <TextInput 
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} 
-            value={nuevoNumeroEquipo} 
-            onChangeText={(texto) => setNuevoNumeroEquipo(texto.replace(/[^0-9]/g, ''))} 
-            placeholder="Ej. 2" 
-            placeholderTextColor={colors.textSub}
-            keyboardType="numeric" 
-          />
-
           <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Número celular</Text>
           <TextInput 
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} 
@@ -260,7 +250,7 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.cardBorder }]} onPress={onCancelar}>
               <Text style={[styles.modalCancelText, { color: colors.textSub }]}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ equipo: nuevoNumeroEquipo ? `Equipo ${nuevoNumeroEquipo}` : 'Sin equipo', telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto, elegible_clases_ninos: nuevoElegibleClases, elegible_predicaciones: nuevoElegiblePredicaciones }); }}>
+            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto, elegible_clases_ninos: nuevoElegibleClases, elegible_predicaciones: nuevoElegiblePredicaciones }); }}>
               <Text style={styles.modalConfirmText}>Guardar</Text>
             </TouchableOpacity>
           </View>
@@ -273,10 +263,21 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
 // Panel de Ajustes: se desliza desde la izquierda y cubre solo una parte de la pantalla
 const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }) => {
   const colors = getColors(isDark);
-  const anim = useRef(new Animated.Value(0)).current;
+    const anim = useRef(new Animated.Value(0)).current;
+  const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
 
   useEffect(() => {
     Animated.timing(anim, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: false }).start();
+    if (!visible) return;
+    if (usuarioActivoGlobal) { setNombreVisible(usuarioActivoGlobal); return; }
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const { data } = await supabase.from('maestros').select('nombre_usuario').eq('user_id', session.user.id).single();
+        if (data) { usuarioActivoGlobal = data.nombre_usuario; setNombreVisible(data.nombre_usuario); }
+      } catch (e) { console.error('No se pudo leer el usuario:', e); }
+    })();
   }, [visible]);
 
   const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [-300, 0] });
@@ -287,7 +288,7 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
       <TouchableOpacity activeOpacity={1} onPress={onCerrar} style={StyleSheet.absoluteFill}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
       </TouchableOpacity>
-      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '65%', maxWidth: 300, backgroundColor: colors.background, borderRightWidth: 1, borderRightColor: colors.cardBorder, transform: [{ translateX }], paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 30 : 60, paddingHorizontal: 20 }}>
+      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '65%', maxWidth: 300, backgroundColor: colors.background, borderTopRightRadius: 44, borderBottomRightRadius: 44, overflow: 'hidden', transform: [{ translateX }], paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 30 : 60, paddingHorizontal: 20 }}>
                 <Text style={{ color: colors.textMain, fontSize: 20, fontWeight: '700', marginBottom: 18 }}>Hola, {usuarioActivoGlobal}</Text>
         <Text style={[styles.titleMini, { color: colors.textSub, marginBottom: 14 }]}>Ajustes</Text>
         <TouchableOpacity onPress={() => { onCerrar(); toggleTheme(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
@@ -496,6 +497,15 @@ const TarjetaLista = ({ icono, titulo, subtitulo, detalle, categoria, isDark, an
 };
 
 // Botón para elegir un archivo CSV (reemplaza al botón nativo del navegador)
+const BloqueAdmin = ({ categoria, isDark, children }) => {
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
+  return (
+    <View style={{ backgroundColor: p.fondo + (isDark ? '33' : '66'), borderColor: p.fondo, borderWidth: 1.5, borderRadius: 32, padding: 20, marginBottom: 22 }}>
+      {children}
+    </View>
+  );
+};
+
 const SelectorArchivo = ({ onArchivo, isDark, etiqueta }) => {
   const colors = getColors(isDark);
   const inputRef = useRef(null);
@@ -686,7 +696,10 @@ function LoginScreen({ navigation }) {
   const colors = getColors(isDark);
   const [usuarioLogin, setUsuarioLogin] = useState('');
   const [pinLogin, setPinLogin] = useState('');
-  const [ingresando, setIngresando] = useState(false);
+    const [ingresando, setIngresando] = useState(false);
+  const { width: anchoVentana, height: altoVentana } = useWindowDimensions();
+  const esTactil = Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
+  const compacto = esTactil && anchoVentana > altoVentana;
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '' });
 
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
@@ -719,9 +732,9 @@ function LoginScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: compacto ? 'flex-start' : 'center', alignItems: 'center', padding: 20, paddingTop: compacto ? 12 : 20 }}>
                     <View style={{ width: '100%', maxWidth: 450 }}>
-                        <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 180, height: 128, resizeMode: 'contain', alignSelf: 'center', marginBottom: 30 }} />
+                        <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: compacto ? 110 : 180, height: compacto ? 78 : 128, resizeMode: 'contain', alignSelf: 'center', marginBottom: compacto ? 12 : 30 }} />
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.textSub }]}>Usuario</Text>
               <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholderTextColor={colors.textSub} value={usuarioLogin} onChangeText={(t) => setUsuarioLogin(t.replace(/\s/g, '').toLowerCase())} autoCapitalize="none" autoCorrect={false} spellCheck={false}/>
@@ -972,7 +985,8 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                   const tintText = esClase ? '#3A5A8A' : '#A65A2E';
                   return (
                     <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}>
-                      <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
+                      <View style={{   const [cargandoAsig, setCargandoAsig] = useState(true);
+  const [coordinadoresAdmin, setCoordinadoresAdmin] = useState([]); alignItems: 'center', justifyContent: 'center' }}>
                         <Feather name={esClase ? "calendar" : "mic"} size={16} color={tintText} />
                       </View>
                                             <View style={{ flex: 1 }}>
@@ -1031,7 +1045,15 @@ function GruposScreen({ navigation }) {
   const [cargandoAsig, setCargandoAsig] = useState(true);
   useFocusEffect(
     React.useCallback(() => {
-      if (esAdmin) { setCargandoAsig(false); return; }
+                    {esAdmin && coordinadoresAdmin.length > 0 ? (
+          <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15, flexDirection: 'column', alignItems: 'flex-start', borderRadius: 28, paddingHorizontal: 22 }]}>
+            <Text style={[styles.tablonButtonText, { color: colors.textSub, marginLeft: 0, marginBottom: 4 }]}>Coordinadores por mes</Text>
+            {coordinadoresAdmin.map((c) => (
+              <Text key={c.mes_anio + c.coordinador} style={{ color: colors.textMain, fontSize: 14, marginTop: 4 }}>{c.mes_anio}: {c.coordinador}</Text>
+            ))}
+          </View>
+        ) : null}
+        {!esAdmin && coordinador ? (
       (async () => {
         const { data } = await supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', fechaISO(new Date())).in('grupo', ['Niños', 'Pre adolescentes', 'Adolescentes']).order('fecha', { ascending: true });
         setAsignaciones(data || []);
@@ -1178,13 +1200,12 @@ function TodosUsuariosScreen({ navigation }) {
   }, []);
 
   const descargarCSV = () => {
-    const encabezados = ['Usuario', 'Nombre completo', 'PIN', 'Celular', 'Equipo', 'Rol', 'Elegible Clases de niños', 'Elegible Predicaciones y Clases'];
+    const encabezados = ['Usuario', 'Nombre completo', 'PIN', 'Celular', 'Rol', 'Elegible Clases de niños', 'Elegible Predicaciones y Clases'];
     const filas = maestros.map((m) => [
       m.nombre_usuario,
       m.nombre_completo || '',
       m.pin_acceso,
       m.telefono || '',
-      m.equipo || 'Sin equipo',
       m.rol,
       m.elegible_clases_ninos ? 'Sí' : 'No',
       m.elegible_predicaciones ? 'Sí' : 'No',
@@ -1227,7 +1248,7 @@ function TodosUsuariosScreen({ navigation }) {
             <TouchableOpacity key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => navigation.navigate('DetalleUsuario', { maestro })}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
-                <Text style={[styles.userTextPin, { color: colors.textSub }]}>{maestro.equipo || 'Sin equipo'}</Text>
+                <Text style={[styles.userTextPin, { color: colors.textSub }]}>{maestro.rol === 'administrador' ? 'Administrador' : 'Maestro'}</Text>
               </View>
               <Feather name="chevron-right" size={20} color={colors.textSub} />
             </TouchableOpacity>
@@ -1254,12 +1275,12 @@ function DetalleUsuarioScreen({ route, navigation }) {
     if (!numeroLimpio) {
       return setAlerta({ visible: true, titulo: "Sin número", mensaje: "Esta persona no tiene un número celular guardado.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#EFBC68' });
     }
-    const mensaje = `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${maestro.nombre_usuario}\n🔑 PIN: ${maestro.pin_acceso}\n🛡️ Equipo: ${maestro.equipo || 'Sin equipo'}`;
+    const mensaje = `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${maestro.nombre_usuario}\n🔑 PIN: ${maestro.pin_acceso}`;
     Linking.openURL(`https://wa.me/52${numeroLimpio}?text=${encodeURIComponent(mensaje)}`);
   };
 
   const copiarInfo = async () => {
-    await Clipboard.setStringAsync(`Usuario: ${maestro.nombre_usuario}\nPIN: ${maestro.pin_acceso}\nEquipo: ${maestro.equipo || 'Sin equipo'}`);
+    await Clipboard.setStringAsync(`Usuario: ${maestro.nombre_usuario}\nPIN: ${maestro.pin_acceso}`);
     setAlerta({ visible: true, titulo: "Copiado", mensaje: "La información se copió al portapapeles.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#7EA0D8' });
   };
 
@@ -1271,8 +1292,7 @@ function DetalleUsuarioScreen({ route, navigation }) {
   const guardarEdicion = async (datos) => {
     setMostrarModal(false);
     await supabase.from('maestros').update({
-      equipo: datos.equipo,
-      telefono: datos.telefono,
+            telefono: datos.telefono,
       nombre_completo: datos.nombre_completo,
       elegible_clases_ninos: datos.elegible_clases_ninos,
       elegible_predicaciones: datos.elegible_predicaciones,
@@ -1289,7 +1309,7 @@ function DetalleUsuarioScreen({ route, navigation }) {
           </TouchableOpacity>
                     <View style={{ flex: 1, marginLeft: 8 }}>
             <Text style={[styles.title, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestro.equipo || 'Sin equipo'}</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestro.rol === 'administrador' ? 'Administrador' : 'Maestro'}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
@@ -1795,7 +1815,7 @@ function AdminScreen({ navigation }) {
     if (!usuarioGenerado || !pinGenerado) return setAlerta({ visible: true, titulo: "Aviso", mensaje: "Escribe el nombre del usuario.", onConfirmar: cerrarAlerta, isDark: isDark });
     setGuardando(true);
         const rolFinal = esAdmin ? 'administrador' : 'maestro';
-    const equipoFinal = esAdmin ? 'Administradores' : (numeroEquipoAsignado ? `Equipo ${numeroEquipoAsignado}` : 'Sin equipo');
+    const equipoFinal = esAdmin ? 'Administradores' : 'Sin equipo';
 
         const { data: resultado, error } = await supabase.functions.invoke('registrar-maestro', {
       body: { nombre_usuario: usuarioGenerado, pin_acceso: pinGenerado, rol: rolFinal, equipo: equipoFinal, telefono: telefono, nombre_completo: nombreCompleto, elegible_clases_ninos: elegibleClases, elegible_predicaciones: elegiblePredicaciones }
@@ -1812,7 +1832,7 @@ function AdminScreen({ navigation }) {
     async function guardarEdicion(datos) {
     setMaestroEditando(null);
     setEquipoSeleccionadoAdmin(null);
-                await supabase.from('maestros').update({ equipo: datos.equipo, telefono: datos.telefono, nombre_completo: datos.nombre_completo, elegible_clases_ninos: datos.elegible_clases_ninos, elegible_predicaciones: datos.elegible_predicaciones }).eq('id', maestroEditando.id);
+                await supabase.from('maestros').update({ telefono: datos.telefono, nombre_completo: datos.nombre_completo, elegible_clases_ninos: datos.elegible_clases_ninos, elegible_predicaciones: datos.elegible_predicaciones }).eq('id', maestroEditando.id);
     obtenerMaestros();
   }
 
@@ -1840,12 +1860,12 @@ function AdminScreen({ navigation }) {
       setAlerta({ visible: true, titulo: "Sin número", mensaje: "Esta persona no tiene un número celular guardado.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#EFBC68' });
       return;
     }
-    const mensaje = `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${usuario}\n🔑 PIN: ${pin}\n🛡️ Equipo: ${equipo}`;
+    const mensaje = `¡Hola! Aquí tienes tus accesos.\n\n👤 Usuario: ${usuario}\n🔑 PIN: ${pin}`;
     Linking.openURL(`https://wa.me/52${numeroLimpio}?text=${encodeURIComponent(mensaje)}`);
   };
 
   const copiarInfo = async (usuario, pin, equipo) => {
-    await Clipboard.setStringAsync(`Usuario: ${usuario}\nPIN: ${pin}\nEquipo: ${equipo}`);
+    await Clipboard.setStringAsync(`Usuario: ${usuario}\nPIN: ${pin}`);
     setAlerta({ visible: true, titulo: "Copiado", mensaje: "La información se copió al portapapeles.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#7EA0D8' });
   };
 
@@ -2167,6 +2187,7 @@ function AdminScreen({ navigation }) {
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
           </TouchableOpacity>
         </View>
+                <BloqueAdmin categoria="Calendario" isDark={isDark}>
         <Text style={[styles.topicTitle, { color: colors.textMain }]}>Registrar Usuario</Text>
         
         <View style={styles.formGroup}>
@@ -2193,13 +2214,6 @@ function AdminScreen({ navigation }) {
           <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Predicaciones y Clases</Text>
           <Switch trackColor={{ false: colors.cardBorder, true: "#7EA0D8" }} thumbColor={"#FFFFFF"} onValueChange={setElegiblePredicaciones} value={elegiblePredicaciones} />
         </View>
-        
-        {!esAdmin && (
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, { color: colors.textSub }]}>Número de Equipo (Opcional)</Text>
-            <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Ej. 1" placeholderTextColor={colors.textSub} value={numeroEquipoAsignado} onChangeText={(texto) => setNumeroEquipoAsignado(texto.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
-          </View>
-        )}
         
         {usuarioGenerado !== '' && (
           <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
@@ -2234,7 +2248,7 @@ function AdminScreen({ navigation }) {
           <View>
             {maestros.filter(m => m.nombre_usuario.toLowerCase().includes(busquedaUsuario.trim().toLowerCase())).map((maestro) => (
               <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-                <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso} • {maestro.equipo || 'Sin equipo'}</Text></View>
+                <View style={{ flex: 1 }}><Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && "(Tú)"}</Text><Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text></View>
                                 <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}><Feather name="share-2" size={18} color={colors.textSub} /></TouchableOpacity>
                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)}><Feather name="copy" size={18} color={colors.textSub} /></TouchableOpacity>
                                 <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>
@@ -2275,7 +2289,8 @@ function AdminScreen({ navigation }) {
                  </View>
         )}
 
-        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
+                </BloqueAdmin>
+        <BloqueAdmin categoria="Predicaciones" isDark={isDark}>
         <Text style={[styles.topicTitle, { color: colors.textMain }]}>Cargar Rol (Clases y Predicaciones)</Text>
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las fechas del periodo.</Text>
 
@@ -2298,8 +2313,8 @@ function AdminScreen({ navigation }) {
         <Text style={[styles.topicTitle, { color: colors.textMain }]}>Buscar y eliminar Rol</Text>
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Si un rol se subió con errores, búscalo por mes y elimina lo que sobre.</Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarRol} onChangeText={(t) => setMesBuscarRol(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
-          <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2026)" placeholderTextColor={colors.textSub} value={anioBuscarRol} onChangeText={(t) => setAnioBuscarRol(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
+          <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarRol} onChangeText={(t) => setMesBuscarRol(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
+          <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2026)" placeholderTextColor={colors.textSub} value={anioBuscarRol} onChangeText={(t) => setAnioBuscarRol(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
         </View>
         <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={buscarRol}>{buscandoRol ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Buscar</Text>}</TouchableOpacity>
 
@@ -2321,7 +2336,8 @@ function AdminScreen({ navigation }) {
                     </View>
         )}
 
-        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
+                </BloqueAdmin>
+        <BloqueAdmin categoria="Clases de niños" isDark={isDark}>
         <Text style={[styles.topicTitle, { color: colors.textMain }]}>Cargar Clases de niños</Text>
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el CSV con equipo, mes, coordinador y grupos. Se crea una clase por cada domingo del mes.</Text>
 
@@ -2357,8 +2373,8 @@ function AdminScreen({ navigation }) {
 
                 <Text style={[styles.topicSubtitle, { color: colors.textSub, marginTop: 20, marginBottom: 10 }]}>Buscar y eliminar clases: búscalas por mes y elimina las que sobren.</Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarClases} onChangeText={(t) => setMesBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
-          <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2027)" placeholderTextColor={colors.textSub} value={anioBuscarClases} onChangeText={(t) => setAnioBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
+          <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarClases} onChangeText={(t) => setMesBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
+          <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2027)" placeholderTextColor={colors.textSub} value={anioBuscarClases} onChangeText={(t) => setAnioBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
         </View>
         <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={buscarClases}>{buscandoClases ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Buscar</Text>}</TouchableOpacity>
 
@@ -2400,6 +2416,7 @@ function AdminScreen({ navigation }) {
         <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={descargarAsistenciaCSV}>
           {descargandoAsistencia ? <ActivityIndicator color="#FFFFFF" /> : (<><Feather name="download" size={16} color="#FFFFFF" /><Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>Descargar CSV</Text></>)}
         </TouchableOpacity>
+              </BloqueAdmin>
       </ScrollView>
       <ModalEdicion visible={!!maestroEditando} maestro={maestroEditando} onCancelar={() => setMaestroEditando(null)} onGuardar={guardarEdicion} isDark={isDark} />
       <AlertaPersonalizada {...alerta} />
@@ -2565,30 +2582,30 @@ const styles = StyleSheet.create({
   adminContainer: { paddingHorizontal: 24, paddingTop: 10 },
   formGroup: { marginBottom: 20 },
   label: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
-  input: { borderWidth: 1, borderRadius: 10, padding: 15, fontSize: 16 },
-  primaryButton: { backgroundColor: '#4A5568', padding: 16, borderRadius: 10, alignItems: 'center', marginTop: 10, flexDirection: 'row', justifyContent: 'center' },
+  input: { borderWidth: 1, borderRadius: 18, padding: 15, fontSize: 16 },
+  primaryButton: { backgroundColor: '#4A5568', padding: 17, borderRadius: 999, alignItems: 'center', marginTop: 10, flexDirection: 'row', justifyContent: 'center' },
   buttonDisabled: { opacity: 0.6 },
   primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold', letterSpacing: 0.5 },
-  solicitarBtnClaro: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, paddingVertical: 14, paddingHorizontal: 15, borderRadius: 10, justifyContent: 'center' },
+  solicitarBtnClaro: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, paddingVertical: 14, paddingHorizontal: 15, borderRadius: 999, justifyContent: 'center' },
   solicitarBtnClaroText: { fontWeight: 'bold', fontSize: 14, marginLeft: 8 },
-  tablonButton: { marginTop: 10, borderWidth: 1, padding: 16, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
+  tablonButton: {   card: { borderRadius: 30, padding: 22 }, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   tablonButtonText: { fontSize: 16, fontWeight: 'bold', marginLeft: 10 },
-  aceptarDiscreto: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, marginLeft: 10 },
+  aceptarDiscreto: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, marginLeft: 10 },
   aceptarDiscretoText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 13 },
-  cancelarButton: { backgroundColor: 'transparent', borderWidth: 1, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8 },
+  cancelarButton: { backgroundColor: 'transparent', borderWidth: 1, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999 },
   cancelarButtonText: { fontWeight: 'bold', fontSize: 13 },
-  emptyState: { padding: 30, alignItems: 'center', borderWidth: 1, borderRadius: 16, marginTop: 20 },
+  emptyState: { padding: 30, alignItems: 'center', borderWidth: 1, borderRadius: 28, marginTop: 20 },
   emptyTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 10 },
   emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '80%', maxWidth: 400, borderRadius: 16, padding: 24, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  modalContent: { width: '80%', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, marginRight: 10, borderWidth: 1 }, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
   modalMessage: { fontSize: 15, textAlign: 'center', marginBottom: 25, lineHeight: 22 },
   modalButtons: { flexDirection: 'row', justifyContent: 'center' },
   modalCancelBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, marginRight: 10, borderWidth: 1 },
   modalCancelText: { fontWeight: 'bold', fontSize: 15 },
-  modalConfirmBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10 },
+  modalConfirmBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999 },
   modalConfirmText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 15 },
   divider: { height: 1, marginVertical: 25 },
   
@@ -2600,13 +2617,13 @@ const styles = StyleSheet.create({
   userRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, padding: 15, borderRadius: 10, marginBottom: 10 },
   userTextName: { fontSize: 16, fontWeight: 'bold' },
   userTextPin: { fontSize: 13, marginTop: 2 },
-  actionBtnBlue: { padding: 10, backgroundColor: 'rgba(74, 85, 104, 0.2)', borderRadius: 8, marginLeft: 6 },
-  actionBtnGray: { padding: 10, backgroundColor: 'rgba(74, 85, 104, 0.2)', borderRadius: 8, marginLeft: 6 },
-  actionBtnRed: { padding: 10, backgroundColor: 'rgba(255, 183, 161, 0.2)', borderRadius: 8, marginLeft: 6 },
+  actionBtnBlue: { padding: 10, backgroundColor: 'rgba(74, 85, 104, 0.2)', borderRadius: 14, marginLeft: 6 },
+  actionBtnGray: { padding: 10, backgroundColor: 'rgba(74, 85, 104, 0.2)', borderRadius: 14, marginLeft: 6 },
+  actionBtnRed: { padding: 10, backgroundColor: 'rgba(255, 183, 161, 0.2)', borderRadius: 14, marginLeft: 6 },
   
-  autoGenBox: { borderWidth: 1, padding: 15, borderRadius: 10, marginBottom: 20 },
+  autoGenBox: { borderWidth: 1, padding: 15, borderRadius: 20, marginBottom: 20 },
   autoGenTitle: { fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 10 },
   autoGenRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   autoGenLabel: { width: 100, fontSize: 14, fontWeight: '500' },
-  autoGenInput: { flex: 1, borderWidth: 1, borderRadius: 6, padding: 8, fontSize: 14 }
+  autoGenInput: { flex: 1, borderRadius: 28, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 16 }}>
 });
