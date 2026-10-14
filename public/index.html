@@ -19,10 +19,13 @@
       body {
         overflow: hidden;
       }
-      #root {
+            #root {
         display: flex;
         height: 100%;
         flex: 1;
+        box-sizing: border-box;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
       }
     </style>
   </head>

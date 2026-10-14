@@ -2860,7 +2860,9 @@ export default function App() {
         meta.setAttribute('name', 'theme-color');
         document.head.appendChild(meta);
       }
-      meta.setAttribute('content', getColors(isDark).background);
+            meta.setAttribute('content', getColors(isDark).background);
+      document.documentElement.style.backgroundColor = getColors(isDark).background;
+      document.body.style.backgroundColor = getColors(isDark).background;
     }
   }, [isDark]);
 
