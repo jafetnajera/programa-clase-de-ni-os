@@ -4,7 +4,7 @@ import Svg, { Path, Circle } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import { Feather } from '@expo/vector-icons';
 import { createClient } from '@supabase/supabase-js';
-import { NavigationContainer, DefaultTheme, useFocusEffect } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import OneSignal from 'react-onesignal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -582,7 +582,7 @@ const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, isD
 };
 
 // Tarjeta para listas (temario y clases): mismo estilo redondeado que las del menú
-const TarjetaLista = ({ icono, titulo, subtitulo, detalle, asignado, categoria, isDark, ancho, onPress }) => {
+const TarjetaLista = ({ icono, titulo, subtitulo, detalle, asignado, etiqueta, categoria, isDark, ancho, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Niños'];
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={{ width: ancho || '100%', borderRadius: 38, backgroundColor: paleta.fondo, overflow: 'hidden', paddingVertical: 18, paddingHorizontal: 22, marginBottom: 14 }}>
@@ -593,7 +593,12 @@ const TarjetaLista = ({ icono, titulo, subtitulo, detalle, asignado, categoria, 
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
-          {subtitulo ? <Text style={{ fontSize: 13, fontWeight: '500', marginTop: 3, color: paleta.texto }}>{subtitulo}</Text> : null}
+          {subtitulo ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 3 }}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: paleta.texto }}>{subtitulo}</Text>
+              {etiqueta ? <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.70)', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 999 }}><Text style={{ fontSize: 11, fontWeight: '700', color: paleta.texto }}>{etiqueta}</Text></View> : null}
+            </View>
+          ) : null}
           {detalle ? <Text style={{ fontSize: 12.5, fontStyle: 'italic', marginTop: 3, color: paleta.texto }}>{detalle}</Text> : null}
           {asignado ? <Text style={{ fontSize: 12.5, fontWeight: '600', marginTop: 5, color: paleta.texto }}>{asignado}</Text> : null}
         </View>
@@ -1572,7 +1577,10 @@ function ClasesScreen({ route, navigation }) {
   const [fechasPermitidas, setFechasPermitidas] = useState(null);
   const fechaDeClase = (c) => { const mes = parsearMesAnio(tema.mes_anio); return mes ? (domingosDelMes(mes.getFullYear(), mes.getMonth())[c.numero_clase - 1] || null) : null; };
     const clasesVisibles = fechasPermitidas ? clasesReales.filter((c) => fechasPermitidas.includes(fechaDeClase(c))) : clasesReales;
-  const [filasMes, setFilasMes] = useState([]);
+    const [filasMes, setFilasMes] = useState([]);
+  const [pendientesIds, setPendientesIds] = useState([]);
+  const enfocada = useIsFocused();
+  const apoyoPendiente = (c) => { const fecha = fechaDeClase(c); return filasMes.some((r) => r.fecha === fecha && pendientesIds.includes(r.id)); };
   const [mapaNombres, setMapaNombres] = useState({});
   useEffect(() => { cargarMapaNombres().then(setMapaNombres); }, []);
   useEffect(() => {
@@ -1580,10 +1588,17 @@ function ClasesScreen({ route, navigation }) {
       const mes = parsearMesAnio(tema.mes_anio);
       if (!mes) return;
       const etiqueta = `${NOMBRES_MESES[mes.getMonth()]} ${mes.getFullYear()}`;
-      const { data } = await supabase.from('clases_asignadas').select('fecha, nombre_usuario, usuario_original').eq('grupo', grupo).eq('mes_anio', etiqueta);
-      setFilasMes(data || []);
+      const { data } = await supabase.from('clases_asignadas').select('id, fecha, nombre_usuario, usuario_original').eq('grupo', grupo).eq('mes_anio', etiqueta);
+            setFilasMes(data || []);
+      const ids = (data || []).map((r) => r.id);
+      if (ids.length > 0) {
+        const { data: pend } = await supabase.from('solicitudes_sustitucion').select('clase_asignada_id').in('clase_asignada_id', ids).eq('estado', 'Pendiente');
+        setPendientesIds((pend || []).map((p) => p.clase_asignada_id));
+      } else {
+        setPendientesIds([]);
+      }
     })();
-  }, [tema.id, grupo]);
+  }, [tema.id, grupo, enfocada]);
   const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
   const verTodos = rolUsuarioActivoGlobal === 'administrador' || fechasPermitidas === null;
   // Texto de cada domingo: quién tiene la clase y, si alguien la cubre, quién la cubre y a quién
@@ -1653,7 +1668,7 @@ function ClasesScreen({ route, navigation }) {
             ) : (
                             <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
                 {clasesVisibles.map((clase) => (
-                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={`Domingo ${clase.numero_clase}`} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
+                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={`Domingo ${clase.numero_clase}`} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} etiqueta={apoyoPendiente(clase) ? 'Apoyo pendiente' : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
                 ))}
               </View>
             )}
