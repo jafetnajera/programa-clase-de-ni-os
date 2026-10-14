@@ -404,6 +404,9 @@ const obtenerNotificaciones = async () => {
         const conflicto = await buscarConflictoDia(usuarioActivoGlobal, s.fecha_referencia);
         if (!conflicto) items.push({ clave: `gen:${s.id}`, accion: true, mensaje: `${nom(s.maestro_solicitante)} pide apoyo y tú estás libre`, detalle: cuando(s) });
       }
+      if (s.estado === 'Cubierta' && solicitante === yo && s.maestro_suplente) {
+        items.push({ clave: `acepto:${s.id}`, accion: false, mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
+      }
       if (esClase && coordPorClase[s.clase_asignada_id] === yo && solicitante !== yo) {
         if (s.estado === 'Pendiente') items.push({ clave: `coord-pide:${s.id}`, accion: false, mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
         else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, accion: false, mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
@@ -1887,7 +1890,14 @@ function TablonScreen({ navigation, route }) {
         consulta = consulta.or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`);
     let { data } = await consulta;
     if (rolUsuarioActivoGlobal !== 'administrador') {
-      data = (data || []).filter((s) => !s.maestro_destino || s.maestro_destino.toLowerCase() === usuarioActivoGlobal.toLowerCase());
+            const yo = (usuarioActivoGlobal || '').toLowerCase();
+      const { data: lista } = await supabase.rpc('nombres_publicos');
+      const yoInfo = (lista || []).find((m) => (m.nombre_usuario || '').toLowerCase() === yo) || {};
+      data = (data || []).filter((s) => {
+        if ((s.maestro_solicitante || '').toLowerCase() === yo || (s.maestro_suplente || '').toLowerCase() === yo) return true;
+        if (s.maestro_destino) return s.maestro_destino.toLowerCase() === yo;
+        return s.grupo_clase === 'Predicaciones' ? !!yoInfo.elegible_predicaciones : !!yoInfo.elegible_clases_ninos;
+      });
     }
     setSolicitudes(data || []);
     setCargando(false);
@@ -1912,6 +1922,15 @@ function TablonScreen({ navigation, route }) {
         if ((solicitud.maestro_solicitante || '').toLowerCase() === usuarioActivoGlobal.toLowerCase()) {
           setTimeout(() => setAlerta({ visible: true, titulo: "Aviso", mensaje: "No puedes aceptar tu propia solicitud.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
           return;
+        }
+                if (!solicitud.maestro_destino) {
+          const { data: lista } = await supabase.rpc('nombres_publicos');
+          const yo = (lista || []).find((m) => (m.nombre_usuario || '').toLowerCase() === usuarioActivoGlobal.toLowerCase()) || {};
+          const esPred = solicitud.grupo_clase === 'Predicaciones';
+          if (!(esPred ? yo.elegible_predicaciones : yo.elegible_clases_ninos)) {
+            setTimeout(() => setAlerta({ visible: true, titulo: "No se puede aceptar", mensaje: esPred ? "Esta solicitud es solo para personas habilitadas para predicaciones." : "Esta solicitud es solo para personas habilitadas para clases de niños.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+            return;
+          }
         }
         if (solicitud.programa_servicio_id || solicitud.clase_asignada_id) {
           const esClase = !!solicitud.clase_asignada_id;
