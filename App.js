@@ -260,14 +260,45 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
   );
 };
 
+// ---- AVISOS PUSH: estado de este dispositivo y cómo activarlos ----
+// Devuelve: 'activo' | 'pendiente' | 'bloqueado' | 'instalar' | 'no-soportado'
+const estadoAvisos = () => {
+  try {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof navigator === 'undefined') return 'no-soportado';
+    const esIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const instalada = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+    if (esIOS && !instalada) return 'instalar';
+    if (typeof Notification === 'undefined') return 'no-soportado';
+    if (Notification.permission === 'denied') return 'bloqueado';
+    if (Notification.permission === 'granted') {
+      let suscrito = true;
+      try { suscrito = OneSignal.User.PushSubscription.optedIn !== false; } catch (e) {}
+      return suscrito ? 'activo' : 'pendiente';
+    }
+    return 'pendiente';
+  } catch (e) { return 'no-soportado'; }
+};
+
+// Pide el permiso (debe llamarse desde un toque de la persona) y vincula este dispositivo con su usuario
+const activarAvisos = async () => {
+  try {
+    await OneSignal.Notifications.requestPermission();
+    if (OneSignal.User.PushSubscription.optedIn === false) await OneSignal.User.PushSubscription.optIn();
+    if (usuarioActivoGlobal) OneSignal.login(usuarioActivoGlobal);
+  } catch (e) { console.error('No se pudieron activar los avisos:', e); }
+  return estadoAvisos();
+};
+
 // Panel de Ajustes: se desliza desde la izquierda y cubre solo una parte de la pantalla
 const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }) => {
   const colors = getColors(isDark);
     const anim = useRef(new Animated.Value(0)).current;
-  const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
+    const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
+  const [avisos, setAvisos] = useState(estadoAvisos());
 
   useEffect(() => {
     Animated.timing(anim, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: false }).start();
+        if (visible) setAvisos(estadoAvisos());
     if (!visible) return;
         if (usuarioActivoGlobal) {
       setNombreVisible(usuarioActivoGlobal);
@@ -299,6 +330,16 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
           <Feather name={isDark ? "sun" : "moon"} size={20} color={colors.textSub} />
           <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>{isDark ? 'Modo claro' : 'Modo oscuro'}</Text>
         </TouchableOpacity>
+                {avisos !== 'no-soportado' && (
+          <TouchableOpacity activeOpacity={avisos === 'pendiente' ? 0.6 : 1} onPress={async () => { if (avisos === 'pendiente') setAvisos(await activarAvisos()); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+            <Feather name={avisos === 'activo' ? 'bell' : 'bell-off'} size={20} color={avisos === 'pendiente' ? colors.textMain : colors.textSub} />
+            <View style={{ marginLeft: 14, flex: 1 }}>
+              <Text style={{ fontSize: 15, color: colors.textMain }}>{avisos === 'activo' ? 'Avisos activados' : avisos === 'pendiente' ? 'Activar avisos' : avisos === 'bloqueado' ? 'Avisos bloqueados' : 'Instala la app para recibir avisos'}</Text>
+              {avisos === 'bloqueado' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Actívalos en los ajustes de tu teléfono o navegador</Text>}
+              {avisos === 'instalar' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Agrégala a tu pantalla de inicio</Text>}
+            </View>
+          </TouchableOpacity>
+        )}
         <View style={{ height: 1, backgroundColor: colors.cardBorder, marginVertical: 6 }} />
         <TouchableOpacity onPress={() => { onCerrar(); onCerrarSesion(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
           <Feather name="log-out" size={20} color={colors.textSub} />
@@ -891,7 +932,8 @@ function MenuPrincipalScreen({ navigation }) {
         const [tieneRol, setTieneRol] = useState(false);
   const [tieneClases, setTieneClases] = useState(false);
     const [mostrarAjustes, setMostrarAjustes] = useState(false);
-    const [hayNotificaciones, setHayNotificaciones] = useState(false);
+        const [hayNotificaciones, setHayNotificaciones] = useState(false);
+    const [avisosPush, setAvisosPush] = useState(estadoAvisos());
     const columnas = useColumnas();
   const esTablet = columnas >= 2;
   const tarjetas = [
@@ -904,7 +946,8 @@ function MenuPrincipalScreen({ navigation }) {
 
     useFocusEffect(
     React.useCallback(() => {
-            const revisarNotificaciones = async () => {
+                  setAvisosPush(estadoAvisos());
+      const revisarNotificaciones = async () => {
         const { items, vistas } = await obtenerNotificaciones();
         setHayNotificaciones(items.some((n) => n.accion || !vistas.includes(n.clave)));
       };
@@ -963,7 +1006,20 @@ function MenuPrincipalScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-                                                                <View style={[styles.gruposContainer, { width: '95%', maxWidth: esTablet ? 1100 : 850 }, esTablet && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
+                                                                {avisosPush !== 'activo' && avisosPush !== 'no-soportado' && (
+          <View style={{ width: '95%', maxWidth: esTablet ? 1100 : 850, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 14 }}>
+            <Feather name="bell-off" size={20} color={colors.textSub} />
+            <Text style={{ flex: 1, marginLeft: 12, fontSize: 13, color: colors.textMain }}>
+              {avisosPush === 'pendiente' ? 'Activa los avisos para enterarte de las solicitudes de apoyo.' : avisosPush === 'bloqueado' ? 'Los avisos están bloqueados. Actívalos en los ajustes de tu teléfono o navegador.' : 'Para recibir avisos, instala la app en tu pantalla de inicio.'}
+            </Text>
+            {avisosPush === 'pendiente' && (
+              <TouchableOpacity onPress={async () => setAvisosPush(await activarAvisos())} style={{ marginLeft: 10, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: colors.textMain }}>
+                <Text style={{ color: colors.background, fontWeight: '700', fontSize: 13 }}>Activar</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+        <View style={[styles.gruposContainer, { width: '95%', maxWidth: esTablet ? 1100 : 850 }, esTablet && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
           {tarjetas.map((t, i) => (
             <TarjetaMenu key={t.titulo} {...t} isDark={isDark} columnas={columnas} esUltima={i === tarjetas.length - 1} total={tarjetas.length} />
           ))}
