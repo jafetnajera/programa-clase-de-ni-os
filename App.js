@@ -359,6 +359,62 @@ const buscarConflictoDia = async (usuario, fecha, ignorar = {}) => {
   return null;
 };
 
+// ---- NOTIFICACIONES: avisos de apoyo para el usuario activo ----
+const claveVistas = () => `notificaciones_vistas_${(usuarioActivoGlobal || '').toLowerCase()}`;
+
+const marcarNotificacionesVistas = async (items) => {
+  try {
+    const claves = items.map((n) => n.clave).slice(0, 300);
+    await AsyncStorage.setItem(claveVistas(), JSON.stringify(claves));
+  } catch (e) { console.error('No se pudieron guardar las notificaciones vistas:', e); }
+};
+
+// Devuelve { items, vistas }. Cada item: { clave, accion, mensaje, detalle }
+//  - accion = true: algo que la persona puede responder (dirigida a ella o general para quien esté libre)
+//  - accion = false: aviso informativo para el coordinador (alguien de su equipo pide apoyo o lo aceptaron)
+const obtenerNotificaciones = async () => {
+  const items = [];
+  try {
+    const yo = (usuarioActivoGlobal || '').toLowerCase();
+    const hoy = fechaISO(new Date());
+    const { data: lista } = await supabase.rpc('nombres_publicos');
+    const mapa = {};
+    (lista || []).forEach((m) => { mapa[(m.nombre_usuario || '').toLowerCase()] = m.nombre_completo || m.nombre_usuario; });
+    const nom = (u) => ponerMayusculas(mapa[(u || '').toLowerCase()] || u);
+    const yoInfo = (lista || []).find((m) => (m.nombre_usuario || '').toLowerCase() === yo);
+    const soyElegibleClases = !!(yoInfo && yoInfo.elegible_clases_ninos);
+
+    const { data: reqs } = await supabase.from('solicitudes_sustitucion').select('*').or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`).order('creado_en', { ascending: false }).range(0, 499);
+    const solicitudes = reqs || [];
+
+    const idsClases = [...new Set(solicitudes.filter((s) => s.clase_asignada_id).map((s) => s.clase_asignada_id))];
+    const coordPorClase = {};
+    if (idsClases.length > 0) {
+      const { data: cl } = await supabase.from('clases_asignadas').select('id, coordinador').in('id', idsClases);
+      (cl || []).forEach((c) => { coordPorClase[c.id] = (c.coordinador || '').toLowerCase(); });
+    }
+    const cuando = (s) => `${s.titulo_tema}${s.grupo_clase ? ' • ' + s.grupo_clase : ''}${s.tipo_intercambio === 'intercambio' ? ' • Intercambio de fechas' : ''}`;
+
+    for (const s of solicitudes) {
+      const solicitante = (s.maestro_solicitante || '').toLowerCase();
+      const esClase = !!s.clase_asignada_id;
+      if (s.estado === 'Pendiente' && (s.maestro_destino || '').toLowerCase() === yo) {
+        items.push({ clave: `dir:${s.id}`, accion: true, mensaje: `${nom(s.maestro_solicitante)} te pide apoyo`, detalle: cuando(s) });
+      } else if (s.estado === 'Pendiente' && esClase && !s.maestro_destino && solicitante !== yo && soyElegibleClases && s.fecha_referencia) {
+        const conflicto = await buscarConflictoDia(usuarioActivoGlobal, s.fecha_referencia);
+        if (!conflicto) items.push({ clave: `gen:${s.id}`, accion: true, mensaje: `${nom(s.maestro_solicitante)} pide apoyo y tú estás libre`, detalle: cuando(s) });
+      }
+      if (esClase && coordPorClase[s.clase_asignada_id] === yo && solicitante !== yo) {
+        if (s.estado === 'Pendiente') items.push({ clave: `coord-pide:${s.id}`, accion: false, mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
+        else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, accion: false, mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
+      }
+    }
+  } catch (e) { console.error('Error leyendo notificaciones:', e); }
+  let vistas = [];
+  try { vistas = JSON.parse((await AsyncStorage.getItem(claveVistas())) || '[]'); } catch (e) {}
+  return { items, vistas };
+};
+
 const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark, onCancelar, onConfirmar, tipoItem = 'rol', item = null }) => {
   const colors = getColors(isDark);
   const [paso, setPaso] = useState('inicio');
@@ -479,7 +535,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
 };
 
 // Tarjeta del menú principal: esquinas muy redondeadas, ícono en círculo y título
-const TarjetaMenu = ({ icono, titulo, subtitulo, categoria, pronto, isDark, columnas, esUltima, total, onPress }) => {
+const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, isDark, columnas, esUltima, total, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
   const m = columnas === 3
     ? { alto: 236, radio: 54, circulo: 54, icono: 26, texto: 25, vertical: 24, lateral: 30, pill: 12 }
@@ -513,6 +569,7 @@ const TarjetaMenu = ({ icono, titulo, subtitulo, categoria, pronto, isDark, colu
                 <View style={{ flex: 1 }}>
           <Text style={{ fontSize: m.texto, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
           {subtitulo ? <Text style={{ fontSize: Math.round(m.texto * 0.68), fontWeight: '500', marginTop: 2, color: paleta.texto }}>{subtitulo}</Text> : null}
+          {detalle ? <Text style={{ fontSize: Math.round(m.texto * 0.62), fontWeight: '600', marginTop: 5, color: paleta.texto }}>{detalle}</Text> : null}
         </View>
         {pronto && (
           <View style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: pastillaFondo }}>
@@ -833,12 +890,12 @@ function MenuPrincipalScreen({ navigation }) {
         setTieneRol(data && data.length > 0);
       })();
             (async () => {
-        const { data } = await supabase.from('clases_asignadas').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', fechaISO(new Date())).limit(1);
+        const { data } = await supabase.from('clases_asignadas').select('id').or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`).gte('fecha', fechaISO(new Date())).limit(1);
         setTieneClases(!!(data && data.length > 0));
       })();
       (async () => {
-        const { data } = await supabase.from('solicitudes_sustitucion').select('id').eq('estado', 'Pendiente').ilike('maestro_destino', usuarioActivoGlobal);
-        setHayNotificaciones(data && data.length > 0);
+        const { items, vistas } = await obtenerNotificaciones();
+        setHayNotificaciones(items.some((n) => n.accion || !vistas.includes(n.clave)));
       })();
     }, [])
   );
@@ -1116,6 +1173,31 @@ function GruposScreen({ navigation }) {
       })();
     }, [])
   );
+    const [filasVista, setFilasVista] = useState([]);
+  const [soyCoordinador, setSoyCoordinador] = useState(false);
+  useFocusEffect(
+    React.useCallback(() => {
+      (async () => {
+        const hoy = new Date();
+        const yo = (usuarioActivoGlobal || '').toLowerCase();
+        let consulta = supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador, nombre_usuario').gte('fecha', fechaISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1))).order('fecha', { ascending: true }).range(0, 4999);
+        if (!esAdmin) consulta = consulta.or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`);
+        const { data } = await consulta;
+        const filas = data || [];
+        const coordina = filas.filter((r) => (r.coordinador || '').toLowerCase() === yo);
+        setSoyCoordinador(coordina.length > 0);
+        setFilasVista(esAdmin ? filas : coordina);
+      })();
+    }, [])
+  );
+  const vistaCompleta = esAdmin || soyCoordinador;
+  const mesRef = filasVista.length > 0 ? filasVista[0].mes_anio : null;
+  const coordinadorMes = (filasVista.find((r) => r.mes_anio === mesRef && r.coordinador) || {}).coordinador || null;
+  const asignadosA = (g) => {
+    const nombres = [];
+    filasVista.filter((r) => r.mes_anio === mesRef && r.grupo === g).forEach((r) => { const n = nombreDe(r.nombre_usuario); if (!nombres.includes(n)) nombres.push(n); });
+    return nombres.length > 0 ? `Asignado a: ${nombres.join(', ')}` : 'Sin asignar';
+  };
   const iconosGrupo = { 'Niños': 'smile', 'Pre adolescentes': 'users', 'Adolescentes': 'book' };
   const gruposAsignados = [];
   asignaciones.forEach((a) => {
@@ -1151,25 +1233,23 @@ function GruposScreen({ navigation }) {
           <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
         </TouchableOpacity>
 
-                        {esAdmin && coordinadoresAdmin.length > 0 ? (
-          <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15, flexDirection: 'column', alignItems: 'flex-start', borderRadius: 28, paddingHorizontal: 22 }]}>
-            <Text style={[styles.tablonButtonText, { color: colors.textSub, marginLeft: 0, marginBottom: 4 }]}>Coordinadores por mes</Text>
-            {coordinadoresAdmin.map((c) => (
-              <Text key={c.mes_anio + c.coordinador} style={{ color: colors.textMain, fontSize: 14, marginTop: 4 }}>{c.mes_anio}: {nombreDe(c.coordinador)}</Text>
-            ))}
+                                {vistaCompleta && coordinadorMes ? (
+          <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]}>
+            <Feather name="user" size={20} color={colors.textSub} />
+            <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Coordinador de {mesRef}: {nombreDe(coordinadorMes)}</Text>
           </View>
         ) : null}
-        {!esAdmin && coordinador ? (
+        {!vistaCompleta && coordinador ? (
           <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]}>
             <Feather name="user" size={20} color={colors.textSub} />
             <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Mi coordinador: {nombreDe(coordinador)}</Text>
           </View>
         ) : null}
-        {!esAdmin && !cargandoAsig && gruposAsignados.length === 0 ? (
+        {!vistaCompleta && !cargandoAsig && gruposAsignados.length === 0 ? (
           <Text style={{ color: colors.textSub, fontSize: 14, marginTop: 20, textAlign: 'center' }}>No tienes clases asignadas por ahora.</Text>
         ) : null}
         <View style={[styles.gruposContainer, { width: '95%', maxWidth: anchoMax }, columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
-          {(esAdmin ? gruposAdmin : gruposAsignados).map((g, i, arr) => (
+          {(vistaCompleta ? gruposAdmin.map((g) => ({ ...g, detalle: asignadosA(g.titulo) })) : gruposAsignados).map((g, i, arr) => (
             <TarjetaMenu key={g.clave || g.titulo} {...g} isDark={isDark} columnas={columnas} esUltima={i === arr.length - 1} total={arr.length} />
           ))}
         </View>
@@ -1190,7 +1270,9 @@ function NotificacionesScreen({ navigation }) {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('solicitudes_sustitucion').select('*').eq('estado', 'Pendiente').ilike('maestro_destino', usuarioActivoGlobal).order('creado_en', { ascending: false });
+      const { items } = await obtenerNotificaciones();
+      const data = items;
+      await marcarNotificacionesVistas(items);
       setSolicitudes(data || []);
       const { data: nombres } = await supabase.rpc('nombres_publicos');
       const mapa = {};
@@ -1227,11 +1309,11 @@ function NotificacionesScreen({ navigation }) {
             </View>
           ) : (
             <>
-              <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 15 }}>Solicitudes de apoyo dirigidas a ti:</Text>
+              <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 15 }}>Avisos sobre solicitudes de apoyo:</Text>
               {solicitudes.map((s) => (
-                <View key={s.id} style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 12, padding: 15, marginBottom: 12 }}>
-                  <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 15 }}>{nombreBonito(s.maestro_solicitante)} pide apoyo</Text>
-                  <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 2 }}>{s.titulo_tema}{s.tipo_intercambio === 'intercambio' ? ' • Intercambio de fechas' : ''}</Text>
+                <View key={s.clave} style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, paddingVertical: 16, paddingHorizontal: 20, marginBottom: 12 }}>
+                  <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 15 }}>{s.mensaje}</Text>
+                  <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 2 }}>{s.detalle}</Text>
                 </View>
               ))}
               <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Tablon', {})}>
@@ -1486,6 +1568,9 @@ function ClasesScreen({ route, navigation }) {
   const { tema, grupo } = route.params;
   const { isDark } = useContext(ThemeContext);
     const [clasesReales, setClasesReales] = useState([]);
+  const [fechasPermitidas, setFechasPermitidas] = useState(null);
+  const fechaDeClase = (c) => { const mes = parsearMesAnio(tema.mes_anio); return mes ? (domingosDelMes(mes.getFullYear(), mes.getMonth())[c.numero_clase - 1] || null) : null; };
+  const clasesVisibles = fechasPermitidas ? clasesReales.filter((c) => fechasPermitidas.includes(fechaDeClase(c))) : clasesReales;
   const columnas = useColumnas();
   const [cargando, setCargando] = useState(true);
   const theme = getThemeColors(grupo, isDark);
@@ -1494,7 +1579,21 @@ function ClasesScreen({ route, navigation }) {
   useEffect(() => {
     async function obtenerClases() {
       const { data, error } = await supabase.from('clases_detalle').select('*').eq('tema_id', tema.id).eq('rango_edad', grupo).order('numero_clase', { ascending: true });
-      if (!error && data) setClasesReales(data);
+      if (!error && data) {
+        let permitidas = null;
+        const mesTema = parsearMesAnio(tema.mes_anio);
+        if (rolUsuarioActivoGlobal !== 'administrador' && mesTema) {
+          const etiquetaMes = `${NOMBRES_MESES[mesTema.getMonth()]} ${mesTema.getFullYear()}`;
+          const { data: filas } = await supabase.from('clases_asignadas').select('fecha, nombre_usuario, coordinador').eq('grupo', grupo).eq('mes_anio', etiquetaMes).or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`);
+          const yo = (usuarioActivoGlobal || '').toLowerCase();
+          const lista = filas || [];
+          if (!lista.some((r) => (r.coordinador || '').toLowerCase() === yo)) {
+            permitidas = lista.filter((r) => (r.nombre_usuario || '').toLowerCase() === yo).map((r) => r.fecha);
+          }
+        }
+        setFechasPermitidas(permitidas);
+        setClasesReales(data);
+      }
       setCargando(false);
     }
     obtenerClases();
@@ -1519,7 +1618,7 @@ function ClasesScreen({ route, navigation }) {
           <View style={styles.center}><ActivityIndicator size="large" color={theme.main} /></View>
         ) : (
           <ScrollView style={styles.listContainer}>
-            {clasesReales.length === 0 ? (
+            {clasesVisibles.length === 0 ? (
               <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                 <Feather name="book" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
                 <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Sin lecciones</Text>
@@ -1527,7 +1626,7 @@ function ClasesScreen({ route, navigation }) {
               </View>
             ) : (
                             <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-                {clasesReales.map((clase) => (
+                {clasesVisibles.map((clase) => (
                   <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={`Domingo ${clase.numero_clase}`} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
                 ))}
               </View>
