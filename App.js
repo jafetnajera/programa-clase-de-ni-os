@@ -582,7 +582,7 @@ const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, isD
 };
 
 // Tarjeta para listas (temario y clases): mismo estilo redondeado que las del menú
-const TarjetaLista = ({ icono, titulo, subtitulo, detalle, categoria, isDark, ancho, onPress }) => {
+const TarjetaLista = ({ icono, titulo, subtitulo, detalle, asignado, categoria, isDark, ancho, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Niños'];
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={{ width: ancho || '100%', borderRadius: 38, backgroundColor: paleta.fondo, overflow: 'hidden', paddingVertical: 18, paddingHorizontal: 22, marginBottom: 14 }}>
@@ -595,6 +595,7 @@ const TarjetaLista = ({ icono, titulo, subtitulo, detalle, categoria, isDark, an
           <Text style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
           {subtitulo ? <Text style={{ fontSize: 13, fontWeight: '500', marginTop: 3, color: paleta.texto }}>{subtitulo}</Text> : null}
           {detalle ? <Text style={{ fontSize: 12.5, fontStyle: 'italic', marginTop: 3, color: paleta.texto }}>{detalle}</Text> : null}
+          {asignado ? <Text style={{ fontSize: 12.5, fontWeight: '600', marginTop: 5, color: paleta.texto }}>{asignado}</Text> : null}
         </View>
         <Feather name="chevron-right" size={22} color={paleta.texto} />
       </View>
@@ -1180,7 +1181,7 @@ function GruposScreen({ navigation }) {
       (async () => {
         const hoy = new Date();
         const yo = (usuarioActivoGlobal || '').toLowerCase();
-        let consulta = supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador, nombre_usuario').gte('fecha', fechaISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1))).order('fecha', { ascending: true }).range(0, 4999);
+        let consulta = supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador, nombre_usuario, usuario_original').gte('fecha', fechaISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1))).order('fecha', { ascending: true }).range(0, 4999);
         if (!esAdmin) consulta = consulta.or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`);
         const { data } = await consulta;
         const filas = data || [];
@@ -1195,7 +1196,7 @@ function GruposScreen({ navigation }) {
   const coordinadorMes = (filasVista.find((r) => r.mes_anio === mesRef && r.coordinador) || {}).coordinador || null;
   const asignadosA = (g) => {
     const nombres = [];
-    filasVista.filter((r) => r.mes_anio === mesRef && r.grupo === g).forEach((r) => { const n = nombreDe(r.nombre_usuario); if (!nombres.includes(n)) nombres.push(n); });
+    filasVista.filter((r) => r.mes_anio === mesRef && r.grupo === g).forEach((r) => { const n = nombreDe(r.usuario_original || r.nombre_usuario); if (!nombres.includes(n)) nombres.push(n); });
     return nombres.length > 0 ? `Asignado a: ${nombres.join(', ')}` : 'Sin asignar';
   };
   const iconosGrupo = { 'Niños': 'smile', 'Pre adolescentes': 'users', 'Adolescentes': 'book' };
@@ -1570,7 +1571,32 @@ function ClasesScreen({ route, navigation }) {
     const [clasesReales, setClasesReales] = useState([]);
   const [fechasPermitidas, setFechasPermitidas] = useState(null);
   const fechaDeClase = (c) => { const mes = parsearMesAnio(tema.mes_anio); return mes ? (domingosDelMes(mes.getFullYear(), mes.getMonth())[c.numero_clase - 1] || null) : null; };
-  const clasesVisibles = fechasPermitidas ? clasesReales.filter((c) => fechasPermitidas.includes(fechaDeClase(c))) : clasesReales;
+    const clasesVisibles = fechasPermitidas ? clasesReales.filter((c) => fechasPermitidas.includes(fechaDeClase(c))) : clasesReales;
+  const [filasMes, setFilasMes] = useState([]);
+  const [mapaNombres, setMapaNombres] = useState({});
+  useEffect(() => { cargarMapaNombres().then(setMapaNombres); }, []);
+  useEffect(() => {
+    (async () => {
+      const mes = parsearMesAnio(tema.mes_anio);
+      if (!mes) return;
+      const etiqueta = `${NOMBRES_MESES[mes.getMonth()]} ${mes.getFullYear()}`;
+      const { data } = await supabase.from('clases_asignadas').select('fecha, nombre_usuario, usuario_original').eq('grupo', grupo).eq('mes_anio', etiqueta);
+      setFilasMes(data || []);
+    })();
+  }, [tema.id, grupo]);
+  const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
+  const verTodos = rolUsuarioActivoGlobal === 'administrador' || fechasPermitidas === null;
+  // Texto de cada domingo: quién tiene la clase y, si alguien la cubre, quién la cubre y a quién
+  const textoAsignado = (c) => {
+    const fecha = fechaDeClase(c);
+    const filas = filasMes.filter((r) => r.fecha === fecha);
+    const cubiertas = filas.filter((r) => r.usuario_original && r.usuario_original.toLowerCase() !== (r.nombre_usuario || '').toLowerCase());
+    const titulares = filas.filter((r) => !cubiertas.includes(r));
+    const lineas = [];
+    if (verTodos && titulares.length > 0) lineas.push(`Asignado a: ${[...new Set(titulares.map((r) => nombreDe(r.nombre_usuario)))].join(', ')}`);
+    cubiertas.forEach((r) => lineas.push(`Cubre: ${nombreDe(r.nombre_usuario)} (en lugar de ${nombreDe(r.usuario_original)})`));
+    return lineas.length > 0 ? lineas.join('\n') : null;
+  };
   const columnas = useColumnas();
   const [cargando, setCargando] = useState(true);
   const theme = getThemeColors(grupo, isDark);
@@ -1627,7 +1653,7 @@ function ClasesScreen({ route, navigation }) {
             ) : (
                             <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
                 {clasesVisibles.map((clase) => (
-                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={`Domingo ${clase.numero_clase}`} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
+                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={`Domingo ${clase.numero_clase}`} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
                 ))}
               </View>
             )}
