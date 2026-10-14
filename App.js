@@ -394,7 +394,7 @@ const obtenerNotificaciones = async () => {
       const { data: cl } = await supabase.from('clases_asignadas').select('id, coordinador').in('id', idsClases);
       (cl || []).forEach((c) => { coordPorClase[c.id] = (c.coordinador || '').toLowerCase(); });
     }
-        const irTablon = (s) => ({ pantalla: 'Tablon', params: s.grupo_clase === 'Predicaciones' ? { soloGrupo: 'Predicaciones' } : { excluirGrupo: 'Predicaciones' } });
+        const irTablon = (s) => ({ pantalla: 'Tablon', params: { solicitudId: s.id, ...(s.grupo_clase === 'Predicaciones' ? { soloGrupo: 'Predicaciones' } : { excluirGrupo: 'Predicaciones' }) } });
     const irGrupos = { pantalla: 'Grupos', params: {} };
     const cuando = (s) => `${s.titulo_tema}${s.grupo_clase ? ' • ' + s.grupo_clase : ''}${s.tipo_intercambio === 'intercambio' ? ' • Intercambio de fechas' : ''}`;
 
@@ -416,12 +416,12 @@ const obtenerNotificaciones = async () => {
         items.push({ clave: `acepto:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
       }
             if (rolUsuarioActivoGlobal === 'administrador' && items.length === antes && solicitante !== yo && !(esClase && coordPorClase[s.clase_asignada_id] === yo)) {
-        if (s.estado === 'Pendiente') items.push({ clave: `admin-pide:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo`, detalle: cuando(s) });
+        if (s.estado === 'Pendiente') items.push({ clave: `admin-pide:${s.id}`, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo`, detalle: cuando(s) });
         else if (s.estado === 'Cubierta' && s.maestro_suplente && (s.maestro_suplente || '').toLowerCase() !== yo) items.push({ clave: `admin-acepta:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
       }
       if (esClase && coordPorClase[s.clase_asignada_id] === yo && solicitante !== yo) {
-        if (s.estado === 'Pendiente') items.push({ clave: `coord-pide:${s.id}`, accion: false, destino: irGrupos, mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
-        else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, accion: false, destino: irGrupos, mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
+        if (s.estado === 'Pendiente' && items.length === antes) items.push({ clave: `coord-pide:${s.id}`, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
+        else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
       }
     }
   } catch (e) { console.error('Error leyendo notificaciones:', e); }
@@ -904,7 +904,13 @@ function MenuPrincipalScreen({ navigation }) {
 
     useFocusEffect(
     React.useCallback(() => {
-      if (rolUsuarioActivoGlobal === 'administrador') { setTieneRol(true); setTieneClases(true); return; }
+            const revisarNotificaciones = async () => {
+        const { items, vistas } = await obtenerNotificaciones();
+        setHayNotificaciones(items.some((n) => n.accion || !vistas.includes(n.clave)));
+      };
+      revisarNotificaciones();
+      const temporizador = setInterval(revisarNotificaciones, 30000);
+      if (rolUsuarioActivoGlobal === 'administrador') { setTieneRol(true); setTieneClases(true); return () => clearInterval(temporizador); }
       (async () => {
         const hoy = new Date().toISOString().split('T')[0];
         const { data } = await supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy);
@@ -914,10 +920,7 @@ function MenuPrincipalScreen({ navigation }) {
         const { data } = await supabase.from('clases_asignadas').select('id').or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`).gte('fecha', fechaISO(new Date())).limit(1);
         setTieneClases(!!(data && data.length > 0));
       })();
-      (async () => {
-        const { items, vistas } = await obtenerNotificaciones();
-        setHayNotificaciones(items.some((n) => n.accion || !vistas.includes(n.clave)));
-      })();
+            return () => clearInterval(temporizador);
     }, [])
   );
 
@@ -1295,8 +1298,8 @@ function NotificacionesScreen({ navigation }) {
             const { items, vistas } = await obtenerNotificaciones();
       setVistasPrevias(vistas);
       await marcarNotificacionesVistas(items);
-      const nuevas = items.filter((n) => n.accion || !vistas.includes(n.clave));
-      const yaVistas = items.filter((n) => !n.accion && vistas.includes(n.clave));
+      const nuevas = items.filter((n) => n.accion || n.abierta || !vistas.includes(n.clave));
+      const yaVistas = items.filter((n) => !n.accion && !n.abierta && vistas.includes(n.clave));
       setSolicitudes([...nuevas, ...yaVistas]);
       const { data: nombres } = await supabase.rpc('nombres_publicos');
       const mapa = {};
@@ -1335,7 +1338,7 @@ function NotificacionesScreen({ navigation }) {
             <>
               <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 15 }}>Avisos sobre solicitudes de apoyo:</Text>
               {solicitudes.map((s) => (
-                                <TouchableOpacity key={s.clave} activeOpacity={0.8} onPress={() => navigation.navigate(s.destino ? s.destino.pantalla : 'Tablon', s.destino ? s.destino.params : {})} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, paddingVertical: 16, paddingHorizontal: 20, marginBottom: 12, opacity: (!s.accion && vistasPrevias.includes(s.clave)) ? 0.5 : 1 }}>
+                                <TouchableOpacity key={s.clave} activeOpacity={0.8} onPress={() => navigation.navigate(s.destino ? s.destino.pantalla : 'Tablon', s.destino ? s.destino.params : {})} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, paddingVertical: 16, paddingHorizontal: 20, marginBottom: 12, opacity: (!s.accion && !s.abierta && vistasPrevias.includes(s.clave)) ? 0.5 : 1 }}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 15 }}>{s.mensaje}</Text>
                     <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 2 }}>{s.detalle}</Text>
@@ -1598,6 +1601,12 @@ function ClasesScreen({ route, navigation }) {
     const [filasMes, setFilasMes] = useState([]);
   const [pendientesIds, setPendientesIds] = useState([]);
   const enfocada = useIsFocused();
+    const fechaBonitaDeClase = (c) => {
+    const f = fechaDeClase(c);
+    if (!f) return `Clase ${c.numero_clase}`;
+    const t = new Date(f + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
   const apoyoPendiente = (c) => { const fecha = fechaDeClase(c); return filasMes.some((r) => r.fecha === fecha && pendientesIds.includes(r.id)); };
   const [mapaNombres, setMapaNombres] = useState({});
   useEffect(() => { cargarMapaNombres().then(setMapaNombres); }, []);
@@ -1686,7 +1695,7 @@ function ClasesScreen({ route, navigation }) {
             ) : (
                             <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
                 {clasesVisibles.map((clase) => (
-                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={`Domingo ${clase.numero_clase}`} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} etiqueta={apoyoPendiente(clase) ? 'Apoyo pendiente' : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
+                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={fechaBonitaDeClase(clase)} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} etiqueta={apoyoPendiente(clase) ? 'Apoyo pendiente' : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
                 ))}
               </View>
             )}
@@ -1824,7 +1833,7 @@ function ClaseDetalleScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
         <Text style={[styles.detalleTitleMain, { color: colors.textMain }]}>{clase.titulo_clase}</Text>
-        <Text style={[styles.detalleSubtitle, { color: theme.main }]}>Domingo {clase.numero_clase} • {grupo}</Text>
+        <Text style={[styles.detalleSubtitle, { color: theme.main }]}>Clase {clase.numero_clase} • {grupo}</Text>
                 <Text style={[styles.detalleBase, { color: colors.textSub }]}>Base bíblica: {clase.texto_base}</Text>
         <TouchableOpacity onPress={abrirLista} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, backgroundColor: paletaGrupo.fondo }}>
           <Feather name="check-circle" size={18} color={paletaGrupo.texto} />
@@ -1871,7 +1880,11 @@ function TablonScreen({ navigation, route }) {
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const colors = getColors(isDark);
     const soloGrupo = route?.params?.soloGrupo;
-  const excluirGrupo = route?.params?.excluirGrupo;
+    const excluirGrupo = route?.params?.excluirGrupo;
+  const solicitudId = route?.params?.solicitudId;
+  const scrollRef = useRef(null);
+    const yaDesplazado = useRef(false);
+  const [miPerfil, setMiPerfil] = useState({});
 
     const [refrescando, setRefrescando] = useState(false);
 
@@ -1882,7 +1895,8 @@ function TablonScreen({ navigation, route }) {
               const { data } = await supabase.rpc('nombres_publicos');
         const mapa = {};
         (data || []).forEach((m) => { mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo; });
-        setMapaNombres(mapa);
+                setMapaNombres(mapa);
+        setMiPerfil((data || []).find((m) => (m.nombre_usuario || '').toLowerCase() === (usuarioActivoGlobal || '').toLowerCase()) || {});
       })();
     }, [])
   );
@@ -1908,8 +1922,11 @@ function TablonScreen({ navigation, route }) {
             const yo = (usuarioActivoGlobal || '').toLowerCase();
       const { data: lista } = await supabase.rpc('nombres_publicos');
       const yoInfo = (lista || []).find((m) => (m.nombre_usuario || '').toLowerCase() === yo) || {};
+            const { data: misClases } = await supabase.from('clases_asignadas').select('id').ilike('coordinador', usuarioActivoGlobal);
+      const idsCoord = (misClases || []).map((c) => c.id);
       data = (data || []).filter((s) => {
         if ((s.maestro_solicitante || '').toLowerCase() === yo || (s.maestro_suplente || '').toLowerCase() === yo) return true;
+        if (s.clase_asignada_id && idsCoord.includes(s.clase_asignada_id)) return true;
         if (s.maestro_destino) return s.maestro_destino.toLowerCase() === yo;
         return s.grupo_clase === 'Predicaciones' ? !!yoInfo.elegible_predicaciones : !!yoInfo.elegible_clases_ninos;
       });
@@ -1918,6 +1935,14 @@ function TablonScreen({ navigation, route }) {
     setCargando(false);
   }
 
+    // Solo ve el botón Aceptar quien realmente puede cubrir: no es su propia solicitud y es el destinatario o es elegible
+  const puedeAceptar = (sol) => {
+    const yo = (usuarioActivoGlobal || '').toLowerCase();
+    if ((sol.maestro_solicitante || '').toLowerCase() === yo) return false;
+    if (sol.maestro_destino) return sol.maestro_destino.toLowerCase() === yo;
+    return sol.grupo_clase === 'Predicaciones' ? !!miPerfil.elegible_predicaciones : !!miPerfil.elegible_clases_ninos;
+  };
+
   function cancelarSolicitud(solicitudId, grupoClase) {
     const theme = getThemeColors(grupoClase, isDark);
     setAlerta({
@@ -1925,6 +1950,12 @@ function TablonScreen({ navigation, route }) {
       textoConfirmar: "Sí, cancelar", onCancelar: cerrarAlerta,
       onConfirmar: async () => { cerrarAlerta(); await supabase.from('solicitudes_sustitucion').delete().eq('id', solicitudId); obtenerSolicitudes(); }
     });
+  }
+
+    // Si la clase ya había sido cubierta antes, el titular original no cambia: se conserva el primero
+  async function titularOriginal(tabla, id, respaldo) {
+    const { data } = await supabase.from(tabla).select('usuario_original').eq('id', id).single();
+    return (data && data.usuario_original) || respaldo;
   }
 
   function aceptarSustitucion(solicitud) {
@@ -1981,7 +2012,7 @@ function TablonScreen({ navigation, route }) {
                                                                 if (solicitud.programa_servicio_id) {
           const r = await supabase.from('programa_servicios').update({
             nombre_usuario: usuarioActivoGlobal,
-            usuario_original: solicitud.maestro_solicitante,
+                        usuario_original: await titularOriginal('programa_servicios', solicitud.programa_servicio_id, solicitud.maestro_solicitante),
             sustituido_en: new Date().toISOString(),
             estado_confirmacion: 'pendiente',
           }).eq('id', solicitud.programa_servicio_id);
@@ -1990,18 +2021,18 @@ function TablonScreen({ navigation, route }) {
         if (solicitud.tipo_intercambio === 'intercambio' && solicitud.programa_servicio_id_intercambio) {
           const r = await supabase.from('programa_servicios').update({
             nombre_usuario: solicitud.maestro_solicitante,
-            usuario_original: usuarioActivoGlobal,
+                        usuario_original: await titularOriginal('programa_servicios', solicitud.programa_servicio_id_intercambio, usuarioActivoGlobal),
             sustituido_en: new Date().toISOString(),
             estado_confirmacion: 'pendiente',
           }).eq('id', solicitud.programa_servicio_id_intercambio);
           error3 = r.error;
         }
         if (solicitud.clase_asignada_id) {
-          const r = await supabase.from('clases_asignadas').update({ nombre_usuario: usuarioActivoGlobal, usuario_original: solicitud.maestro_solicitante, sustituido_en: new Date().toISOString() }).eq('id', solicitud.clase_asignada_id);
+          const r = await supabase.from('clases_asignadas').update({ nombre_usuario: usuarioActivoGlobal, usuario_original: await titularOriginal('clases_asignadas', solicitud.clase_asignada_id, solicitud.maestro_solicitante), sustituido_en: new Date().toISOString() }).eq('id', solicitud.clase_asignada_id);
           error2 = error2 || r.error;
         }
         if (solicitud.tipo_intercambio === 'intercambio' && solicitud.clase_asignada_id_intercambio) {
-          const r = await supabase.from('clases_asignadas').update({ nombre_usuario: solicitud.maestro_solicitante, usuario_original: usuarioActivoGlobal, sustituido_en: new Date().toISOString() }).eq('id', solicitud.clase_asignada_id_intercambio);
+          const r = await supabase.from('clases_asignadas').update({ nombre_usuario: solicitud.maestro_solicitante, usuario_original: await titularOriginal('clases_asignadas', solicitud.clase_asignada_id_intercambio, usuarioActivoGlobal), sustituido_en: new Date().toISOString() }).eq('id', solicitud.clase_asignada_id_intercambio);
           error3 = error3 || r.error;
         }
         const errorReal = error1 || error2 || error3;
@@ -2031,7 +2062,7 @@ function TablonScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
                 {cargando ? <ActivityIndicator size="large" color={colors.textSub} style={{marginTop: 50}} /> : (
-          <ScrollView style={styles.listContainer} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
+          <ScrollView ref={scrollRef} style={styles.listContainer} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
             {solicitudes.length === 0 ? (
               <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                 <Feather name="check-circle" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
@@ -2042,7 +2073,7 @@ function TablonScreen({ navigation, route }) {
               solicitudes.map((solicitud) => {
                 const theme = getThemeColors(solicitud.grupo_clase, isDark);
                 return (
-                  <View key={solicitud.id} style={[styles.card, styles.cardLight, { backgroundColor: theme.bgLight, borderColor: 'transparent', opacity: solicitud.estado === 'Cubierta' ? 0.6 : 1 }]}>
+                  <View key={solicitud.id} onLayout={(e) => { if (solicitudId && solicitud.id === solicitudId && !yaDesplazado.current && scrollRef.current) { yaDesplazado.current = true; scrollRef.current.scrollTo({ y: Math.max(0, e.nativeEvent.layout.y - 10), animated: true }); } }} style={[styles.card, styles.cardLight, { backgroundColor: theme.bgLight, borderColor: solicitud.id === solicitudId ? theme.textDark : 'transparent', borderWidth: solicitud.id === solicitudId ? 2 : 1, opacity: solicitud.estado === 'Cubierta' ? 0.6 : 1 }]}>
                     <View style={styles.textContainer}>
                       <Text style={[styles.topicTitle, { color: colors.textMain }]}>{nombreBonito(solicitud.maestro_solicitante)} pide apoyo</Text>
                       <Text style={[styles.topicSubtitle, { color: theme.textDark, fontWeight: 'bold' }]}>Grupo: {solicitud.grupo_clase}</Text>
@@ -2057,7 +2088,7 @@ function TablonScreen({ navigation, route }) {
                          <TouchableOpacity style={[styles.cancelarButton, { borderColor: colors.cardBorder }]} onPress={() => cancelarSolicitud(solicitud.id, solicitud.grupo_clase)}><Text style={[styles.cancelarButtonText, { color: colors.textSub }]}>Cancelar</Text></TouchableOpacity>
                       )}
                       {solicitud.estado === 'Pendiente' ? (
-                         <TouchableOpacity style={[styles.aceptarDiscreto, { backgroundColor: theme.main }]} onPress={() => aceptarSustitucion(solicitud)}><Text style={styles.aceptarDiscretoText}>Aceptar Apoyo</Text></TouchableOpacity>
+                         (puedeAceptar(solicitud) ? <TouchableOpacity style={[styles.aceptarDiscreto, { backgroundColor: theme.main }]} onPress={() => aceptarSustitucion(solicitud)}><Text style={styles.aceptarDiscretoText}>Aceptar Apoyo</Text></TouchableOpacity> : <Text style={{ color: colors.textSub, fontStyle: 'italic', padding: 8 }}>Esperando apoyo</Text>)
                       ) : (                         <Text style={{ color: theme.textDark, fontStyle: 'italic', padding: 8, fontWeight: 'bold' }}>Cubierta por {nombreBonito(solicitud.maestro_suplente)}</Text>
 
                       )}
