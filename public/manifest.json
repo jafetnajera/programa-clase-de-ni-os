@@ -1,0 +1,13 @@
+{
+  "name": "Indus app",
+  "short_name": "Indus app",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#2C313C",
+  "theme_color": "#2C313C",
+  "icons": [
+    { "src": "/icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }
+  ]
+}
