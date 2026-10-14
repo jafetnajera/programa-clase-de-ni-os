@@ -382,7 +382,8 @@ const obtenerNotificaciones = async () => {
     (lista || []).forEach((m) => { mapa[(m.nombre_usuario || '').toLowerCase()] = m.nombre_completo || m.nombre_usuario; });
     const nom = (u) => ponerMayusculas(mapa[(u || '').toLowerCase()] || u);
     const yoInfo = (lista || []).find((m) => (m.nombre_usuario || '').toLowerCase() === yo);
-    const soyElegibleClases = !!(yoInfo && yoInfo.elegible_clases_ninos);
+        const soyElegibleClases = !!(yoInfo && yoInfo.elegible_clases_ninos);
+    const soyElegiblePred = !!(yoInfo && yoInfo.elegible_predicaciones);
 
     const { data: reqs } = await supabase.from('solicitudes_sustitucion').select('*').or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`).order('creado_en', { ascending: false }).range(0, 499);
     const solicitudes = reqs || [];
@@ -393,23 +394,29 @@ const obtenerNotificaciones = async () => {
       const { data: cl } = await supabase.from('clases_asignadas').select('id, coordinador').in('id', idsClases);
       (cl || []).forEach((c) => { coordPorClase[c.id] = (c.coordinador || '').toLowerCase(); });
     }
+        const irTablon = (s) => ({ pantalla: 'Tablon', params: s.grupo_clase === 'Predicaciones' ? { soloGrupo: 'Predicaciones' } : { excluirGrupo: 'Predicaciones' } });
+    const irGrupos = { pantalla: 'Grupos', params: {} };
     const cuando = (s) => `${s.titulo_tema}${s.grupo_clase ? ' • ' + s.grupo_clase : ''}${s.tipo_intercambio === 'intercambio' ? ' • Intercambio de fechas' : ''}`;
 
     for (const s of solicitudes) {
       const solicitante = (s.maestro_solicitante || '').toLowerCase();
       const esClase = !!s.clase_asignada_id;
       if (s.estado === 'Pendiente' && (s.maestro_destino || '').toLowerCase() === yo) {
-        items.push({ clave: `dir:${s.id}`, accion: true, mensaje: `${nom(s.maestro_solicitante)} te pide apoyo`, detalle: cuando(s) });
+        items.push({ clave: `dir:${s.id}`, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} te pide apoyo`, detalle: cuando(s) });
       } else if (s.estado === 'Pendiente' && esClase && !s.maestro_destino && solicitante !== yo && soyElegibleClases && s.fecha_referencia) {
         const conflicto = await buscarConflictoDia(usuarioActivoGlobal, s.fecha_referencia);
-        if (!conflicto) items.push({ clave: `gen:${s.id}`, accion: true, mensaje: `${nom(s.maestro_solicitante)} pide apoyo y tú estás libre`, detalle: cuando(s) });
+        if (!conflicto) items.push({ clave: `gen:${s.id}`, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo y tú estás libre`, detalle: cuando(s) });
+      }
+            if (s.estado === 'Pendiente' && !esClase && s.grupo_clase === 'Predicaciones' && !s.maestro_destino && solicitante !== yo && soyElegiblePred && s.fecha_referencia) {
+        const conflictoPred = await buscarConflictoDia(usuarioActivoGlobal, s.fecha_referencia);
+        if (!conflictoPred) items.push({ clave: `gen-rol:${s.id}`, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo en una predicación y tú estás libre`, detalle: cuando(s) });
       }
       if (s.estado === 'Cubierta' && solicitante === yo && s.maestro_suplente) {
-        items.push({ clave: `acepto:${s.id}`, accion: false, mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
+        items.push({ clave: `acepto:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
       }
       if (esClase && coordPorClase[s.clase_asignada_id] === yo && solicitante !== yo) {
-        if (s.estado === 'Pendiente') items.push({ clave: `coord-pide:${s.id}`, accion: false, mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
-        else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, accion: false, mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
+        if (s.estado === 'Pendiente') items.push({ clave: `coord-pide:${s.id}`, accion: false, destino: irGrupos, mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
+        else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, accion: false, destino: irGrupos, mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
       }
     }
   } catch (e) { console.error('Error leyendo notificaciones:', e); }
@@ -1271,6 +1278,7 @@ function GruposScreen({ navigation }) {
 // PANTALLA: NOTIFICACIONES
 // ==========================================
 function NotificacionesScreen({ navigation }) {
+  const [vistasPrevias, setVistasPrevias] = useState([]);
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const [solicitudes, setSolicitudes] = useState([]);
@@ -1279,10 +1287,12 @@ function NotificacionesScreen({ navigation }) {
 
   useEffect(() => {
     (async () => {
-      const { items } = await obtenerNotificaciones();
-      const data = items;
+            const { items, vistas } = await obtenerNotificaciones();
+      setVistasPrevias(vistas);
       await marcarNotificacionesVistas(items);
-      setSolicitudes(data || []);
+      const nuevas = items.filter((n) => n.accion || !vistas.includes(n.clave));
+      const yaVistas = items.filter((n) => !n.accion && vistas.includes(n.clave));
+      setSolicitudes([...nuevas, ...yaVistas]);
       const { data: nombres } = await supabase.rpc('nombres_publicos');
       const mapa = {};
       (nombres || []).forEach((m) => { mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo; });
@@ -1320,14 +1330,14 @@ function NotificacionesScreen({ navigation }) {
             <>
               <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 15 }}>Avisos sobre solicitudes de apoyo:</Text>
               {solicitudes.map((s) => (
-                <View key={s.clave} style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, paddingVertical: 16, paddingHorizontal: 20, marginBottom: 12 }}>
-                  <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 15 }}>{s.mensaje}</Text>
-                  <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 2 }}>{s.detalle}</Text>
-                </View>
+                                <TouchableOpacity key={s.clave} activeOpacity={0.8} onPress={() => navigation.navigate(s.destino ? s.destino.pantalla : 'Tablon', s.destino ? s.destino.params : {})} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, paddingVertical: 16, paddingHorizontal: 20, marginBottom: 12, opacity: (!s.accion && vistasPrevias.includes(s.clave)) ? 0.5 : 1 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 15 }}>{s.mensaje}</Text>
+                    <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 2 }}>{s.detalle}</Text>
+                  </View>
+                  <Feather name="chevron-right" size={20} color={colors.textSub} />
+                </TouchableOpacity>
               ))}
-              <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Tablon', {})}>
-                <Text style={styles.primaryButtonText}>Ver y responder</Text>
-              </TouchableOpacity>
             </>
           )}
         </View>
