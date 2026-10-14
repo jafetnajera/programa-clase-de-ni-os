@@ -400,7 +400,8 @@ const obtenerNotificaciones = async () => {
 
     for (const s of solicitudes) {
       const solicitante = (s.maestro_solicitante || '').toLowerCase();
-      const esClase = !!s.clase_asignada_id;
+            const esClase = !!s.clase_asignada_id;
+      const antes = items.length;
       if (s.estado === 'Pendiente' && (s.maestro_destino || '').toLowerCase() === yo) {
         items.push({ clave: `dir:${s.id}`, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} te pide apoyo`, detalle: cuando(s) });
       } else if (s.estado === 'Pendiente' && esClase && !s.maestro_destino && solicitante !== yo && soyElegibleClases && s.fecha_referencia) {
@@ -413,6 +414,10 @@ const obtenerNotificaciones = async () => {
       }
       if (s.estado === 'Cubierta' && solicitante === yo && s.maestro_suplente) {
         items.push({ clave: `acepto:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
+      }
+            if (rolUsuarioActivoGlobal === 'administrador' && items.length === antes && solicitante !== yo && !(esClase && coordPorClase[s.clase_asignada_id] === yo)) {
+        if (s.estado === 'Pendiente') items.push({ clave: `admin-pide:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo`, detalle: cuando(s) });
+        else if (s.estado === 'Cubierta' && s.maestro_suplente && (s.maestro_suplente || '').toLowerCase() !== yo) items.push({ clave: `admin-acepta:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
       }
       if (esClase && coordPorClase[s.clase_asignada_id] === yo && solicitante !== yo) {
         if (s.estado === 'Pendiente') items.push({ clave: `coord-pide:${s.id}`, accion: false, destino: irGrupos, mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
