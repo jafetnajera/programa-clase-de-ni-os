@@ -262,6 +262,30 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
 
 // ---- AVISOS PUSH: estado de este dispositivo y cómo activarlos ----
 // Devuelve: 'activo' | 'pendiente' | 'bloqueado' | 'instalar' | 'no-soportado'
+// OneSignal: se inicia una sola vez y todo lo demás (login, logout, permisos) espera a que termine de iniciar
+let promesaOneSignal = null;
+let colaOneSignal = Promise.resolve();
+const iniciarOneSignal = () => {
+  if (!promesaOneSignal) {
+    promesaOneSignal = OneSignal.init({ appId: "a598b3d5-0064-4124-bf93-2543c79a9922" })
+      .catch((e) => { console.error('OneSignal no se pudo inicializar:', e); });
+  }
+  return promesaOneSignal;
+};
+const vincularOneSignal = (usuario) => {
+  if (!usuario) return colaOneSignal;
+  colaOneSignal = colaOneSignal.then(async () => {
+    try { await iniciarOneSignal(); await OneSignal.login(usuario); } catch (e) { console.error('OneSignal.login falló:', e); }
+  });
+  return colaOneSignal;
+};
+const cerrarOneSignal = () => {
+  colaOneSignal = colaOneSignal.then(async () => {
+    try { await iniciarOneSignal(); await OneSignal.logout(); } catch (e) { console.error('OneSignal.logout falló:', e); }
+  });
+  return colaOneSignal;
+};
+
 const estadoAvisos = () => {
   try {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof navigator === 'undefined') return 'no-soportado';
@@ -271,8 +295,8 @@ const estadoAvisos = () => {
     if (typeof Notification === 'undefined') return 'no-soportado';
     if (Notification.permission === 'denied') return 'bloqueado';
     if (Notification.permission === 'granted') {
-      let suscrito = true;
-      try { suscrito = OneSignal.User.PushSubscription.optedIn !== false; } catch (e) {}
+            let suscrito = false;
+      try { suscrito = OneSignal.User.PushSubscription.optedIn === true; } catch (e) {}
       return suscrito ? 'activo' : 'pendiente';
     }
     return 'pendiente';
@@ -282,9 +306,10 @@ const estadoAvisos = () => {
 // Pide el permiso (debe llamarse desde un toque de la persona) y vincula este dispositivo con su usuario
 const activarAvisos = async () => {
   try {
+        await iniciarOneSignal();
     await OneSignal.Notifications.requestPermission();
-    if (OneSignal.User.PushSubscription.optedIn === false) await OneSignal.User.PushSubscription.optIn();
-    if (usuarioActivoGlobal) OneSignal.login(usuarioActivoGlobal);
+    if (OneSignal.User.PushSubscription.optedIn !== true) await OneSignal.User.PushSubscription.optIn();
+    if (usuarioActivoGlobal) await vincularOneSignal(usuarioActivoGlobal);
   } catch (e) { console.error('No se pudieron activar los avisos:', e); }
   return estadoAvisos();
 };
@@ -889,7 +914,7 @@ function LoginScreen({ navigation }) {
                     usuarioActivoGlobal = data.nombre_usuario;
           rolUsuarioActivoGlobal = data.rol;
           equipoActivoGlobal = data.equipo;
-          OneSignal.login(data.nombre_usuario);
+                    vincularOneSignal(data.nombre_usuario);
           setUsuarioLogin(''); setPinLogin('');
                     navigation.replace('MenuPrincipal');
         }
@@ -946,7 +971,8 @@ function MenuPrincipalScreen({ navigation }) {
 
     useFocusEffect(
     React.useCallback(() => {
-                  setAvisosPush(estadoAvisos());
+                                    setAvisosPush(estadoAvisos());
+      iniciarOneSignal().then(() => setAvisosPush(estadoAvisos()));
       const revisarNotificaciones = async () => {
         const { items, vistas } = await obtenerNotificaciones();
         setHayNotificaciones(items.some((n) => n.accion || !vistas.includes(n.clave)));
@@ -968,7 +994,8 @@ function MenuPrincipalScreen({ navigation }) {
   );
 
    const cerrarSesion = async () => {
-    await supabase.auth.signOut();
+        await supabase.auth.signOut();
+    cerrarOneSignal();
     usuarioActivoGlobal = null;
     rolUsuarioActivoGlobal = null;
     navigation.replace('Login');
@@ -2868,13 +2895,7 @@ export default function App() {
 
    // Inicializa OneSignal por su cuenta, sin bloquear el resto de la app si falla
   useEffect(() => {
-    OneSignal.init({
-      appId: "a598b3d5-0064-4124-bf93-2543c79a9922"
-    }).then(() => {
-      OneSignal.Slidedown.promptPush();
-    }).catch((e) => {
-      console.error('OneSignal no se pudo inicializar:', e);
-    });
+        iniciarOneSignal();
   }, []);
 
     // Revisa si ya hay una sesión real de Supabase guardada, sin esperar a OneSignal
@@ -2888,7 +2909,7 @@ export default function App() {
                         usuarioActivoGlobal = data.nombre_usuario;
             rolUsuarioActivoGlobal = data.rol;
             equipoActivoGlobal = data.equipo;
-            try { OneSignal.login(data.nombre_usuario); } catch (e) { console.error('OneSignal.login falló:', e); }
+                        vincularOneSignal(data.nombre_usuario);
             setRutaInicial('MenuPrincipal');
           }
         }
