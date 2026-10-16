@@ -51,6 +51,10 @@ const PALETA_MENU = {
     'Niños': { fondo: '#D6A5AF', texto: '#5C2433' },
     'Pre adolescentes': { fondo: '#E8C57A', texto: '#5A4010' },
     'Adolescentes': { fondo: '#A9CFC8', texto: '#1F4F4A' },
+    'Cuneros': { fondo: '#B9CBE0', texto: '#24405F' },
+    'Cuneros tarde': { fondo: '#D5BFA8', texto: '#5A3E22' },
+    'Tarde 4 a 8': { fondo: '#E3B59B', texto: '#5E3420' },
+    'Tarde 9 a 12': { fondo: '#B7C9A8', texto: '#34472A' },
   },
   oscuro: {
     'Clases de niños': { fondo: '#8FB9B1', texto: '#173B37' },
@@ -60,7 +64,11 @@ const PALETA_MENU = {
         'Calendario': { fondo: '#9DB0BD', texto: '#1B3341' },
     'Niños': { fondo: '#C58C98', texto: '#4A1B28' },
     'Pre adolescentes': { fondo: '#D9B15F', texto: '#45300A' },
-    'Adolescentes': { fondo: '#8FB9B1', texto: '#173B37' },
+        'Adolescentes': { fondo: '#8FB9B1', texto: '#173B37' },
+    'Cuneros': { fondo: '#9FB5CF', texto: '#18324F' },
+    'Cuneros tarde': { fondo: '#C4AA90', texto: '#45301A' },
+    'Tarde 4 a 8': { fondo: '#D29F84', texto: '#4A2614' },
+    'Tarde 9 a 12': { fondo: '#A0B591', texto: '#26381D' },
   },
 };
 
@@ -69,7 +77,11 @@ const getThemeColors = (grupo, isDark) => {
   switch(grupo) {
     case 'Niños': return { main: '#FFB7A1', textDark: isDark ? '#FFB7A1' : '#D96E53', bgLight: isDark ? 'rgba(255, 183, 161, 0.1)' : '#FFF0EC' }; 
     case 'Pre adolescentes': return { main: '#EFBC68', textDark: isDark ? '#EFBC68' : '#C48B29', bgLight: isDark ? 'rgba(239, 188, 104, 0.1)' : '#FDF6EB' }; 
-    case 'Adolescentes': return { main: '#919F89', textDark: isDark ? '#919F89' : '#6A7A61', bgLight: isDark ? 'rgba(145, 159, 137, 0.1)' : '#EEF1ED' }; 
+        case 'Adolescentes': return { main: '#919F89', textDark: isDark ? '#919F89' : '#6A7A61', bgLight: isDark ? 'rgba(145, 159, 137, 0.1)' : '#EEF1ED' };
+    case 'Cuneros': return { main: '#7E9CC2', textDark: isDark ? '#9FB5CF' : '#3E5F87', bgLight: isDark ? 'rgba(126, 156, 194, 0.15)' : '#EEF3F9' };
+    case 'Cuneros tarde': return { main: '#B8977A', textDark: isDark ? '#D5BFA8' : '#7A5634', bgLight: isDark ? 'rgba(184, 151, 122, 0.15)' : '#F8F1EA' };
+    case 'Tarde 4 a 8': return { main: '#D08F6E', textDark: isDark ? '#E3B59B' : '#9A5432', bgLight: isDark ? 'rgba(208, 143, 110, 0.15)' : '#FBF0EA' };
+    case 'Tarde 9 a 12': return { main: '#8FA57E', textDark: isDark ? '#B7C9A8' : '#55703F', bgLight: isDark ? 'rgba(143, 165, 126, 0.15)' : '#F0F5EC' };
     case 'Clases de niños': return { main: '#5FA8A0', textDark: isDark ? '#5FA8A0' : '#2F6E5E', bgLight: isDark ? 'rgba(95, 168, 160, 0.15)' : '#EAF3F0' };
     case 'Predicaciones': return { main: '#7EA0D8', textDark: isDark ? '#9FBCE8' : '#2C4A73', bgLight: isDark ? 'rgba(126, 160, 216, 0.18)' : '#EDF2FA' };
     case 'Anuncios': return { main: '#E0935A', textDark: isDark ? '#E0935A' : '#8A4F1E', bgLight: isDark ? 'rgba(224, 147, 90, 0.15)' : '#FBEEDD' };
@@ -92,12 +104,45 @@ const parsearMesAnio = (texto) => {
 
 // Clases de niños: cada columna del CSV representa un grupo
 const GRUPOS_CLASES = [
+  { columna: 'grupo_cuneros', grupo: 'Cuneros', horario: 'mañana' },
   { columna: 'grupo_3_6', grupo: 'Niños', horario: 'mañana' },
   { columna: 'grupo_7_9', grupo: 'Pre adolescentes', horario: 'mañana' },
   { columna: 'grupo_10_13', grupo: 'Adolescentes', horario: 'mañana' },
-  { columna: 'grupo_3_8', grupo: 'Tarde 3 a 8', horario: 'tarde' },
-  { columna: 'grupo_9_13', grupo: 'Tarde 9 a 13', horario: 'tarde' },
+  { columna: 'grupo_cuneros_tarde', grupo: 'Cuneros tarde', horario: 'tarde' },
+  { columna: 'grupo_4_8', grupo: 'Tarde 4 a 8', horario: 'tarde' },
+  { columna: 'grupo_9_12', grupo: 'Tarde 9 a 12', horario: 'tarde' },
 ];
+// Cómo funciona cada grupo: con temario propio, solo cuidado (cuneros) o repaso de un grupo de la mañana
+const GRUPOS_INFO = {
+  'Cuneros': { turno: 'Mañana', edades: '0 a 3 años', icono: 'heart', cuidado: true },
+  'Niños': { turno: 'Mañana', edades: '3 a 6 años', icono: 'smile', temario: true },
+  'Pre adolescentes': { turno: 'Mañana', edades: '7 a 9 años', icono: 'users', temario: true },
+  'Adolescentes': { turno: 'Mañana', edades: '10 a 13 años', icono: 'book', temario: true },
+  'Cuneros tarde': { turno: 'Tarde', edades: '0 a 3 años', icono: 'moon', cuidado: true },
+  'Tarde 4 a 8': { turno: 'Tarde', edades: '4 a 8 años', icono: 'sun', repasoDe: 'Niños' },
+  'Tarde 9 a 12': { turno: 'Tarde', edades: '9 a 12 años', icono: 'sunset', repasoDe: 'Adolescentes' },
+};
+const ORDEN_GRUPOS = Object.keys(GRUPOS_INFO);
+// A dónde lleva un grupo: al temario si tiene, o a sus domingos (cuneros y tarde)
+const destinoDeGrupo = (grupo, extra = {}) => (GRUPOS_INFO[grupo] && !GRUPOS_INFO[grupo].temario ? { pantalla: 'Domingos', params: { grupo } } : { pantalla: 'Temas', params: { grupo, ...extra } });
+// Grupos de la tarde: la clase de la mañana de un domingo (según el tema de ese mes)
+const claseDeLaMananaDel = async (grupoFuente, fecha) => {
+  const d = new Date(fecha + 'T00:00:00');
+  const numero = domingosDelMes(d.getFullYear(), d.getMonth()).indexOf(fecha) + 1;
+  if (numero < 1) return null;
+  const { data: temas } = await supabase.from('temas_mensuales').select('*').ilike('mes_anio', `${NOMBRES_MESES[d.getMonth()]} ${d.getFullYear()}`).limit(1);
+  const tema = temas && temas[0];
+  if (!tema) return null;
+  const { data: clases } = await supabase.from('clases_detalle').select('*').eq('tema_id', tema.id).eq('rango_edad', grupoFuente).eq('numero_clase', numero).limit(1);
+  return clases && clases[0] ? { clase: clases[0], tema } : null;
+};
+// Repaso de la tarde: la clase del domingo anterior y la de ese mismo domingo
+const clasesDeRepaso = async (grupoFuente, fecha) => {
+  const d = new Date(fecha + 'T00:00:00');
+  d.setDate(d.getDate() - 7);
+  const [anterior, actual] = await Promise.all([claseDeLaMananaDel(grupoFuente, fechaISO(d)), claseDeLaMananaDel(grupoFuente, fecha)]);
+  return { anterior, actual };
+};
 const NOMBRES_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const fechaISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const domingosDelMes = (anio, mes) => {
@@ -154,7 +199,9 @@ const linking = {
       MiRol: 'mi-rol',
       Temas: 'temas',
       Clases: 'clases',
-      ClaseDetalle: 'clase-detalle',
+            ClaseDetalle: 'clase-detalle',
+      Domingos: 'domingos',
+      DomingoDetalle: 'domingo',
       Tablon: 'tablon',
       Admin: 'admin',
       TodosUsuarios: 'todos-usuarios',
@@ -507,9 +554,10 @@ const obtenerNotificaciones = async () => {
     (misClases || []).forEach((c) => {
       const d = diasEntre(hoy, c.fecha);
       const mia = (c.nombre_usuario || '').toLowerCase() === yo;
-      const irTemas = { pantalla: 'Temas', params: { grupo: c.grupo } };
+            const irTemas = destinoDeGrupo(c.grupo);
       if (d <= 4 && mia) {
         if (pendientesPropios.has(c.id)) recordatorios.push({ clave: `rec-pend:${c.id}`, accion: false, abierta: true, destino: { pantalla: 'Tablon', params: { excluirGrupo: 'Predicaciones' } }, mensaje: 'Tu solicitud de apoyo para este domingo sigue pendiente', detalle: `Recordatorio • ${c.grupo}` });
+                else if ((GRUPOS_INFO[c.grupo] || {}).cuidado) recordatorios.push({ clave: `rec-clase:${c.id}:${d <= 2 ? 'v' : 'm'}`, accion: false, destino: irTemas, mensaje: 'Este domingo te toca cubrir cuneros', detalle: `Recordatorio • ${c.grupo}` });
         else recordatorios.push({ clave: `rec-clase:${c.id}:${d <= 2 ? 'v' : 'm'}`, accion: false, destino: irTemas, mensaje: d <= 2 ? 'Este domingo tienes clase, ¿ya estás listo?' : 'Este domingo tienes clase', detalle: `Prepara tu tema • ${c.grupo}` });
       }
       if (d <= 2 && !mia && (c.coordinador || '').toLowerCase() === yo && !equiposVistos.has(`${c.fecha}:${c.grupo}`)) {
@@ -522,8 +570,8 @@ const obtenerNotificaciones = async () => {
       const delMes = (misClases || []).filter((c) => c.fecha >= inicioSiguienteMes);
       const propia = delMes.find((c) => (c.nombre_usuario || '').toLowerCase() === yo);
       const deEquipo = delMes.find((c) => (c.coordinador || '').toLowerCase() === yo);
-      if (propia) recordatorios.push({ clave: `rec-mes:${claveMes}:clases`, accion: false, destino: { pantalla: 'Temas', params: { grupo: propia.grupo, verFuturo: true } }, mensaje: 'El próximo mes tienes clases programadas', detalle: `Recordatorio • ${propia.grupo}` });
-      else if (deEquipo) recordatorios.push({ clave: `rec-mes:${claveMes}:equipo`, accion: false, destino: { pantalla: 'Temas', params: { grupo: deEquipo.grupo, verFuturo: true } }, mensaje: 'El próximo mes tu equipo tiene clases programadas', detalle: `Recordatorio • ${deEquipo.grupo}` });
+      if (propia) recordatorios.push({ clave: `rec-mes:${claveMes}:clases`, accion: false, destino: destinoDeGrupo(propia.grupo, { verFuturo: true }), mensaje: (GRUPOS_INFO[propia.grupo] || {}).cuidado ? 'El próximo mes te toca cubrir cuneros' : 'El próximo mes tienes clases programadas', detalle: `Recordatorio • ${propia.grupo}` });
+      else if (deEquipo) recordatorios.push({ clave: `rec-mes:${claveMes}:equipo`, accion: false, destino: destinoDeGrupo(deEquipo.grupo, { verFuturo: true }), mensaje: 'El próximo mes tu equipo tiene clases programadas', detalle: `Recordatorio • ${deEquipo.grupo}` });
       const rolMes = (miRol || []).find((r) => r.fecha >= inicioSiguienteMes && r.fecha <= finSiguienteMes);
       if (rolMes) recordatorios.push({ clave: `rec-mes:${claveMes}:rol`, accion: false, destino: { pantalla: 'MiRol', params: { servicioId: rolMes.id } }, mensaje: 'El próximo mes tienes predicaciones programadas', detalle: 'Recordatorio • Mi rol' });
     }
@@ -1344,7 +1392,7 @@ function GruposScreen({ navigation }) {
         return;
       }
       (async () => {
-        const { data } = await supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', fechaISO(new Date())).in('grupo', ['Niños', 'Pre adolescentes', 'Adolescentes']).order('fecha', { ascending: true });
+        const { data } = await supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', fechaISO(new Date())).in('grupo', ORDEN_GRUPOS).order('fecha', { ascending: true });
         setAsignaciones(data || []);
         setCargandoAsig(false);
       })();
@@ -1375,19 +1423,15 @@ function GruposScreen({ navigation }) {
     filasVista.filter((r) => r.mes_anio === mesRef && r.grupo === g).forEach((r) => { const n = nombreDe(r.usuario_original || r.nombre_usuario); if (!nombres.includes(n)) nombres.push(n); });
     return nombres.length > 0 ? `Asignado a: ${nombres.join(', ')}` : 'Sin asignar';
   };
-  const iconosGrupo = { 'Niños': 'smile', 'Pre adolescentes': 'users', 'Adolescentes': 'book' };
+    const abrirGrupo = (g) => { const destino = destinoDeGrupo(g); navigation.navigate(destino.pantalla, destino.params); };
   const gruposAsignados = [];
   asignaciones.forEach((a) => {
     const clave = `${a.mes_anio}|${a.grupo}`;
     if (gruposAsignados.some((g) => g.clave === clave)) return;
-    gruposAsignados.push({ clave, icono: iconosGrupo[a.grupo] || 'smile', titulo: a.grupo, subtitulo: a.mes_anio, categoria: a.grupo, onPress: () => navigation.navigate('Temas', { grupo: a.grupo }) });
+        gruposAsignados.push({ clave, icono: (GRUPOS_INFO[a.grupo] || {}).icono || 'smile', titulo: a.grupo, subtitulo: a.mes_anio, categoria: a.grupo, onPress: () => abrirGrupo(a.grupo) });
   });
   const coordinador = asignaciones.length > 0 ? asignaciones[0].coordinador : null;
-  const gruposAdmin = [
-    { icono: 'smile', titulo: 'Niños', subtitulo: '3 a 6 años', categoria: 'Niños', onPress: () => navigation.navigate('Temas', { grupo: 'Niños' }) },
-    { icono: 'users', titulo: 'Pre adolescentes', subtitulo: '7 a 9 años', categoria: 'Pre adolescentes', onPress: () => navigation.navigate('Temas', { grupo: 'Pre adolescentes' }) },
-    { icono: 'book', titulo: 'Adolescentes', subtitulo: '10 a 13 años', categoria: 'Adolescentes', onPress: () => navigation.navigate('Temas', { grupo: 'Adolescentes' }) },
-  ];
+    const gruposAdmin = ORDEN_GRUPOS.map((g) => ({ icono: GRUPOS_INFO[g].icono, titulo: g, subtitulo: `${GRUPOS_INFO[g].turno} • ${GRUPOS_INFO[g].edades}`, categoria: g, onPress: () => abrirGrupo(g) }));
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -2021,6 +2065,245 @@ function ClaseDetalleScreen({ route, navigation }) {
             <AlertaPersonalizada {...alerta} />
       <ModalSolicitarApoyo visible={mostrarApoyo} tipoItem="clase" item={asignacion} maestrosElegibles={maestrosElegibles} usuarioPropio={usuarioActivoGlobal} isDark={isDark} onCancelar={() => setMostrarApoyo(false)} onConfirmar={enviarSolicitudClase} />
       <ModalAsistencia visible={mostrarLista} onCerrar={() => setMostrarLista(false)} fecha={fechaClase} grupo={grupo} isDark={isDark} usuario={usuarioActivoGlobal} />
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA: DOMINGOS DE UN GRUPO SIN TEMARIO PROPIO (cuneros y grupos de la tarde)
+// ==========================================
+function DomingosScreen({ route, navigation }) {
+  const grupo = route?.params?.grupo;
+  const info = GRUPOS_INFO[grupo] || {};
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const theme = getThemeColors(grupo, isDark);
+  const columnas = useColumnas();
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const yo = (usuarioActivoGlobal || '').toLowerCase();
+  const hoy = fechaISO(new Date());
+  const [filas, setFilas] = useState([]);
+  const [verTodo, setVerTodo] = useState(false);
+  const [repasos, setRepasos] = useState({});
+  const [cargando, setCargando] = useState(true);
+  const [mapaNombres, setMapaNombres] = useState({});
+  useEffect(() => { cargarMapaNombres().then(setMapaNombres); }, []);
+  const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      (async () => {
+        const d = new Date();
+        const inicio = fechaISO(new Date(d.getFullYear(), d.getMonth(), 1));
+        const { data } = await supabase.from('clases_asignadas').select('id, fecha, nombre_usuario, usuario_original, coordinador').eq('grupo', grupo).gte('fecha', inicio).order('fecha', { ascending: true }).range(0, 999);
+        const todas = data || [];
+        const soyCoordinador = todas.some((r) => (r.coordinador || '').toLowerCase() === yo);
+        setVerTodo(esAdmin || soyCoordinador);
+        // Los maestros solo ven sus domingos que aún no pasan; coordinadores y administradores ven todos
+        const visibles = (esAdmin || soyCoordinador) ? todas : todas.filter((r) => (r.nombre_usuario || '').toLowerCase() === yo && r.fecha >= hoy);
+        setFilas(visibles);
+        setCargando(false);
+        if (info.repasoDe) {
+          const fechas = [...new Set(visibles.map((r) => r.fecha))].slice(0, 12);
+          const mapa = {};
+          for (const f of fechas) mapa[f] = await clasesDeRepaso(info.repasoDe, f);
+          setRepasos(mapa);
+        }
+      })();
+    }, [grupo])
+  );
+
+  const fechas = [...new Set(filas.map((r) => r.fecha))];
+  const fechaBonita = (f) => { const t = new Date(f + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const textoAsignado = (f) => {
+    const delDia = filas.filter((r) => r.fecha === f);
+    const lineas = [];
+    const titulares = delDia.filter((r) => !r.usuario_original || r.usuario_original.toLowerCase() === (r.nombre_usuario || '').toLowerCase());
+    if (verTodo && titulares.length > 0) lineas.push(`Asignado a: ${[...new Set(titulares.map((r) => nombreDe(r.nombre_usuario)))].join(', ')}`);
+    delDia.filter((r) => !titulares.includes(r)).forEach((r) => lineas.push(`Cubre: ${nombreDe(r.nombre_usuario)} (en lugar de ${nombreDe(r.usuario_original)})`));
+    return lineas.length > 0 ? lineas.join('\n') : null;
+  };
+  const textoRepaso = (f) => {
+    const r = repasos[f];
+    if (!r) return null;
+    const titulos = [r.anterior, r.actual].filter(Boolean).map((x) => `«${x.clase.titulo_clase}»`);
+    return titulos.length > 0 ? `Repaso: ${titulos.join(' y ')}` : 'Las clases de la mañana aún no están cargadas';
+  };
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5, justifyContent: 'space-between' }}>
+          <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={[styles.headerSoloText, { flex: 1 }]}>
+            <Text style={[styles.titleMini, { color: colors.textMain }]}>{(grupo || '').toUpperCase()}</Text>
+            <Text style={[styles.subtitle, { color: theme.textDark }]}>{info.turno} • {info.edades}</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
+        </View>
+        {cargando ? (
+          <View style={styles.center}><ActivityIndicator size="large" color={theme.main} /></View>
+        ) : (
+          <ScrollView style={styles.listContainer}>
+            {fechas.length === 0 ? (
+              <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+                <Feather name={info.icono || 'calendar'} size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
+                <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Sin domingos asignados</Text>
+                <Text style={[styles.emptyText, { color: colors.textSub }]}>Aquí aparecerán los domingos de este grupo cuando se programen.</Text>
+              </View>
+            ) : (
+              <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                {fechas.map((f) => (
+                  <TarjetaLista key={f} icono={info.icono || 'calendar'} titulo={fechaBonita(f)} subtitulo={info.repasoDe ? 'Repaso de la mañana' : 'Cuidado de bebés'} etiqueta={f < hoy ? 'Ya pasó' : null} detalle={info.repasoDe ? textoRepaso(f) : null} asignado={textoAsignado(f)} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('DomingoDetalle', { grupo, fecha: f })} />
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        )}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA: DETALLE DE UN DOMINGO (cuneros y grupos de la tarde)
+// ==========================================
+function DomingoDetalleScreen({ route, navigation }) {
+  const { grupo, fecha } = route.params;
+  const info = GRUPOS_INFO[grupo] || {};
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const theme = getThemeColors(grupo, isDark);
+  const paletaGrupo = PALETA_MENU[isDark ? 'oscuro' : 'claro'][grupo] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Niños'];
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
+  const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
+  const [filasDia, setFilasDia] = useState([]);
+  const [asignacion, setAsignacion] = useState(null);
+  const [repaso, setRepaso] = useState(null);
+  const [mostrarLista, setMostrarLista] = useState(false);
+  const [mostrarApoyo, setMostrarApoyo] = useState(false);
+  const [maestrosElegibles, setMaestrosElegibles] = useState([]);
+  const [mapaNombres, setMapaNombres] = useState({});
+  const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
+  const fechaBonita = (() => { const t = new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }); return t.charAt(0).toUpperCase() + t.slice(1); })();
+
+  useEffect(() => {
+    cargarMapaNombres().then(setMapaNombres);
+    (async () => {
+      const { data } = await supabase.from('clases_asignadas').select('*').eq('fecha', fecha).eq('grupo', grupo);
+      const filas = data || [];
+      setFilasDia(filas);
+      const yo = (usuarioActivoGlobal || '').toLowerCase();
+      setAsignacion(filas.find((r) => (r.nombre_usuario || '').toLowerCase() === yo) || filas[0] || null);
+      const { data: lista } = await supabase.rpc('nombres_publicos');
+      setMaestrosElegibles((lista || []).filter((m) => m.elegible_clases_ninos));
+      if (info.repasoDe) setRepaso(await clasesDeRepaso(info.repasoDe, fecha));
+    })();
+  }, [grupo, fecha]);
+
+  function abrirApoyo() {
+    const aviso = (mensaje) => setAlerta({ visible: true, titulo: "Aviso", mensaje, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main });
+    if (!asignacion) return aviso("Este domingo todavía no tiene a nadie asignado, así que no se puede pedir apoyo.");
+    if (rolUsuarioActivoGlobal !== 'administrador' && asignacion.nombre_usuario.toLowerCase() !== usuarioActivoGlobal.toLowerCase()) return aviso("Solo la persona asignada a este domingo puede pedir apoyo.");
+    setMostrarApoyo(true);
+  }
+
+  const enviarSolicitud = async (opciones = {}) => {
+    const { destino = null, tipo = null, fechaIntercambioId = null } = opciones;
+    setMostrarApoyo(false);
+    const mostrar = (titulo, mensaje) => setTimeout(() => setAlerta({ visible: true, titulo, mensaje, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+    const { data: existente } = await supabase.from('solicitudes_sustitucion').select('id').eq('clase_asignada_id', asignacion.id).eq('estado', 'Pendiente');
+    if (existente && existente.length > 0) return mostrar("Ya existe", "Ya hay una solicitud de apoyo pendiente para este domingo.");
+    const { error } = await supabase.from('solicitudes_sustitucion').insert([{
+      mes_anio: asignacion.mes_anio,
+      titulo_tema: new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }),
+      grupo_clase: grupo,
+      maestro_solicitante: asignacion.nombre_usuario,
+      clase_asignada_id: asignacion.id,
+      fecha_referencia: fecha,
+      maestro_destino: destino,
+      tipo_intercambio: tipo,
+      clase_asignada_id_intercambio: fechaIntercambioId,
+    }]);
+    if (error) mostrar("Error", error.message);
+    else mostrar("Enviado", destino ? "Tu solicitud se envió directamente a esa persona." : "Tu solicitud ya aparece en las Solicitudes de Apoyo.");
+  };
+
+  const Seccion = ({ titulo, texto }) => {
+    if (!texto) return null;
+    return (
+      <View style={styles.seccionDetalle}>
+        <Text style={[styles.seccionTitulo, { color: theme.textDark }]}>{titulo}</Text>
+        <Text style={[styles.seccionTexto, { color: colors.textMain }]}>{texto}</Text>
+      </View>
+    );
+  };
+  const BloqueClase = ({ etiqueta, dato }) => (
+    <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, padding: 20, marginBottom: 14 }}>
+      <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 1, color: theme.textDark, marginBottom: 6 }}>{etiqueta.toUpperCase()}</Text>
+      {dato ? (
+        <>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textMain }}>{dato.clase.titulo_clase}</Text>
+          {dato.clase.texto_base ? <Text style={[styles.detalleBase, { color: colors.textSub, marginBottom: 12 }]}>Base bíblica: {dato.clase.texto_base}</Text> : null}
+          <Seccion titulo="Objetivo" texto={dato.clase.objetivo} />
+          <Seccion titulo="Puntos clave" texto={dato.clase.puntos_clave} />
+          <Seccion titulo="Versículo a memorizar" texto={dato.clase.versiculo_memoria} />
+        </>
+      ) : (
+        <Text style={{ fontSize: 14, color: colors.textSub }}>Esta clase de la mañana aún no está cargada.</Text>
+      )}
+    </View>
+  );
+  const nombresDia = [...new Set(filasDia.map((r) => nombreDe(r.nombre_usuario)))];
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 5, paddingBottom: 30, width: '95%', maxWidth: 850, alignSelf: 'center' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
+        </View>
+        <Text style={[styles.detalleTitleMain, { color: colors.textMain }]}>{fechaBonita}</Text>
+        <Text style={[styles.detalleSubtitle, { color: theme.textDark }]}>{grupo} • {info.turno} • {info.edades}</Text>
+        {nombresDia.length > 0 ? <Text style={[styles.detalleBase, { color: colors.textSub }]}>Asignado a: {nombresDia.join(', ')}</Text> : null}
+        <TouchableOpacity onPress={() => setMostrarLista(true)} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, backgroundColor: paletaGrupo.fondo }}>
+          <Feather name="check-circle" size={18} color={paletaGrupo.texto} />
+          <Text style={{ color: paletaGrupo.texto, fontWeight: '700', fontSize: 14 }}>Tomar lista</Text>
+        </TouchableOpacity>
+
+        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
+
+        {info.cuidado ? (
+          <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, padding: 20, marginBottom: 14 }}>
+            <Feather name="heart" size={22} color={theme.textDark} />
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain, marginTop: 8 }}>Este domingo te toca cubrir cuneros</Text>
+            <Text style={{ fontSize: 14, color: colors.textSub, marginTop: 4, lineHeight: 20 }}>En este grupo no se da clase: se cuida a los bebés. Recuerda tomar lista de los que asistan.</Text>
+          </View>
+        ) : null}
+        {info.repasoDe ? (
+          <>
+            <Text style={{ fontSize: 14, color: colors.textSub, marginBottom: 12, lineHeight: 20 }}>En la tarde se repasan las dos últimas clases de {info.repasoDe} de la mañana. Prepara tu propio material.</Text>
+            <BloqueClase etiqueta="Clase del domingo anterior" dato={repaso && repaso.anterior} />
+            <BloqueClase etiqueta="Clase de este domingo" dato={repaso && repaso.actual} />
+          </>
+        ) : null}
+
+        <TouchableOpacity onPress={abrirApoyo} style={[styles.solicitarBtnClaro, { backgroundColor: colors.background, borderColor: colors.cardBorder, marginTop: 10 }]}>
+          <Feather name="life-buoy" size={16} color={colors.textSub} />
+          <Text style={[styles.solicitarBtnClaroText, { color: colors.textSub }]}>Solicitar apoyo para este domingo</Text>
+        </TouchableOpacity>
+      </ScrollView>
+      <AlertaPersonalizada {...alerta} />
+      <ModalSolicitarApoyo visible={mostrarApoyo} tipoItem="clase" item={asignacion} maestrosElegibles={maestrosElegibles} usuarioPropio={usuarioActivoGlobal} isDark={isDark} onCancelar={() => setMostrarApoyo(false)} onConfirmar={enviarSolicitud} />
+      <ModalAsistencia visible={mostrarLista} onCerrar={() => setMostrarLista(false)} fecha={fecha} grupo={grupo} isDark={isDark} usuario={usuarioActivoGlobal} />
     </SafeAreaView>
   );
 }
@@ -2925,7 +3208,7 @@ function AdminScreen({ navigation }) {
         <Text style={[styles.topicTitle, { color: colors.textMain }]}>Asistencia de Clases de niños</Text>
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Descarga la asistencia en CSV: de un grupo o de todos juntos.</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-          {['Todos', 'Niños', 'Pre adolescentes', 'Adolescentes'].map((g) => (
+                    {['Todos', ...ORDEN_GRUPOS].map((g) => (
             <TouchableOpacity key={g} onPress={() => setGrupoAsistencia(g)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: grupoAsistencia === g ? colors.textMain : colors.cardBorder, backgroundColor: grupoAsistencia === g ? colors.textMain : colors.cardBg }}>
               <Text style={{ color: grupoAsistencia === g ? colors.background : colors.textMain, fontWeight: '600', fontSize: 13 }}>{g}</Text>
             </TouchableOpacity>
@@ -3042,7 +3325,9 @@ if (cargandoSesion) {
             <Stack.Screen name="MiRol" component={MiRolScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Temas" component={TemasScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Clases" component={ClasesScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ headerShown: false }} />
+                        <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Domingos" component={DomingosScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="DomingoDetalle" component={DomingoDetalleScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Tablon" component={TablonScreen} options={{ headerShown: false }} />
                         <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: false }} />
                         <Stack.Screen name="TodosUsuarios" component={TodosUsuariosScreen} options={{ headerShown: false }} />
