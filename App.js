@@ -2872,7 +2872,10 @@ function AdminScreen({ navigation }) {
 // NAVEGADOR PRINCIPAL Y PROVIDER
 // ==========================================
 export default function App() {
-  const [isDark, setIsDark] = useState(false);
+    // El modo oscuro se guarda en el dispositivo para que se respete al volver a abrir la app
+  const [isDark, setIsDark] = useState(() => {
+    try { return Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage.getItem('modo_oscuro') === '1'; } catch (e) { return false; }
+  });
   const [cargandoSesion, setCargandoSesion] = useState(true);
   const [rutaInicial, setRutaInicial] = useState('Login');
 
@@ -2925,7 +2928,11 @@ if (cargandoSesion) {
     return <ActivityIndicator style={{ flex: 1 }} size="large" />;
   }
   
-  const toggleTheme = () => setIsDark(!isDark);
+    const toggleTheme = () => {
+    const nuevo = !isDark;
+    setIsDark(nuevo);
+    AsyncStorage.setItem('modo_oscuro', nuevo ? '1' : '0').catch(() => {});
+  };
   const colors = getColors(isDark);
 
   // Tema global para React Navigation, elimina el flasheo blanco vinculando el Root al fondo actual
