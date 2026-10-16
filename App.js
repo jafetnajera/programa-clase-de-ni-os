@@ -584,7 +584,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
   const elegirIntercambio = async () => {
     setCargandoFechas(true);
     setPaso('fecha');
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaISO(new Date());
     const { data } = await supabase.from(tipoItem === 'clase' ? 'clases_asignadas' : 'programa_servicios').select('*').ilike('nombre_usuario', destino.nombre_usuario).gte('fecha', hoy).order('fecha', { ascending: true });
     setFechasDestino(data || []);
     setCargandoFechas(false);
@@ -1031,7 +1031,7 @@ function MenuPrincipalScreen({ navigation }) {
       const temporizador = setInterval(revisarNotificaciones, 30000);
       if (rolUsuarioActivoGlobal === 'administrador') { setTieneRol(true); setTieneClases(true); return () => clearInterval(temporizador); }
       (async () => {
-        const hoy = new Date().toISOString().split('T')[0];
+        const hoy = fechaISO(new Date());
         const { data } = await supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy);
         setTieneRol(data && data.length > 0);
       })();
@@ -1541,7 +1541,7 @@ function TodosUsuariosScreen({ navigation }) {
     const url = URL.createObjectURL(blob);
     const enlace = document.createElement('a');
     enlace.href = url;
-    enlace.download = `usuarios_indus_${new Date().toISOString().split('T')[0]}.csv`;
+    enlace.download = `usuarios_indus_${fechaISO(new Date())}.csv`;
     document.body.appendChild(enlace);
     enlace.click();
     document.body.removeChild(enlace);
@@ -2068,7 +2068,7 @@ function TablonScreen({ navigation, route }) {
   function cerrarAlerta() { setAlerta({ ...alerta, visible: false }); }
 
   async function obtenerSolicitudes() {
-        const hoy = new Date().toISOString().split('T')[0];
+        const hoy = fechaISO(new Date());
     let consulta = supabase.from('solicitudes_sustitucion').select('*').order('creado_en', { ascending: false });
     if (soloGrupo) { consulta = consulta.eq('grupo_clase', soloGrupo); }
     if (excluirGrupo) { consulta = consulta.neq('grupo_clase', excluirGrupo); }
