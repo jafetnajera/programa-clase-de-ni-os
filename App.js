@@ -490,6 +490,56 @@ const obtenerNotificaciones = async () => {
         else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
       }
     }
+      // ---- RECORDATORIOS: clases, equipo y rol (desaparecen solos cuando pasa la fecha) ----
+    const recordatorios = [];
+    const diasEntre = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+    const hoyD = new Date();
+    const inicioSiguienteMes = fechaISO(new Date(hoyD.getFullYear(), hoyD.getMonth() + 1, 1));
+    const finSiguienteMes = fechaISO(new Date(hoyD.getFullYear(), hoyD.getMonth() + 2, 0));
+    const domingosMes = domingosDelMes(hoyD.getFullYear(), hoyD.getMonth());
+    const desdeUltimoDomingo = hoy >= domingosMes[domingosMes.length - 1];
+    const [{ data: misClases }, { data: miRol }] = await Promise.all([
+      supabase.from('clases_asignadas').select('id, fecha, grupo, nombre_usuario, coordinador').gte('fecha', hoy).lte('fecha', finSiguienteMes).or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`),
+      supabase.from('programa_servicios').select('id, fecha, horario, estado_confirmacion').gte('fecha', hoy).ilike('nombre_usuario', usuarioActivoGlobal).order('fecha', { ascending: true }),
+    ]);
+    const pendientesPropios = new Set(solicitudes.filter((s) => s.estado === 'Pendiente' && s.clase_asignada_id && (s.maestro_solicitante || '').toLowerCase() === yo).map((s) => s.clase_asignada_id));
+    const equiposVistos = new Set();
+    (misClases || []).forEach((c) => {
+      const d = diasEntre(hoy, c.fecha);
+      const mia = (c.nombre_usuario || '').toLowerCase() === yo;
+      const irTemas = { pantalla: 'Temas', params: { grupo: c.grupo } };
+      if (d <= 4 && mia) {
+        if (pendientesPropios.has(c.id)) recordatorios.push({ clave: `rec-pend:${c.id}`, accion: false, abierta: true, destino: { pantalla: 'Tablon', params: { excluirGrupo: 'Predicaciones' } }, mensaje: 'Tu solicitud de apoyo para este domingo sigue pendiente', detalle: `Recordatorio • ${c.grupo}` });
+        else recordatorios.push({ clave: `rec-clase:${c.id}:${d <= 2 ? 'v' : 'm'}`, accion: false, destino: irTemas, mensaje: d <= 2 ? 'Este domingo tienes clase, ¿ya estás listo?' : 'Este domingo tienes clase', detalle: `Prepara tu tema • ${c.grupo}` });
+      }
+      if (d <= 2 && !mia && (c.coordinador || '').toLowerCase() === yo && !equiposVistos.has(`${c.fecha}:${c.grupo}`)) {
+        equiposVistos.add(`${c.fecha}:${c.grupo}`);
+        recordatorios.push({ clave: `rec-equipo:${c.fecha}:${c.grupo}`, accion: false, destino: irTemas, mensaje: 'Este domingo le toca a tu equipo', detalle: `Recordatorio • ${c.grupo}` });
+      }
+    });
+    if (desdeUltimoDomingo) {
+      const claveMes = inicioSiguienteMes.slice(0, 7);
+      const delMes = (misClases || []).filter((c) => c.fecha >= inicioSiguienteMes);
+      const propia = delMes.find((c) => (c.nombre_usuario || '').toLowerCase() === yo);
+      const deEquipo = delMes.find((c) => (c.coordinador || '').toLowerCase() === yo);
+      if (propia) recordatorios.push({ clave: `rec-mes:${claveMes}:clases`, accion: false, destino: { pantalla: 'Temas', params: { grupo: propia.grupo, verFuturo: true } }, mensaje: 'El próximo mes tienes clases programadas', detalle: `Recordatorio • ${propia.grupo}` });
+      else if (deEquipo) recordatorios.push({ clave: `rec-mes:${claveMes}:equipo`, accion: false, destino: { pantalla: 'Temas', params: { grupo: deEquipo.grupo, verFuturo: true } }, mensaje: 'El próximo mes tu equipo tiene clases programadas', detalle: `Recordatorio • ${deEquipo.grupo}` });
+      const rolMes = (miRol || []).find((r) => r.fecha >= inicioSiguienteMes && r.fecha <= finSiguienteMes);
+      if (rolMes) recordatorios.push({ clave: `rec-mes:${claveMes}:rol`, accion: false, destino: { pantalla: 'MiRol', params: { servicioId: rolMes.id } }, mensaje: 'El próximo mes tienes predicaciones programadas', detalle: 'Recordatorio • Mi rol' });
+    }
+    let porConfirmarLejos = null;
+    (miRol || []).forEach((r) => {
+      const d = diasEntre(hoy, r.fecha);
+      const confirmada = r.estado_confirmacion === 'confirmado';
+      const tipo = calcularTipo(r.fecha, r.horario).toLowerCase();
+      if (d <= 15) {
+        const cuando = d === 0 ? 'hoy' : d === 1 ? 'mañana' : `en ${d} días`;
+        const etapa = d <= 1 ? 'cerca' : d <= 3 ? '3' : d <= 7 ? '7' : '15';
+        recordatorios.push({ clave: `rec-rol:${r.id}:${confirmada ? 'c' : 'p'}:${etapa}`, accion: !confirmada, destino: { pantalla: 'MiRol', params: { servicioId: r.id } }, mensaje: `Tienes una ${tipo} ${cuando}`, detalle: confirmada ? 'Recordatorio • Mi rol' : 'Toca para confirmarla en Mi rol' });
+      } else if (!confirmada && !porConfirmarLejos) porConfirmarLejos = r;
+    });
+    if (porConfirmarLejos) recordatorios.push({ clave: 'rec-rol-pend', accion: true, destino: { pantalla: 'MiRol', params: { servicioId: porConfirmarLejos.id } }, mensaje: 'Tienes fechas por confirmar en tu rol', detalle: 'Toca para revisarlas en Mi rol' });
+    items.unshift(...recordatorios);
   } catch (e) { console.error('Error leyendo notificaciones:', e); }
   let vistas = [];
   try { vistas = JSON.parse((await AsyncStorage.getItem(claveVistas())) || '[]'); } catch (e) {}
@@ -1068,7 +1118,24 @@ function MenuPrincipalScreen({ navigation }) {
 // ==========================================
 // PANTALLA: MI ROL
 // ==========================================
-function MiRolScreen({ navigation }) {
+function MiRolScreen({ navigation, route }) {
+  // Si se abre desde un aviso, baja hasta esa fecha, la resalta y hace parpadear el botón de confirmar
+  const servicioId = route?.params?.servicioId;
+  const scrollRolRef = useRef(null);
+  const yaDesplazadoRol = useRef(false);
+  const listaRolY = useRef(0);
+  const pulso = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!servicioId) return;
+    yaDesplazadoRol.current = false;
+    const anim = Animated.loop(Animated.sequence([
+      Animated.timing(pulso, { toValue: 1.4, duration: 500, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(pulso, { toValue: 1, duration: 500, useNativeDriver: Platform.OS !== 'web' }),
+    ]));
+    anim.start();
+    return () => anim.stop();
+  }, [servicioId]);
+  const esObjetivo = (item) => !!servicioId && String(item.id) === String(servicioId);
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
     const [fechas, setFechas] = useState([]);
@@ -1082,7 +1149,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
   const [refrescando, setRefrescando] = useState(false);
 
   const cargarRol = async () => {
-      const hoy = new Date().toISOString().split('T')[0];
+      const hoy = fechaISO(new Date());
       let consulta = supabase.from('programa_servicios').select('*').gte('fecha', hoy).order('fecha', { ascending: true });
       if (rolUsuarioActivoGlobal !== 'administrador') {
         consulta = consulta.ilike('nombre_usuario', usuarioActivoGlobal);
@@ -1155,7 +1222,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 
   return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
+            <ScrollView ref={scrollRolRef} contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
                 <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
                     <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -1174,7 +1241,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
           <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
         </TouchableOpacity>
 
-        <View style={{ width: '95%', maxWidth: 850 }}>
+                <View style={{ width: '95%', maxWidth: 850 }} onLayout={(e) => { listaRolY.current = e.nativeEvent.layout.y; }}>
           {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
                     {!cargando && fechas.length === 0 && (
             <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>{rolUsuarioActivoGlobal === 'administrador' ? 'No hay fechas programadas.' : 'No tienes fechas próximas.'}</Text>
@@ -1185,7 +1252,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
               return acc;
             }, {})
           ).map(([fecha, items]) => (
-            <View key={fecha} style={{ flexDirection: 'row', marginBottom: 14 }}>
+                        <View key={fecha} onLayout={(e) => { if (servicioId && !yaDesplazadoRol.current && items.some(esObjetivo) && scrollRolRef.current) { yaDesplazadoRol.current = true; const y = listaRolY.current + e.nativeEvent.layout.y - 10; setTimeout(() => { if (scrollRolRef.current) scrollRolRef.current.scrollTo({ y: Math.max(0, y), animated: true }); }, 150); } }} style={{ flexDirection: 'row', marginBottom: 14 }}>
                                       <View style={{ width: 56, alignItems: 'center', paddingTop: 14 }}>
                 <Text style={{ fontSize: 21, fontWeight: '700', color: colors.textMain }}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(fecha + 'T00:00:00').getDay()]}</Text>
                 <Text style={{ fontSize: 13, color: colors.textSub }}>{new Date(fecha + 'T00:00:00').getDate()} {new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).replace('.', '')}</Text>
@@ -1197,12 +1264,15 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                   const tintBg = esClase ? '#EDF2FA' : '#FBEAE0';
                   const tintText = esClase ? '#3A5A8A' : '#A65A2E';
                   return (
-                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}>
+                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, ...(esObjetivo(item) ? { backgroundColor: isDark ? 'rgba(126, 160, 216, 0.18)' : '#EDF2FA', borderRadius: 18, marginHorizontal: -8, paddingHorizontal: 8 } : {}) }}>
                       <View style={{ width: 36, height: 36, borderRadius: 14, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
                         <Feather name={esClase ? "calendar" : "mic"} size={16} color={tintText} />
                       </View>
                                             <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, color: colors.textMain }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
+                                                <Text style={{ fontSize: 13, color: colors.textMain }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
+                        {esObjetivo(item) && item.estado_confirmacion !== 'confirmado' && item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() && (
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#9FBCE8' : '#2C4A73', marginTop: 3 }}>Confirma aquí tu asistencia 👉</Text>
+                        )}
                       </View>
                                             {item.usuario_original && (
                         <Text style={{ fontSize: 11, color: colors.textSub, textDecorationLine: 'line-through', marginRight: 2 }}>{mapaNombres[item.usuario_original.toLowerCase()] || item.usuario_original}</Text>
@@ -1210,7 +1280,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                                                                   {item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() ? (
                         item.estado_confirmacion !== 'confirmado' && (
                           <TouchableOpacity onPress={() => confirmarAsistencia(item)} style={{ padding: 6 }}>
-                            <Feather name="thumbs-up" size={18} color={colors.textSub} />
+                            <Animated.View style={{ transform: [{ scale: esObjetivo(item) ? pulso : 1 }] }}><Feather name="thumbs-up" size={18} color={esObjetivo(item) ? (isDark ? '#9FBCE8' : '#2C4A73') : colors.textSub} /></Animated.View>
                           </TouchableOpacity>
                         )
                       ) : (
@@ -1419,7 +1489,7 @@ function NotificacionesScreen({ navigation }) {
             </View>
           ) : (
             <>
-              <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 15 }}>Avisos sobre solicitudes de apoyo:</Text>
+              <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 15 }}>Tus avisos y recordatorios:</Text>
               {solicitudes.map((s) => (
                                 <TouchableOpacity key={s.clave} activeOpacity={0.8} onPress={() => navigation.navigate(s.destino ? s.destino.pantalla : 'Tablon', s.destino ? s.destino.params : {})} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, paddingVertical: 16, paddingHorizontal: 20, marginBottom: 12, opacity: (!s.accion && !s.abierta && vistasPrevias.includes(s.clave)) ? 0.5 : 1 }}>
                   <View style={{ flex: 1 }}>
@@ -1616,7 +1686,7 @@ function TemasScreen({ route, navigation }) {
   const { isDark } = useContext(ThemeContext);
   const [temas, setTemas] = useState([]);
   const [cargando, setCargando] = useState(true);
-    const [verFuturo, setVerFuturo] = useState(false);
+        const [verFuturo, setVerFuturo] = useState(!!route?.params?.verFuturo);
   const columnas = useColumnas();
   const theme = getThemeColors(grupo, isDark);
   const colors = getColors(isDark);
@@ -1644,7 +1714,7 @@ function TemasScreen({ route, navigation }) {
       <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center' }}>
                 <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, flex: 1, paddingBottom: 20 }}>
                     <View style={styles.headerRowSpaceBetween}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
+            <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
               <Feather name="arrow-left" size={22} color={colors.textSub} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
@@ -1680,7 +1750,10 @@ function ClasesScreen({ route, navigation }) {
     const [clasesReales, setClasesReales] = useState([]);
   const [fechasPermitidas, setFechasPermitidas] = useState(null);
   const fechaDeClase = (c) => { const mes = parsearMesAnio(tema.mes_anio); return mes ? (domingosDelMes(mes.getFullYear(), mes.getMonth())[c.numero_clase - 1] || null) : null; };
-    const clasesVisibles = fechasPermitidas ? clasesReales.filter((c) => fechasPermitidas.includes(fechaDeClase(c))) : clasesReales;
+        // Los maestros solo ven sus clases que aún no pasan; coordinadores y administradores ven todas
+    const hoyClases = fechaISO(new Date());
+    const yaPaso = (c) => { const f = fechaDeClase(c); return !!f && f < hoyClases; };
+    const clasesVisibles = fechasPermitidas ? clasesReales.filter((c) => fechasPermitidas.includes(fechaDeClase(c)) && !yaPaso(c)) : clasesReales;
     const [filasMes, setFilasMes] = useState([]);
   const [pendientesIds, setPendientesIds] = useState([]);
   const enfocada = useIsFocused();
@@ -1754,7 +1827,7 @@ function ClasesScreen({ route, navigation }) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
             <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, flex: 1 }}>
                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5, justifyContent: 'space-between' }}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
+          <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
           <View style={[styles.headerSoloText, { flex: 1 }]}>
@@ -1778,7 +1851,7 @@ function ClasesScreen({ route, navigation }) {
             ) : (
                             <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
                 {clasesVisibles.map((clase) => (
-                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={fechaBonitaDeClase(clase)} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} etiqueta={apoyoPendiente(clase) ? 'Apoyo pendiente' : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
+                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={fechaBonitaDeClase(clase)} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} etiqueta={yaPaso(clase) ? 'Ya pasó' : apoyoPendiente(clase) ? 'Apoyo pendiente' : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
                 ))}
               </View>
             )}
@@ -2133,7 +2206,7 @@ function TablonScreen({ navigation, route }) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
       <View style={{ width: '95%', maxWidth: 850, flex: 1, paddingBottom: 20 }}>
                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5, justifyContent: 'space-between' }}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
+          <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
                     <View style={[styles.headerSoloText, { flex: 1 }]}>
@@ -2343,11 +2416,13 @@ function AdminScreen({ navigation }) {
   // Sube a Supabase las filas que se previsualizaron
   const confirmarCargaRol = async () => {
     setSubiendoRol(true);
-    const { error } = await supabase.from('programa_servicios').insert(previaRol);
+        const { data: subidas, error } = await supabase.from('programa_servicios').insert(previaRol).select('id');
     setSubiendoRol(false);
     if (error) {
             setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo subir el rol: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
+            // Avisa a cada persona programada que ya está disponible su rol nuevo
+      supabase.functions.invoke('recordatorios', { body: { accion: 'rol-nuevo', ids: (subidas || []).map((r) => r.id) } }).catch((e) => console.error('No se pudo avisar del rol nuevo:', e));
       setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: `Se subieron ${previaRol.length} fechas correctamente.`, onConfirmar: cerrarAlerta, isDark: isDark });
       setPreviaRol([]);
     }
