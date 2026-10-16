@@ -2423,7 +2423,7 @@ function AdminScreen({ navigation }) {
     } else {
             // Avisa a cada persona programada que ya está disponible su rol nuevo
       supabase.functions.invoke('recordatorios', { body: { accion: 'rol-nuevo', ids: (subidas || []).map((r) => r.id) } }).catch((e) => console.error('No se pudo avisar del rol nuevo:', e));
-      setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: `Se subieron ${previaRol.length} fechas correctamente.`, onConfirmar: cerrarAlerta, isDark: isDark });
+   fechaISO(new Date())
       setPreviaRol([]);
     }
   };
