@@ -440,6 +440,65 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
   );
 };
 
+// Panel de avisos: sale por la derecha, igual que el de ajustes, y mide lo que su contenido (con límite)
+const PanelNotificaciones = ({ visible, onCerrar, onNavegar, onRevisadas, isDark }) => {
+  const colors = getColors(isDark);
+  const anim = useRef(new Animated.Value(0)).current;
+  const [avisos, setAvisos] = useState([]);
+  const [vistasPrevias, setVistasPrevias] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  useEffect(() => {
+    Animated.timing(anim, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: false }).start();
+    if (!visible) return;
+    (async () => {
+      setCargando(true);
+      const { items, vistas } = await obtenerNotificaciones();
+      setVistasPrevias(vistas);
+      await marcarNotificacionesVistas(items);
+      const nuevas = items.filter((n) => n.accion || n.abierta || !vistas.includes(n.clave));
+      const yaVistas = items.filter((n) => !n.accion && !n.abierta && vistas.includes(n.clave));
+      setAvisos([...nuevas, ...yaVistas]);
+      setCargando(false);
+      if (onRevisadas) onRevisadas(items.some((n) => n.accion));
+    })();
+  }, [visible]);
+  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [400, 0] });
+  const overlayOpacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.4] });
+  return (
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents={visible ? 'auto' : 'none'}>
+      <TouchableOpacity activeOpacity={1} onPress={onCerrar} style={StyleSheet.absoluteFill}>
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
+      </TouchableOpacity>
+      <Animated.View style={{ position: 'absolute', top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 16 : 48, right: 0, width: '88%', maxWidth: 380, maxHeight: '80%', backgroundColor: colors.background, borderTopLeftRadius: 36, borderBottomLeftRadius: 36, overflow: 'hidden', transform: [{ translateX }], paddingTop: 22, paddingBottom: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 }}>
+          <Text style={{ flex: 1, color: colors.textMain, fontSize: 20, fontWeight: '700' }}>Avisos</Text>
+          <TouchableOpacity onPress={onCerrar} style={{ padding: 6 }} accessibilityLabel="Cerrar avisos"><Feather name="x" size={22} color={colors.textSub} /></TouchableOpacity>
+        </View>
+        {cargando ? (
+          <ActivityIndicator color={colors.textSub} style={{ marginVertical: 24 }} />
+        ) : avisos.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 24, paddingHorizontal: 20 }}>
+            <Feather name="bell-off" size={34} color={colors.textSub} />
+            <Text style={{ color: colors.textSub, fontSize: 14, marginTop: 12, textAlign: 'center' }}>No tienes avisos por ahora.</Text>
+          </View>
+        ) : (
+          <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 6 }}>
+            {avisos.map((s) => (
+              <TouchableOpacity key={s.clave} activeOpacity={0.8} onPress={() => { onCerrar(); onNavegar(s.destino ? s.destino.pantalla : 'Tablon', s.destino ? s.destino.params : {}); }} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 22, paddingVertical: 13, paddingHorizontal: 16, marginBottom: 10, opacity: (!s.accion && !s.abierta && vistasPrevias.includes(s.clave)) ? 0.5 : 1 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 14 }}>{s.mensaje}</Text>
+                  <Text style={{ color: colors.textSub, fontSize: 12.5, marginTop: 2 }}>{s.detalle}</Text>
+                </View>
+                <Feather name="chevron-right" size={18} color={colors.textSub} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </Animated.View>
+    </View>
+  );
+};
+
 // ---- AYUDA: preguntas frecuentes (gratis, sin inteligencia artificial) ----
 // Para agregar o corregir una duda, edita esta lista. "claves" son palabras extra para que el buscador la encuentre.
 const PREGUNTAS_AYUDA = [
@@ -486,7 +545,7 @@ const PREGUNTAS_AYUDA = [
   },
   {
     id: 'coritos', pregunta: '¿Cómo escucho los coritos?',
-    respuesta: 'Entra a «Coritos» desde el inicio y toca el que quieras escuchar. Si tiene letra, toca «Letra» para verla.\n\nSolo suenan mientras tienes esa pantalla abierta. También aparecen dentro de cada clase.',
+    respuesta: 'Entra a «Clases de niños» y toca el botón «Coritos». Toca el que quieras escuchar. Si tiene letra, toca «Letra» para verla.\n\nSolo suenan mientras tienes esa pantalla abierta. También aparecen dentro de cada clase.',
     claves: 'canciones musica cantos audio letra escuchar',
     ir: { pantalla: 'Coritos', texto: 'Ir a Coritos' },
   },
@@ -1643,7 +1702,8 @@ function MenuPrincipalScreen({ navigation }) {
         const [tieneRol, setTieneRol] = useState(false);
   const [tieneClases, setTieneClases] = useState(false);
         const [mostrarAjustes, setMostrarAjustes] = useState(false);
-  const [mostrarAyuda, setMostrarAyuda] = useState(false);
+   const [mostrarAyuda, setMostrarAyuda] = useState(false);
+  const [mostrarAvisos, setMostrarAvisos] = useState(false);
         const [hayNotificaciones, setHayNotificaciones] = useState(false);
     const [avisosPush, setAvisosPush] = useState(estadoAvisos());
     const columnas = useColumnas();
@@ -1651,7 +1711,6 @@ function MenuPrincipalScreen({ navigation }) {
   const tarjetas = [
     tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') },
         tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones', categoria: 'Predicaciones', onPress: () => navigation.navigate('MiRol') },
-    { icono: 'music', titulo: 'Coritos', categoria: 'Coritos', onPress: () => navigation.navigate('Coritos') },
     { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) },
     { icono: 'heart', titulo: 'Petición de oración', categoria: 'Petición', pronto: true, onPress: () => proximamente(getThemeColors('Petición', isDark).textDark) },
     { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', pronto: true, onPress: () => proximamente(getThemeColors('Calendario', isDark).textDark) },
@@ -1716,7 +1775,7 @@ function MenuPrincipalScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 90, height: 64, resizeMode: 'contain' }} />
           </TouchableOpacity>
-                    <TouchableOpacity onPress={() => navigation.navigate('Notificaciones')} style={{ padding: 8 }}>
+                                        <TouchableOpacity onPress={() => setMostrarAvisos(true)} style={{ padding: 8 }} accessibilityLabel="Avisos">
             <IconoNotificacion size={28} color={colors.textSub} activo={hayNotificaciones} />
           </TouchableOpacity>
         </View>
@@ -1743,7 +1802,8 @@ function MenuPrincipalScreen({ navigation }) {
             </ScrollView>
             <AlertaPersonalizada {...alerta} />
                   <PanelAjustes visible={mostrarAjustes} onCerrar={() => setMostrarAjustes(false)} isDark={isDark} toggleTheme={toggleTheme} onCerrarSesion={confirmarCerrarSesion} onAdmin={() => navigation.navigate('Admin')} onAyuda={() => setMostrarAyuda(true)} />
-      <ModalAyuda visible={mostrarAyuda} onCerrar={() => setMostrarAyuda(false)} onNavegar={(pantalla, params) => navigation.navigate(pantalla, params)} isDark={isDark} />
+            <ModalAyuda visible={mostrarAyuda} onCerrar={() => setMostrarAyuda(false)} onNavegar={(pantalla, params) => (pantalla === 'Notificaciones' ? setMostrarAvisos(true) : navigation.navigate(pantalla, params))} isDark={isDark} />
+      <PanelNotificaciones visible={mostrarAvisos} onCerrar={() => setMostrarAvisos(false)} onNavegar={(pantalla, params) => navigation.navigate(pantalla, params)} onRevisadas={setHayNotificaciones} isDark={isDark} />
     </SafeAreaView>
   );
 }
@@ -2036,7 +2096,11 @@ function GruposScreen({ navigation }) {
 
                                 <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })}>
           <Feather name="clipboard" size={20} color={colors.textSub} />
-          <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
+                    <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]} onPress={() => navigation.navigate('Coritos')}>
+          <Feather name="music" size={20} color={colors.textSub} />
+          <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Coritos</Text>
         </TouchableOpacity>
 
                                 {vistaCompleta && coordinadorMes ? (
@@ -2918,13 +2982,6 @@ function CoritosScreen({ navigation }) {
   useEffect(() => { cargar(); }, []);
 
   const visibles = coritos.filter((c) => (filtro === 'Todos' || gruposDeCoritos(filtro).some((g) => (c.grupos || []).includes(g))) && sinAcentos(c.titulo).includes(sinAcentos(busqueda)));
-
-          {esAdmin ? (
-          <TouchableOpacity onPress={() => setAgregando(true)} style={[styles.solicitarBtnClaro, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginBottom: 10 }]}>
-            <Feather name="plus" size={16} color={colors.textSub} />
-            <Text style={[styles.solicitarBtnClaroText, { color: colors.textSub }]}>Agregar corito</Text>
-          </TouchableOpacity>
-        ) : null}
 
   const anchoFila = columnas === 3 ? '32.5%' : columnas === 2 ? '49.3%' : '100%';
 
