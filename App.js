@@ -55,7 +55,8 @@ const PALETA_MENU = {
     'Cuneros tarde': { fondo: '#D5BFA8', texto: '#5A3E22' },
     'Tarde 4 a 8': { fondo: '#E3B59B', texto: '#5E3420' },
         'Tarde 9 a 12': { fondo: '#B7C9A8', texto: '#34472A' },
-    'Coritos': { fondo: '#D9B8C9', texto: '#55304A' },
+        'Coritos': { fondo: '#D9B8C9', texto: '#55304A' },
+    'Usuarios': { fondo: '#F3D9A8', texto: '#6B4A12' },
   },
   oscuro: {
     'Clases de niños': { fondo: '#8FB9B1', texto: '#173B37' },
@@ -70,7 +71,8 @@ const PALETA_MENU = {
     'Cuneros tarde': { fondo: '#C4AA90', texto: '#45301A' },
     'Tarde 4 a 8': { fondo: '#D29F84', texto: '#4A2614' },
         'Tarde 9 a 12': { fondo: '#A0B591', texto: '#26381D' },
-    'Coritos': { fondo: '#C7A0B4', texto: '#422238' },
+        'Coritos': { fondo: '#C7A0B4', texto: '#422238' },
+    'Usuarios': { fondo: '#DFC18C', texto: '#4A3208' },
   },
 };
 
@@ -366,7 +368,7 @@ const activarAvisos = async () => {
 };
 
 // Panel de Ajustes: se desliza desde la izquierda y cubre solo una parte de la pantalla
-const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }) => {
+const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, onAdmin, onAyuda }) => {
   const colors = getColors(isDark);
     const anim = useRef(new Animated.Value(0)).current;
     const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
@@ -399,7 +401,7 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
       <TouchableOpacity activeOpacity={1} onPress={onCerrar} style={StyleSheet.absoluteFill}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
       </TouchableOpacity>
-      <Animated.View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '65%', maxWidth: 300, backgroundColor: colors.background, borderTopRightRadius: 44, borderBottomRightRadius: 44, overflow: 'hidden', transform: [{ translateX }], paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 30 : 60, paddingHorizontal: 20 }}>
+            <Animated.View style={{ position: 'absolute', top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 16 : 48, left: 0, width: '72%', maxWidth: 300, backgroundColor: colors.background, borderTopRightRadius: 36, borderBottomRightRadius: 36, overflow: 'hidden', transform: [{ translateX }], paddingTop: 26, paddingBottom: 12, paddingHorizontal: 20 }}>
                 <Text style={{ color: colors.textMain, fontSize: 20, fontWeight: '700', marginBottom: 18 }}>Hola, {nombreVisible}</Text>
         <Text style={[styles.titleMini, { color: colors.textSub, marginBottom: 14 }]}>Ajustes</Text>
         <TouchableOpacity onPress={() => { onCerrar(); toggleTheme(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
@@ -416,6 +418,18 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
             </View>
           </TouchableOpacity>
         )}
+                        {onAyuda && (
+          <TouchableOpacity onPress={() => { onCerrar(); onAyuda(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+            <Feather name="help-circle" size={20} color={colors.textSub} />
+            <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>Ayuda</Text>
+          </TouchableOpacity>
+        )}
+        {rolUsuarioActivoGlobal === 'administrador' && onAdmin && (
+          <TouchableOpacity onPress={() => { onCerrar(); onAdmin(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+            <Feather name="settings" size={20} color={colors.textSub} />
+            <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>Administración</Text>
+          </TouchableOpacity>
+        )}
         <View style={{ height: 1, backgroundColor: colors.cardBorder, marginVertical: 6 }} />
         <TouchableOpacity onPress={() => { onCerrar(); onCerrarSesion(); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
           <Feather name="log-out" size={20} color={colors.textSub} />
@@ -423,6 +437,196 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion }
         </TouchableOpacity>
       </Animated.View>
     </View>
+  );
+};
+
+// ---- AYUDA: preguntas frecuentes (gratis, sin inteligencia artificial) ----
+// Para agregar o corregir una duda, edita esta lista. "claves" son palabras extra para que el buscador la encuentre.
+const PREGUNTAS_AYUDA = [
+  {
+    id: 'avisos', pregunta: 'No me llegan los avisos',
+    respuesta: 'Abre los ajustes (el engrane de arriba a la izquierda) y revisa que diga «Avisos activados».\n\n• Si dice «Activar avisos», tócalo y acepta el permiso.\n• Si dice «Avisos bloqueados», actívalos en los ajustes de tu teléfono o navegador.\n• En iPhone los avisos solo llegan si la app está instalada en tu pantalla de inicio.',
+    claves: 'notificaciones alertas mensajes push suena llega celular permiso',
+  },
+  {
+    id: 'cuando', pregunta: '¿Dónde veo cuándo me toca?',
+    respuesta: '• Tus clases están en «Clases de niños», dentro de tu grupo.\n• Tus predicaciones están en «Rol de predicaciones».\n\nAdemás te llegan recordatorios, y todos aparecen en el botón de avisos de arriba a la derecha del inicio.',
+    claves: 'fecha toca domingo turno calendario recordatorio clase predicacion',
+    ir: { pantalla: 'Notificaciones', texto: 'Ver mis avisos' },
+  },
+  {
+    id: 'apoyoClase', pregunta: 'No puedo dar mi clase, ¿cómo pido apoyo?',
+    respuesta: 'Entra a «Clases de niños», abre tu grupo y tu clase, y toca «Solicitar apoyo para esta clase».\n\nPuedes pedírselo a alguien en específico o dejar que la tome cualquiera que pueda cubrirte. Cuando alguien acepte, te llegará un aviso.',
+    claves: 'faltar falto cubrir sustituto cambio ayuda solicitar no puedo ir',
+    ir: { pantalla: 'Grupos', texto: 'Ir a Clases de niños' },
+  },
+  {
+    id: 'apoyoRol', pregunta: 'No puedo predicar en mi fecha, ¿qué hago?',
+    respuesta: 'Entra a «Rol de predicaciones» y, en tu fecha, toca el botón de las dos flechas para pedir apoyo.\n\nPuedes pedir que solo te cubran o hacer un intercambio de fechas con alguien.',
+    claves: 'predicacion cambio intercambio cubrir faltar rol fecha',
+    ir: { pantalla: 'MiRol', texto: 'Ir al rol' },
+  },
+  {
+    id: 'cubrir', pregunta: '¿Cómo cubro a alguien?',
+    respuesta: 'Cuando alguien pide apoyo te llega un aviso. Abre «Solicitudes de apoyo» y toca «Aceptar» en la que puedas cubrir.\n\nSolo ves el botón «Aceptar» en las solicitudes que te corresponden.',
+    claves: 'aceptar solicitud ayudar tablon apoyo sustituir',
+    ir: { pantalla: 'Tablon', texto: 'Ver solicitudes de apoyo' },
+  },
+  {
+    id: 'confirmar', pregunta: '¿Cómo confirmo mi predicación?',
+    respuesta: 'Entra a «Rol de predicaciones» y toca la manita 👍 junto a tu fecha. Mientras no confirmes, te seguirán llegando recordatorios.',
+    claves: 'confirmar asistencia manita pulgar rol predicacion',
+    ir: { pantalla: 'MiRol', texto: 'Ir al rol' },
+  },
+  {
+    id: 'lista', pregunta: '¿Cómo tomo lista?',
+    respuesta: 'Abre tu clase (o tu domingo, si das Cuneros o un grupo de la tarde) y toca «Tomar lista».\n\nBusca a cada niño por su nombre. Si no aparece, agrégalo ahí mismo.',
+    claves: 'asistencia ninos alumnos lista pasar registrar',
+    ir: { pantalla: 'Grupos', texto: 'Ir a Clases de niños' },
+  },
+  {
+    id: 'coritos', pregunta: '¿Cómo escucho los coritos?',
+    respuesta: 'Entra a «Coritos» desde el inicio y toca el que quieras escuchar. Si tiene letra, toca «Letra» para verla.\n\nSolo suenan mientras tienes esa pantalla abierta. También aparecen dentro de cada clase.',
+    claves: 'canciones musica cantos audio letra escuchar',
+    ir: { pantalla: 'Coritos', texto: 'Ir a Coritos' },
+  },
+  {
+    id: 'clasePasada', pregunta: 'No veo una clase que ya pasó',
+    respuesta: 'Las clases que ya pasaron se ocultan para que solo veas lo que viene. Si necesitas consultar una anterior, pídesela a tu coordinador o a un administrador.',
+    claves: 'desaparecio anterior pasada borrada no aparece clase',
+  },
+  {
+    id: 'pin', pregunta: 'Olvidé mi usuario o mi PIN',
+    respuesta: 'Pídeselo a un administrador. Él puede verlo y mandártelo por WhatsApp.',
+    claves: 'contrasena clave entrar acceso olvide sesion login',
+  },
+  {
+    id: 'tarde', pregunta: '¿Qué se hace en los grupos de la tarde?',
+    respuesta: '• «Tarde 4 a 8» y «Tarde 9 a 12» repasan la clase de la mañana del domingo anterior y la de ese mismo domingo. No llevan material nuevo.\n• «Cuneros» y «Cuneros tarde» son para cuidar a los bebés.',
+    claves: 'tarde repaso cuneros bebes grupo',
+  },
+  {
+    id: 'oscuro', pregunta: '¿Cómo cambio a modo oscuro?',
+    respuesta: 'Abre los ajustes (el engrane de arriba a la izquierda) y toca «Modo oscuro». Se queda guardado para la próxima vez.',
+    claves: 'tema negro claro colores noche',
+  },
+  {
+    id: 'altaUsuario', soloAdmin: true, pregunta: '¿Cómo doy de alta a un maestro?',
+    respuesta: 'Ajustes → Administración → Usuarios → «Dar de alta a un usuario».\n\nDespués, en «Buscar usuarios», puedes compartirle su usuario y PIN por WhatsApp.',
+    claves: 'nuevo usuario registrar maestro agregar persona alta',
+    ir: { pantalla: 'Admin', params: { seccion: 'usuarios' }, texto: 'Ir a Usuarios' },
+  },
+  {
+    id: 'subirArchivos', soloAdmin: true, pregunta: '¿Cómo subo el rol o las clases?',
+    respuesta: 'Ajustes → Administración, y luego:\n• Predicaciones → «Subir rol».\n• Clases de niños → «Subir clases».\n\nSe sube un archivo CSV. Revisa la vista previa antes de confirmar.',
+    claves: 'csv archivo subir rol clases cargar excel',
+    ir: { pantalla: 'Admin', texto: 'Ir a Administración' },
+  },
+  {
+    id: 'coritoAdmin', soloAdmin: true, pregunta: '¿Cómo agrego un corito?',
+    respuesta: 'Ajustes → Administración → Clases de niños → «Agregar corito».\n\nPara ponerlo en una clase, abre la clase y toca «Elegir coritos de esta clase».',
+    claves: 'subir corito audio cancion mp3 agregar',
+    ir: { pantalla: 'Admin', params: { seccion: 'clases' }, texto: 'Ir a Clases de niños' },
+  },
+];
+
+// Palabras que no ayudan a encontrar una duda
+const PALABRAS_VACIAS = ['como', 'que', 'donde', 'cuando', 'para', 'por', 'porque', 'los', 'las', 'una', 'uno', 'del', 'con', 'mis', 'tus', 'hago', 'puedo', 'quiero', 'esta', 'este', 'app', 'hay', 'sus', 'mas'];
+const buscarAyuda = (texto, lista) => {
+  const palabras = sinAcentos(texto).split(/[^a-z0-9ñ]+/).filter((w) => w.length >= 3 && !PALABRAS_VACIAS.includes(w));
+  if (palabras.length === 0) return lista;
+  return lista
+    .map((p) => { const base = sinAcentos(`${p.pregunta} ${p.claves}`); return { p, puntos: palabras.filter((w) => base.includes(w)).length }; })
+    .filter((x) => x.puntos > 0)
+    .sort((a, b) => b.puntos - a.puntos)
+    .map((x) => x.p);
+};
+
+// Ventana tipo chat: tocas una duda (o la escribes) y aparece la respuesta
+const ModalAyuda = ({ visible, onCerrar, onNavegar, isDark }) => {
+  const colors = getColors(isDark);
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Calendario'];
+  const scrollRef = useRef(null);
+  const [busqueda, setBusqueda] = useState('');
+  const [hechas, setHechas] = useState([]);
+  const desplazar = useRef(false);
+  useEffect(() => { if (!visible) { setHechas([]); setBusqueda(''); } }, [visible]);
+  const disponibles = PREGUNTAS_AYUDA.filter((p) => !p.soloAdmin || rolUsuarioActivoGlobal === 'administrador');
+  const sugeridas = buscarAyuda(busqueda, disponibles.filter((p) => !hechas.includes(p.id)));
+  const preguntar = (p) => {
+    setHechas((prev) => [...prev, p.id]);
+    setBusqueda('');
+    desplazar.current = true;
+  };
+  // Al aparecer una respuesta nueva, la ventana baja hasta esa pregunta para que se lea completa
+  const alAcomodar = (id, e) => {
+    if (!desplazar.current || id !== hechas[hechas.length - 1]) return;
+    desplazar.current = false;
+    const y = e.nativeEvent.layout.y;
+    setTimeout(() => { if (scrollRef.current) scrollRef.current.scrollTo({ y: Math.max(0, y - 8), animated: true }); }, 30);
+  };
+  const burbujaBot = { alignSelf: 'flex-start', maxWidth: '88%', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 22, borderTopLeftRadius: 6, paddingVertical: 12, paddingHorizontal: 15, marginBottom: 10 };
+  const burbujaTu = { alignSelf: 'flex-end', maxWidth: '85%', backgroundColor: paleta.fondo, borderRadius: 22, borderTopRightRadius: 6, paddingVertical: 10, paddingHorizontal: 15, marginBottom: 10 };
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
+      <View style={[styles.modalOverlay, { justifyContent: 'center' }]}>
+        <View style={{ width: '92%', maxWidth: 520, height: '82%', maxHeight: 680, backgroundColor: colors.background, borderRadius: 32, borderWidth: 1, borderColor: colors.cardBorder, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center' }}>
+              <Feather name="help-circle" size={20} color={paleta.texto} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: colors.textMain }}>Ayuda</Text>
+              <Text style={{ fontSize: 12, color: colors.textSub }}>Preguntas frecuentes</Text>
+            </View>
+            <TouchableOpacity onPress={onCerrar} style={{ padding: 6 }} accessibilityLabel="Cerrar ayuda"><Feather name="x" size={22} color={colors.textSub} /></TouchableOpacity>
+          </View>
+
+          <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+            <View style={burbujaBot}>
+              <Text style={{ fontSize: 15, lineHeight: 22, color: colors.textMain }}>¡Hola! Toca tu duda o escríbela abajo.</Text>
+            </View>
+            {hechas.map((id) => {
+              const p = PREGUNTAS_AYUDA.find((x) => x.id === id);
+              if (!p) return null;
+              return (
+                <View key={id} onLayout={(e) => alAcomodar(id, e)}>
+                  <View style={burbujaTu}><Text style={{ fontSize: 15, fontWeight: '600', color: paleta.texto }}>{p.pregunta}</Text></View>
+                  <View style={burbujaBot}>
+                    <Text style={{ fontSize: 15, lineHeight: 22, color: colors.textMain }}>{p.respuesta}</Text>
+                    {p.ir ? (
+                      <TouchableOpacity onPress={() => { onCerrar(); onNavegar(p.ir.pantalla, p.ir.params); }} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: paleta.fondo }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: paleta.texto }}>{p.ir.texto}</Text>
+                        <Feather name="arrow-right" size={14} color={paleta.texto} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })}
+            {busqueda.trim() !== '' && sugeridas.length === 0 ? (
+              <View style={burbujaBot}>
+                <Text style={{ fontSize: 15, lineHeight: 22, color: colors.textMain }}>No encontré esa duda. Prueba con otras palabras o pregúntale a un administrador.</Text>
+              </View>
+            ) : null}
+            {sugeridas.length > 0 ? (
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSub, marginTop: hechas.length ? 6 : 2, marginBottom: 8 }}>{busqueda.trim() ? 'Dudas que coinciden' : hechas.length ? 'Otras dudas' : 'Dudas frecuentes'}</Text>
+            ) : null}
+            {sugeridas.map((p) => (
+              <TouchableOpacity key={p.id} onPress={() => preguntar(p)} style={{ alignSelf: 'flex-start', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.cardBg, marginBottom: 8 }}>
+                <Text style={{ fontSize: 14, color: colors.textMain }}>{p.pregunta}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+            <Feather name="search" size={18} color={colors.textSub} />
+            <TextInput style={{ flex: 1, fontSize: 15, color: colors.inputText, paddingVertical: 8, outlineStyle: 'none' }} placeholder="Escribe tu duda" placeholderTextColor={colors.textSub} value={busqueda} onChangeText={setBusqueda} />
+            {busqueda ? <TouchableOpacity onPress={() => setBusqueda('')} style={{ padding: 4 }} accessibilityLabel="Borrar búsqueda"><Feather name="x-circle" size={18} color={colors.textSub} /></TouchableOpacity> : null}
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 };
 
@@ -792,11 +996,30 @@ const TarjetaLista = ({ icono, titulo, subtitulo, detalle, asignado, etiqueta, c
 };
 
 // Botón para elegir un archivo CSV (reemplaza al botón nativo del navegador)
-const BloqueAdmin = ({ categoria, isDark, children }) => {
+// Categorías del panel de administración (cada una abre su propia pantalla)
+const SECCIONES_ADMIN = {
+  usuarios: { titulo: 'Usuarios', subtitulo: 'Altas, cambios y administradores', categoria: 'Usuarios', icono: 'users' },
+  predicaciones: { titulo: 'Predicaciones', subtitulo: 'Subir y corregir el rol', categoria: 'Predicaciones', icono: 'calendar' },
+  clases: { titulo: 'Clases de niños', subtitulo: 'Clases, asistencia y coritos', categoria: 'Clases de niños', icono: 'smile' },
+};
+
+// Opción plegable del panel de administración: se abre al tocarla y se cierra al tocarla otra vez
+const OpcionAdmin = ({ id, titulo, subtitulo, icono, abierta, onAlternar, categoria, isDark, children }) => {
+  const colors = getColors(isDark);
   const p = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
   return (
-    <View style={{ backgroundColor: p.fondo + (isDark ? '33' : '66'), borderColor: p.fondo, borderWidth: 1.5, borderRadius: 32, padding: 20, marginBottom: 22 }}>
-      {children}
+    <View style={{ backgroundColor: abierta ? p.fondo + (isDark ? '26' : '40') : colors.cardBg, borderWidth: 1.5, borderColor: abierta ? p.fondo : colors.cardBorder, borderRadius: 28, marginBottom: 12, overflow: 'hidden' }}>
+      <TouchableOpacity activeOpacity={0.8} onPress={() => onAlternar(id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 16 }}>
+        <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: p.fondo, alignItems: 'center', justifyContent: 'center' }}>
+          <Feather name={icono} size={19} color={p.texto} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain }}>{titulo}</Text>
+          {subtitulo ? <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>{subtitulo}</Text> : null}
+        </View>
+        <Feather name={abierta ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSub} />
+      </TouchableOpacity>
+      {abierta ? <View style={{ paddingHorizontal: 18, paddingBottom: 18, paddingTop: 4 }}>{children}</View> : null}
     </View>
   );
 };
@@ -975,75 +1198,135 @@ const ModalLetra = ({ corito, onCerrar, isDark }) => {
   );
 };
 
-// Ventana para que un administrador suba un corito nuevo
-const ModalNuevoCorito = ({ visible, onCerrar, onGuardado, isDark }) => {
+// Formulario para agregar un corito nuevo o corregir uno que ya existe (solo administradores)
+const FormCorito = ({ corito, onGuardado, isDark }) => {
   const colors = getColors(isDark);
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Coritos'];
   const inputRef = useRef(null);
-  const [titulo, setTitulo] = useState('');
-  const [letra, setLetra] = useState('');
-  const [grupos, setGrupos] = useState([]);
+  const editando = !!corito;
+  const [titulo, setTitulo] = useState(corito ? corito.titulo : '');
+  const [letra, setLetra] = useState(corito ? corito.letra || '' : '');
+  const [grupos, setGrupos] = useState(corito ? corito.grupos || [] : []);
   const [archivo, setArchivo] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState('');
-  const limpiar = () => { setTitulo(''); setLetra(''); setGrupos([]); setArchivo(null); setMensaje(''); };
-  const cerrar = () => { if (!guardando) { limpiar(); onCerrar(); } };
   const alternarGrupo = (g) => setGrupos((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
   const guardar = async () => {
     if (!titulo.trim()) return setMensaje('Escribe el título del corito.');
     if (grupos.length === 0) return setMensaje('Elige al menos un grupo.');
-    if (!archivo) return setMensaje('Elige el archivo de audio.');
-    if (archivo.size > 15 * 1024 * 1024) return setMensaje('El audio pesa más de 15 MB. Comprímelo antes de subirlo (MP3 a 64 o 96 kbps).');
+    if (!editando && !archivo) return setMensaje('Elige el archivo de audio.');
+    if (archivo && archivo.size > 15 * 1024 * 1024) return setMensaje('El audio pesa más de 15 MB. Comprímelo antes de subirlo (MP3 a 64 o 96 kbps).');
     setGuardando(true);
-    setMensaje('Subiendo audio…');
-    const extension = ((archivo.name || '').split('.').pop() || 'mp3').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp3';
-    const ruta = `${Date.now()}_${sinAcentos(titulo).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'corito'}.${extension}`;
-    const { error: errorSubida } = await supabase.storage.from('coritos').upload(ruta, archivo, { contentType: archivo.type || 'audio/mpeg', upsert: false });
-    if (errorSubida) { setGuardando(false); return setMensaje('No se pudo subir el audio: ' + errorSubida.message); }
-    const { error } = await supabase.from('coritos').insert([{ titulo: titulo.trim(), letra: letra.trim() || null, grupos, archivo: ruta }]);
-    if (error) { await supabase.storage.from('coritos').remove([ruta]); setGuardando(false); return setMensaje('No se pudo guardar: ' + error.message); }
+    let ruta = editando ? corito.archivo : null;
+    if (archivo) {
+      setMensaje('Subiendo audio…');
+      const extension = ((archivo.name || '').split('.').pop() || 'mp3').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp3';
+      ruta = `${Date.now()}_${sinAcentos(titulo).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'corito'}.${extension}`;
+      const { error: errorSubida } = await supabase.storage.from('coritos').upload(ruta, archivo, { contentType: archivo.type || 'audio/mpeg', upsert: false });
+      if (errorSubida) { setGuardando(false); return setMensaje('No se pudo subir el audio: ' + errorSubida.message); }
+    }
+    const datos = { titulo: titulo.trim(), letra: letra.trim() || null, grupos, archivo: ruta };
+    const { error } = editando
+      ? await supabase.from('coritos').update(datos).eq('id', corito.id)
+      : await supabase.from('coritos').insert([datos]);
+    if (error) {
+      if (archivo) await supabase.storage.from('coritos').remove([ruta]);
+      setGuardando(false);
+      return setMensaje('No se pudo guardar: ' + error.message);
+    }
+    // Si se cambió el audio, se borra el anterior para no ocupar espacio
+    if (editando && archivo && corito.archivo) await supabase.storage.from('coritos').remove([corito.archivo]);
     setGuardando(false);
-    limpiar();
-    onGuardado();
+    setMensaje('');
+    if (!editando) { setTitulo(''); setLetra(''); setGrupos([]); setArchivo(null); }
+    if (onGuardado) onGuardado();
   };
   const estiloInput = { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 10 };
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={cerrar}>
-      <View style={[styles.modalOverlay, { justifyContent: 'flex-start', paddingTop: 40 }]}>
-        <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.cardBorder, maxHeight: '90%', width: '90%', maxWidth: 520 }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <Text style={[styles.title, { color: colors.textMain }]}>Agregar corito</Text>
-            <TouchableOpacity onPress={cerrar} style={{ padding: 6 }}><Feather name="x" size={22} color={colors.textSub} /></TouchableOpacity>
-          </View>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            <TextInput style={[styles.input, estiloInput]} placeholder="Título del corito" placeholderTextColor={colors.textSub} value={titulo} onChangeText={setTitulo} />
-            <TextInput style={[styles.input, estiloInput, { minHeight: 120, textAlignVertical: 'top' }]} placeholder="Letra (opcional)" placeholderTextColor={colors.textSub} value={letra} onChangeText={setLetra} multiline />
-            <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 8 }}>¿Para qué grupos? (la Tarde 4 a 8 usa los de Niños)</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-              {GRUPOS_CORITOS.map((g) => (
-                <TouchableOpacity key={g} onPress={() => alternarGrupo(g)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: grupos.includes(g) ? paleta.texto : colors.cardBorder, backgroundColor: grupos.includes(g) ? paleta.fondo : colors.cardBg }}>
-                  <Text style={{ color: grupos.includes(g) ? paleta.texto : colors.textMain, fontWeight: '600', fontSize: 13 }}>{g}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            {Platform.OS === 'web' ? (
-              <input ref={inputRef} type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => { setArchivo(e.target.files[0] || null); e.target.value = ''; }} />
-            ) : null}
-            <TouchableOpacity onPress={() => inputRef.current && inputRef.current.click()} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.textSub, backgroundColor: colors.cardBg, marginBottom: 10 }}>
-              <Feather name="music" size={20} color={colors.textSub} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 14 }}>{archivo ? archivo.name : 'Elegir audio'}</Text>
-                <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 2 }}>{archivo ? `${(archivo.size / 1024 / 1024).toFixed(1)} MB • toca para cambiarlo` : 'MP3 recomendado, de preferencia menos de 2 MB'}</Text>
-              </View>
-            </TouchableOpacity>
-            {mensaje ? <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 6 }}>{mensaje}</Text> : null}
-            <TouchableOpacity onPress={guardar} disabled={guardando} style={[styles.primaryButton, { backgroundColor: paleta.texto, opacity: guardando ? 0.6 : 1 }]}>
-              {guardando ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Guardar corito</Text>}
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
+    <View>
+      <TextInput style={[styles.input, estiloInput]} placeholder="Título del corito" placeholderTextColor={colors.textSub} value={titulo} onChangeText={setTitulo} />
+      <TextInput style={[styles.input, estiloInput, { minHeight: 120, textAlignVertical: 'top' }]} placeholder="Letra (opcional)" placeholderTextColor={colors.textSub} value={letra} onChangeText={setLetra} multiline />
+      <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 8 }}>¿Para qué grupos? (la Tarde 4 a 8 usa los de Niños)</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        {GRUPOS_CORITOS.map((g) => (
+          <TouchableOpacity key={g} onPress={() => alternarGrupo(g)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: grupos.includes(g) ? paleta.texto : colors.cardBorder, backgroundColor: grupos.includes(g) ? paleta.fondo : colors.cardBg }}>
+            <Text style={{ color: grupos.includes(g) ? paleta.texto : colors.textMain, fontWeight: '600', fontSize: 13 }}>{g}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
-    </Modal>
+      {Platform.OS === 'web' ? (
+        <input ref={inputRef} type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => { setArchivo(e.target.files[0] || null); e.target.value = ''; }} />
+      ) : null}
+      <TouchableOpacity onPress={() => inputRef.current && inputRef.current.click()} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.textSub, backgroundColor: colors.cardBg, marginBottom: 10 }}>
+        <Feather name="music" size={20} color={colors.textSub} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 14 }}>{archivo ? archivo.name : editando ? 'Cambiar audio (opcional)' : 'Elegir audio'}</Text>
+          <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 2 }}>{archivo ? `${(archivo.size / 1024 / 1024).toFixed(1)} MB • toca para cambiarlo` : editando ? 'Si no eliges otro, se queda el audio actual' : 'MP3 recomendado, de preferencia menos de 2 MB'}</Text>
+        </View>
+      </TouchableOpacity>
+      {mensaje ? <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 6 }}>{mensaje}</Text> : null}
+      <TouchableOpacity onPress={guardar} disabled={guardando} style={[styles.primaryButton, { backgroundColor: isDark ? paleta.fondo : paleta.texto, opacity: guardando ? 0.6 : 1 }]}>
+        {guardando ? <ActivityIndicator color={isDark ? paleta.texto : '#FFFFFF'} /> : <Text style={[styles.primaryButtonText, { color: isDark ? paleta.texto : '#FFFFFF' }]}>{editando ? 'Guardar cambios' : 'Guardar corito'}</Text>}
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// Lista de coritos para el administrador: buscar, corregir o borrar
+const ListaCoritosAdmin = ({ isDark }) => {
+  const colors = getColors(isDark);
+  const [coritos, setCoritos] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [busqueda, setBusqueda] = useState('');
+  const [editando, setEditando] = useState(null);
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
+  const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
+  const cargar = async () => {
+    const { data } = await supabase.from('coritos').select('*').order('titulo', { ascending: true });
+    setCoritos(data || []);
+    setCargando(false);
+  };
+  useEffect(() => { cargar(); }, []);
+  const visibles = coritos.filter((c) => sinAcentos(c.titulo).includes(sinAcentos(busqueda)));
+  const borrar = (c) => setAlerta({
+    visible: true, titulo: 'Borrar corito', mensaje: `¿Borrar "${c.titulo}"? También se quitará de las clases donde esté.`, textoConfirmar: 'Sí, borrar', onCancelar: cerrarAlerta, isDark,
+    onConfirmar: async () => {
+      cerrarAlerta();
+      const { error } = await supabase.from('coritos').delete().eq('id', c.id);
+      if (!error) await supabase.storage.from('coritos').remove([c.archivo]);
+      cargar();
+    },
+  });
+  return (
+    <View>
+      <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 12 }]} placeholder="Buscar corito" placeholderTextColor={colors.textSub} value={busqueda} onChangeText={setBusqueda} />
+      {cargando ? <ActivityIndicator color={colors.textSub} /> : visibles.length === 0 ? (
+        <Text style={{ color: colors.textSub, fontSize: 14 }}>{coritos.length === 0 ? 'Todavía no hay coritos.' : 'Sin resultados.'}</Text>
+      ) : visibles.map((c) => (
+        <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 20, paddingVertical: 10, paddingLeft: 16, paddingRight: 10, marginBottom: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }} numberOfLines={2}>{c.titulo}</Text>
+            <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>{[...(c.grupos || []), c.letra ? 'Con letra' : 'Sin letra'].join(' • ')}</Text>
+          </View>
+          <TouchableOpacity style={styles.actionBtnGray} onPress={() => setEditando(c)} accessibilityLabel="Editar corito"><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtnRed} onPress={() => borrar(c)} accessibilityLabel="Borrar corito"><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
+        </View>
+      ))}
+      <Modal visible={!!editando} transparent animationType="fade" onRequestClose={() => setEditando(null)}>
+        <View style={[styles.modalOverlay, { justifyContent: 'flex-start', paddingTop: 40 }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.cardBorder, maxHeight: '90%', width: '90%', maxWidth: 520 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <Text style={[styles.title, { color: colors.textMain }]}>Editar corito</Text>
+              <TouchableOpacity onPress={() => setEditando(null)} style={{ padding: 6 }}><Feather name="x" size={22} color={colors.textSub} /></TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {editando ? <FormCorito key={editando.id} corito={editando} isDark={isDark} onGuardado={() => { setEditando(null); cargar(); }} /> : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      <AlertaPersonalizada {...alerta} />
+    </View>
   );
 };
 
@@ -1359,7 +1642,8 @@ function MenuPrincipalScreen({ navigation }) {
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
         const [tieneRol, setTieneRol] = useState(false);
   const [tieneClases, setTieneClases] = useState(false);
-    const [mostrarAjustes, setMostrarAjustes] = useState(false);
+        const [mostrarAjustes, setMostrarAjustes] = useState(false);
+  const [mostrarAyuda, setMostrarAyuda] = useState(false);
         const [hayNotificaciones, setHayNotificaciones] = useState(false);
     const [avisosPush, setAvisosPush] = useState(estadoAvisos());
     const columnas = useColumnas();
@@ -1456,15 +1740,10 @@ function MenuPrincipalScreen({ navigation }) {
           ))}
         </View>
 
-        {rolUsuarioActivoGlobal === 'administrador' && (
-          <TouchableOpacity style={[styles.adminButton, { width: '95%', maxWidth: 850 }]} onPress={() => navigation.navigate('Admin')}>
-            <Feather name="settings" size={16} color={colors.textSub} />
-            <Text style={[styles.adminButtonText, { color: colors.textSub }]}>Panel Admin</Text>
-          </TouchableOpacity>
-        )}
             </ScrollView>
             <AlertaPersonalizada {...alerta} />
-      <PanelAjustes visible={mostrarAjustes} onCerrar={() => setMostrarAjustes(false)} isDark={isDark} toggleTheme={toggleTheme} onCerrarSesion={confirmarCerrarSesion} />
+                  <PanelAjustes visible={mostrarAjustes} onCerrar={() => setMostrarAjustes(false)} isDark={isDark} toggleTheme={toggleTheme} onCerrarSesion={confirmarCerrarSesion} onAdmin={() => navigation.navigate('Admin')} onAyuda={() => setMostrarAyuda(true)} />
+      <ModalAyuda visible={mostrarAyuda} onCerrar={() => setMostrarAyuda(false)} onNavegar={(pantalla, params) => navigation.navigate(pantalla, params)} isDark={isDark} />
     </SafeAreaView>
   );
 }
@@ -2624,16 +2903,12 @@ function CoritosScreen({ navigation }) {
   const colors = getColors(isDark);
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Coritos'];
   const columnas = useColumnas();
-  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
-  const rep = useReproductor();
+    const rep = useReproductor();
   const [coritos, setCoritos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState('Todos');
   const [letra, setLetra] = useState(null);
-  const [agregando, setAgregando] = useState(false);
-  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
-  const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 
   const cargar = async () => {
     const { data } = await supabase.from('coritos').select('*').order('titulo', { ascending: true });
@@ -2644,16 +2919,12 @@ function CoritosScreen({ navigation }) {
 
   const visibles = coritos.filter((c) => (filtro === 'Todos' || gruposDeCoritos(filtro).some((g) => (c.grupos || []).includes(g))) && sinAcentos(c.titulo).includes(sinAcentos(busqueda)));
 
-  const borrar = (c) => setAlerta({
-    visible: true, titulo: 'Borrar corito', mensaje: `¿Borrar "${c.titulo}"? También se quitará de las clases donde esté.`, textoConfirmar: 'Sí, borrar', onCancelar: cerrarAlerta, isDark,
-    onConfirmar: async () => {
-      cerrarAlerta();
-      rep.quitarSiEs(c);
-      const { error } = await supabase.from('coritos').delete().eq('id', c.id);
-      if (!error) await supabase.storage.from('coritos').remove([c.archivo]);
-      cargar();
-    },
-  });
+          {esAdmin ? (
+          <TouchableOpacity onPress={() => setAgregando(true)} style={[styles.solicitarBtnClaro, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginBottom: 10 }]}>
+            <Feather name="plus" size={16} color={colors.textSub} />
+            <Text style={[styles.solicitarBtnClaroText, { color: colors.textSub }]}>Agregar corito</Text>
+          </TouchableOpacity>
+        ) : null}
 
   const anchoFila = columnas === 3 ? '32.5%' : columnas === 2 ? '49.3%' : '100%';
 
@@ -2681,12 +2952,6 @@ function CoritosScreen({ navigation }) {
             </TouchableOpacity>
           ))}
         </View>
-        {esAdmin ? (
-          <TouchableOpacity onPress={() => setAgregando(true)} style={[styles.solicitarBtnClaro, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginBottom: 10 }]}>
-            <Feather name="plus" size={16} color={colors.textSub} />
-            <Text style={[styles.solicitarBtnClaroText, { color: colors.textSub }]}>Agregar corito</Text>
-          </TouchableOpacity>
-        ) : null}
 
         {cargando ? (
           <View style={styles.center}><ActivityIndicator size="large" color={paleta.texto} /></View>
@@ -2700,16 +2965,14 @@ function CoritosScreen({ navigation }) {
               </View>
             ) : (
               <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-                {visibles.map((c) => <FilaCorito key={c.id} corito={c} rep={rep} lista={visibles} onLetra={setLetra} onBorrar={esAdmin ? borrar : null} isDark={isDark} ancho={anchoFila} />)}
+                                {visibles.map((c) => <FilaCorito key={c.id} corito={c} rep={rep} lista={visibles} onLetra={setLetra} isDark={isDark} ancho={anchoFila} />)}
               </View>
             )}
           </ScrollView>
         )}
         <BarraReproductor rep={rep} isDark={isDark} />
       </View>
-      <ModalLetra corito={letra} onCerrar={() => setLetra(null)} isDark={isDark} />
-      <ModalNuevoCorito visible={agregando} onCerrar={() => setAgregando(false)} onGuardado={() => { setAgregando(false); cargar(); }} isDark={isDark} />
-      <AlertaPersonalizada {...alerta} />
+            <ModalLetra corito={letra} onCerrar={() => setLetra(null)} isDark={isDark} />
     </SafeAreaView>
   );
 }
@@ -2954,8 +3217,15 @@ function TablonScreen({ navigation, route }) {
 // ==========================================
 // PANTALLA: ADMIN 
 // ==========================================
-function AdminScreen({ navigation }) {
+function AdminScreen({ navigation, route }) {
   const { isDark } = useContext(ThemeContext);
+  // Sin "seccion" se ven las 3 tarjetas; con "seccion" se abre esa categoría con sus opciones plegadas
+  const seccion = SECCIONES_ADMIN[route?.params?.seccion] ? route.params.seccion : null;
+  const columnasAdmin = useColumnas();
+  const [opcionAbierta, setOpcionAbierta] = useState(null);
+  const alternarOpcion = (id) => setOpcionAbierta((actual) => (actual === id ? null : id));
+  const opc = (id) => ({ id, abierta: opcionAbierta === id, onAlternar: alternarOpcion, categoria: seccion ? SECCIONES_ADMIN[seccion].categoria : 'Usuarios', isDark });
+  const volverAdmin = () => { if (navigation.canGoBack()) navigation.goBack(); else if (seccion) navigation.replace('Admin'); else navigation.navigate('MenuPrincipal'); };
   const [nombreCompleto, setNombreCompleto] = useState('');
   const [usuarioGenerado, setUsuarioGenerado] = useState('');
   const [pinGenerado, setPinGenerado] = useState('');
@@ -3383,20 +3653,32 @@ function AdminScreen({ navigation }) {
 
         return (
                <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-                        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: 850, alignSelf: 'center', paddingBottom: 30 }}>
+                                                <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, width: '100%', maxWidth: !seccion && columnasAdmin >= 2 ? 1100 : 850, alignSelf: 'center', paddingBottom: 30 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 15, justifyContent: 'space-between' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <TouchableOpacity onPress={volverAdmin} style={{ padding: 8, marginLeft: -8 }}>
               <Feather name="arrow-left" size={22} color={colors.textSub} />
             </TouchableOpacity>
-            <Text style={[styles.title, { color: colors.textMain, marginLeft: 4 }]}>Panel de Control</Text>
+            <View style={{ marginLeft: 4, flex: 1 }}>
+              <Text style={[styles.title, { color: colors.textMain }]}>{seccion ? SECCIONES_ADMIN[seccion].titulo : 'Administración'}</Text>
+              {seccion ? <Text style={[styles.subtitle, { color: colors.textSub }]}>{SECCIONES_ADMIN[seccion].subtitulo}</Text> : null}
+            </View>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
           </TouchableOpacity>
         </View>
-                <BloqueAdmin categoria="Calendario" isDark={isDark}>
-        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Registrar Usuario</Text>
+
+        {!seccion && (
+          <View style={[styles.gruposContainer, columnasAdmin >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
+            {Object.keys(SECCIONES_ADMIN).map((clave, i, todas) => (
+              <TarjetaMenu key={clave} icono={SECCIONES_ADMIN[clave].icono} titulo={SECCIONES_ADMIN[clave].titulo} subtitulo={SECCIONES_ADMIN[clave].subtitulo} categoria={SECCIONES_ADMIN[clave].categoria} isDark={isDark} columnas={columnasAdmin} esUltima={i === todas.length - 1} total={todas.length} onPress={() => navigation.push('Admin', { seccion: clave })} />
+            ))}
+          </View>
+        )}
+
+        {seccion === 'usuarios' && (<>
+        <OpcionAdmin {...opc('alta')} icono="user-plus" titulo="Dar de alta a un usuario" subtitulo="Crea su usuario y PIN">
         
         <View style={styles.formGroup}>
           <Text style={[styles.label, { color: colors.textSub }]}>Nombre y Apellido</Text>
@@ -3433,8 +3715,8 @@ function AdminScreen({ navigation }) {
         
         <TouchableOpacity style={styles.primaryButton} onPress={registrarMaestro}>{guardando ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Guardar</Text>}</TouchableOpacity>
         
-        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
-               <Text style={[styles.topicTitle, { color: colors.textMain }]}>Usuarios</Text>
+                </OpcionAdmin>
+        <OpcionAdmin {...opc('buscarUsuarios')} icono="search" titulo="Buscar usuarios" subtitulo="Editar, compartir accesos y ver administradores">
 
                 <TextInput
           style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 15 }]}
@@ -3497,9 +3779,11 @@ function AdminScreen({ navigation }) {
                  </View>
         )}
 
-                </BloqueAdmin>
-        <BloqueAdmin categoria="Predicaciones" isDark={isDark}>
-        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Cargar Rol (Clases y Predicaciones)</Text>
+                        </OpcionAdmin>
+        </>)}
+
+        {seccion === 'predicaciones' && (<>
+        <OpcionAdmin {...opc('subirRol')} icono="upload" titulo="Subir rol" subtitulo="Archivo CSV con las fechas del periodo">
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las fechas del periodo.</Text>
 
         {Platform.OS === 'web' && (
@@ -3517,8 +3801,8 @@ function AdminScreen({ navigation }) {
           </View>
         )}
 
-        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
-        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Buscar y eliminar Rol</Text>
+                </OpcionAdmin>
+        <OpcionAdmin {...opc('borrarRol')} icono="search" titulo="Buscar y borrar fechas" subtitulo="Corrige un rol que se subió con errores">
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Si un rol se subió con errores, búscalo por mes y elimina lo que sobre.</Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarRol} onChangeText={(t) => setMesBuscarRol(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
@@ -3544,9 +3828,11 @@ function AdminScreen({ navigation }) {
                     </View>
         )}
 
-                </BloqueAdmin>
-        <BloqueAdmin categoria="Clases de niños" isDark={isDark}>
-        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Cargar Clases de niños</Text>
+                        </OpcionAdmin>
+        </>)}
+
+        {seccion === 'clases' && (<>
+        <OpcionAdmin {...opc('subirClases')} icono="upload" titulo="Subir clases" subtitulo="Archivo CSV con equipos, coordinadores y grupos">
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el CSV con equipo, mes, coordinador y grupos. Se crea una clase por cada domingo del mes.</Text>
 
         {Platform.OS === 'web' && (
@@ -3579,7 +3865,8 @@ function AdminScreen({ navigation }) {
           </View>
         )}
 
-                <Text style={[styles.topicSubtitle, { color: colors.textSub, marginTop: 20, marginBottom: 10 }]}>Buscar y eliminar clases: búscalas por mes y elimina las que sobren.</Text>
+                        </OpcionAdmin>
+        <OpcionAdmin {...opc('borrarClases')} icono="search" titulo="Buscar y borrar clases" subtitulo="Búscalas por mes y elimina las que sobren">
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarClases} onChangeText={(t) => setMesBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
           <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2027)" placeholderTextColor={colors.textSub} value={anioBuscarClases} onChangeText={(t) => setAnioBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
@@ -3604,14 +3891,15 @@ function AdminScreen({ navigation }) {
           </View>
         )}
 
-        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginTop: 20, marginBottom: 10 }]}>Borrar clases de un mes (por si el archivo se subió con errores)</Text>
+                </OpcionAdmin>
+        <OpcionAdmin {...opc('borrarMes')} icono="trash-2" titulo="Borrar clases de un mes" subtitulo="Por si el archivo se subió con errores">
         <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (ej. Octubre 2026)" placeholderTextColor={colors.textSub} value={mesBorrarClases} onChangeText={setMesBorrarClases} />
         <TouchableOpacity style={[styles.primaryButton, { marginTop: 12, backgroundColor: '#C97A7A' }]} onPress={confirmarBorrarClasesMes}>
                     <Text style={styles.primaryButtonText}>Borrar clases del mes</Text>
         </TouchableOpacity>
 
-        <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
-        <Text style={[styles.topicTitle, { color: colors.textMain }]}>Asistencia de Clases de niños</Text>
+                </OpcionAdmin>
+        <OpcionAdmin {...opc('asistencia')} icono="download" titulo="Descargar asistencia" subtitulo="En CSV, de un grupo o de todos juntos">
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Descarga la asistencia en CSV: de un grupo o de todos juntos.</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                     {['Todos', ...ORDEN_GRUPOS].map((g) => (
@@ -3624,7 +3912,15 @@ function AdminScreen({ navigation }) {
         <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={descargarAsistenciaCSV}>
           {descargandoAsistencia ? <ActivityIndicator color="#FFFFFF" /> : (<><Feather name="download" size={16} color="#FFFFFF" /><Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>Descargar CSV</Text></>)}
         </TouchableOpacity>
-              </BloqueAdmin>
+                      </OpcionAdmin>
+        <Text style={{ fontSize: 13, fontWeight: '700', letterSpacing: 0.5, color: colors.textSub, marginTop: 10, marginBottom: 10, marginLeft: 6 }}>Coritos</Text>
+        <OpcionAdmin {...opc('nuevoCorito')} icono="music" titulo="Agregar corito" subtitulo="Audio, letra y grupos">
+          <FormCorito isDark={isDark} onGuardado={() => setAlerta({ visible: true, titulo: 'Corito guardado', mensaje: 'Ya aparece en la sección Coritos.', textoConfirmar: 'Aceptar', onConfirmar: cerrarAlerta, isDark })} />
+        </OpcionAdmin>
+        <OpcionAdmin {...opc('editarCoritos')} icono="edit-3" titulo="Editar o borrar coritos" subtitulo="Corrige título, letra, grupos o audio">
+          <ListaCoritosAdmin isDark={isDark} />
+        </OpcionAdmin>
+        </>)}
       </ScrollView>
       <ModalEdicion visible={!!maestroEditando} maestro={maestroEditando} onCancelar={() => setMaestroEditando(null)} onGuardar={guardarEdicion} isDark={isDark} />
       <AlertaPersonalizada {...alerta} />
