@@ -545,7 +545,7 @@ const PREGUNTAS_AYUDA = [
   },
   {
     id: 'coritos', pregunta: '¿Cómo escucho los coritos?',
-    respuesta: 'Entra a «Clases de niños» y toca el botón «Coritos». Toca el que quieras escuchar. Si tiene letra, toca «Letra» para verla.\n\nSolo suenan mientras tienes esa pantalla abierta. También aparecen dentro de cada clase.',
+    respuesta: 'Entra a «Clases de niños» y toca el botón «Coritos». Toca el que quieras escuchar. Si tiene letra, toca «Letra» para verla.\n\nSolo suenan mientras tienes esa pantalla abierta.',
     claves: 'canciones musica cantos audio letra escuchar',
     ir: { pantalla: 'Coritos', texto: 'Ir a Coritos' },
   },
@@ -583,7 +583,7 @@ const PREGUNTAS_AYUDA = [
   },
   {
     id: 'coritoAdmin', soloAdmin: true, pregunta: '¿Cómo agrego un corito?',
-    respuesta: 'Ajustes → Administración → Clases de niños → «Agregar corito».\n\nPara ponerlo en una clase, abre la clase y toca «Elegir coritos de esta clase».',
+    respuesta: 'Ajustes → Administración → Clases de niños → «Agregar corito». Ahí mismo, en «Editar o borrar coritos», puedes corregirlos.',
     claves: 'subir corito audio cancion mp3 agregar',
     ir: { pantalla: 'Admin', params: { seccion: 'clases' }, texto: 'Ir a Clases de niños' },
   },
@@ -1027,6 +1027,22 @@ const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, isD
   );
 };
 
+// Botón pequeño en forma de pastilla, con el mismo estilo que «Tomar lista».
+// Sin onPress se muestra como etiqueta (por ejemplo, el nombre del coordinador).
+const BotonChico = ({ icono, texto, onPress, categoria, isDark, neutro }) => {
+  const colors = getColors(isDark);
+  const tonos = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
+  const p = tonos[categoria] || tonos['Clases de niños'];
+  const color = neutro ? colors.textSub : p.texto;
+  const Contenedor = onPress ? TouchableOpacity : View;
+  return (
+    <Contenedor onPress={onPress} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, backgroundColor: neutro ? colors.cardBg : p.fondo, borderWidth: neutro ? 1 : 0, borderColor: colors.cardBorder }}>
+      <Feather name={icono} size={18} color={color} />
+      <Text style={{ color, fontWeight: '700', fontSize: 14 }}>{texto}</Text>
+    </Contenedor>
+  );
+};
+
 // Tarjeta para listas (temario y clases): mismo estilo redondeado que las del menú
 const TarjetaLista = ({ icono, titulo, subtitulo, detalle, asignado, etiqueta, categoria, isDark, ancho, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Niños'];
@@ -1179,45 +1195,48 @@ const useReproductor = () => {
   return { actual, sonando, tiempo, tocar, pasar, buscar, quitarSiEs };
 };
 
-// Un corito en la lista: tocar para escuchar, ver la letra y (admin) borrarlo
-const FilaCorito = ({ corito, rep, lista, onLetra, onBorrar, isDark, ancho }) => {
+// Un corito en la lista: tocar para escuchar y, si tiene, ver la letra
+const FilaCorito = ({ corito, rep, lista, onLetra, isDark }) => {
   const colors = getColors(isDark);
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Coritos'];
   const activo = rep.actual && rep.actual.id === corito.id;
+  const resalte = isDark ? paleta.fondo : paleta.texto;
   return (
-    <View style={{ width: ancho || '100%', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: activo ? paleta.fondo : colors.cardBg, borderWidth: 1, borderColor: activo ? paleta.fondo : colors.cardBorder, borderRadius: 24, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 10 }}>
-      <TouchableOpacity onPress={() => rep.tocar(corito, lista)} accessibilityLabel={`Escuchar ${corito.titulo}`} style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: activo ? '#FFFFFF' : paleta.fondo }}>
-        <Feather name={activo && rep.sonando ? 'pause' : 'play'} size={18} color={paleta.texto} />
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => rep.tocar(corito, lista)} style={{ flex: 1 }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: activo ? paleta.texto : colors.textMain }} numberOfLines={2}>{corito.titulo}</Text>
-        {(corito.grupos || []).length > 0 ? <Text style={{ fontSize: 12, color: activo ? paleta.texto : colors.textSub, marginTop: 2 }}>{corito.grupos.join(' • ')}</Text> : null}
-      </TouchableOpacity>
+    <TouchableOpacity activeOpacity={0.8} onPress={() => rep.tocar(corito, lista)} accessibilityLabel={`Escuchar ${corito.titulo}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: activo ? paleta.fondo + (isDark ? '40' : '66') : colors.cardBg, borderWidth: 1, borderColor: activo ? paleta.fondo : colors.cardBorder, borderRadius: 20, paddingVertical: 10, paddingLeft: 10, paddingRight: 14, marginBottom: 8 }}>
+      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center' }}>
+        <Feather name={activo && rep.sonando ? 'volume-2' : 'music'} size={18} color={paleta.texto} />
+      </View>
+      <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: colors.textMain }} numberOfLines={2}>{corito.titulo}</Text>
       {corito.letra ? (
-        <TouchableOpacity onPress={() => onLetra(corito)} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: activo ? paleta.texto : colors.cardBorder }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: activo ? paleta.texto : colors.textSub }}>Letra</Text>
+        <TouchableOpacity onPress={() => onLetra(corito)} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: activo ? resalte : colors.cardBorder }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: activo ? resalte : colors.textSub }}>Letra</Text>
         </TouchableOpacity>
       ) : null}
-      {onBorrar ? (
-        <TouchableOpacity onPress={() => onBorrar(corito)} style={{ padding: 6 }} accessibilityLabel="Borrar corito">
-          <Feather name="trash-2" size={16} color={activo ? paleta.texto : colors.textSub} />
-        </TouchableOpacity>
-      ) : null}
-    </View>
+      <Feather name={activo && rep.sonando ? 'pause' : 'play'} size={18} color={activo ? resalte : colors.textSub} />
+    </TouchableOpacity>
   );
 };
 
-// Mini reproductor: anterior, play/pausa, siguiente y barra de avance
-const BarraReproductor = ({ rep, isDark }) => {
+// Reproductor de abajo: sin nada sonando muestra «Reproducir todo»; sonando, el mini reproductor
+const BarraReproductor = ({ rep, isDark, lista, onLetra }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Coritos'];
   const [anchoBarra, setAnchoBarra] = useState(1);
-  if (!rep.actual) return null;
+  if (!rep.actual) {
+    if (!lista || lista.length === 0) return null;
+    return (
+      <TouchableOpacity onPress={() => rep.tocar(lista[0], lista)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: paleta.fondo, borderRadius: 999, paddingVertical: 14 }}>
+        <Feather name="play" size={18} color={paleta.texto} />
+        <Text style={{ fontSize: 15, fontWeight: '700', color: paleta.texto }}>Reproducir todo</Text>
+      </TouchableOpacity>
+    );
+  }
   const avance = rep.tiempo.dur > 0 ? rep.tiempo.pos / rep.tiempo.dur : 0;
   return (
-    <View style={{ backgroundColor: paleta.fondo, borderRadius: 28, paddingVertical: 12, paddingHorizontal: 18, marginTop: 6, marginBottom: 6 }}>
+    <View style={{ backgroundColor: paleta.fondo, borderRadius: 28, paddingVertical: 12, paddingHorizontal: 18 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <Feather name="music" size={18} color={paleta.texto} />
         <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: paleta.texto }} numberOfLines={1}>{rep.actual.titulo}</Text>
+        {rep.actual.letra && onLetra ? <TouchableOpacity onPress={() => onLetra(rep.actual)} style={{ padding: 6 }} accessibilityLabel="Ver letra"><Feather name="file-text" size={18} color={paleta.texto} /></TouchableOpacity> : null}
         <TouchableOpacity onPress={() => rep.pasar(-1)} style={{ padding: 6 }} accessibilityLabel="Anterior"><Feather name="skip-back" size={18} color={paleta.texto} /></TouchableOpacity>
         <TouchableOpacity onPress={() => rep.tocar(rep.actual)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={rep.sonando ? 'Pausa' : 'Reproducir'}>
           <Feather name={rep.sonando ? 'pause' : 'play'} size={18} color={paleta.texto} />
@@ -1272,7 +1291,6 @@ const FormCorito = ({ corito, onGuardado, isDark }) => {
   const alternarGrupo = (g) => setGrupos((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
   const guardar = async () => {
     if (!titulo.trim()) return setMensaje('Escribe el título del corito.');
-    if (grupos.length === 0) return setMensaje('Elige al menos un grupo.');
     if (!editando && !archivo) return setMensaje('Elige el archivo de audio.');
     if (archivo && archivo.size > 15 * 1024 * 1024) return setMensaje('El audio pesa más de 15 MB. Comprímelo antes de subirlo (MP3 a 64 o 96 kbps).');
     setGuardando(true);
@@ -1305,14 +1323,6 @@ const FormCorito = ({ corito, onGuardado, isDark }) => {
     <View>
       <TextInput style={[styles.input, estiloInput]} placeholder="Título del corito" placeholderTextColor={colors.textSub} value={titulo} onChangeText={setTitulo} />
       <TextInput style={[styles.input, estiloInput, { minHeight: 120, textAlignVertical: 'top' }]} placeholder="Letra (opcional)" placeholderTextColor={colors.textSub} value={letra} onChangeText={setLetra} multiline />
-      <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 8 }}>¿Para qué grupos? (la Tarde 4 a 8 usa los de Niños)</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        {GRUPOS_CORITOS.map((g) => (
-          <TouchableOpacity key={g} onPress={() => alternarGrupo(g)} style={{ paddingVertical: 10, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: grupos.includes(g) ? paleta.texto : colors.cardBorder, backgroundColor: grupos.includes(g) ? paleta.fondo : colors.cardBg }}>
-            <Text style={{ color: grupos.includes(g) ? paleta.texto : colors.textMain, fontWeight: '600', fontSize: 13 }}>{g}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
       {Platform.OS === 'web' ? (
         <input ref={inputRef} type="file" accept="audio/*" style={{ display: 'none' }} onChange={(e) => { setArchivo(e.target.files[0] || null); e.target.value = ''; }} />
       ) : null}
@@ -1365,7 +1375,7 @@ const ListaCoritosAdmin = ({ isDark }) => {
         <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 20, paddingVertical: 10, paddingLeft: 16, paddingRight: 10, marginBottom: 8 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }} numberOfLines={2}>{c.titulo}</Text>
-            <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>{[...(c.grupos || []), c.letra ? 'Con letra' : 'Sin letra'].join(' • ')}</Text>
+            <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>{c.letra ? 'Con letra' : 'Sin letra'}</Text>
           </View>
           <TouchableOpacity style={styles.actionBtnGray} onPress={() => setEditando(c)} accessibilityLabel="Editar corito"><Feather name="edit-2" size={18} color={colors.textSub} /></TouchableOpacity>
           <TouchableOpacity style={styles.actionBtnRed} onPress={() => borrar(c)} accessibilityLabel="Borrar corito"><Feather name="trash-2" size={18} color="#FFB7A1" /></TouchableOpacity>
@@ -1929,10 +1939,9 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
           </TouchableOpacity>
                 </View>
 
-        <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: 850, marginBottom: 15 }]} onPress={() => navigation.navigate('Tablon', { soloGrupo: 'Predicaciones' })}>
-          <Feather name="clipboard" size={20} color={colors.textSub} />
-          <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
-        </TouchableOpacity>
+                <View style={{ width: '95%', maxWidth: 850, marginBottom: 15 }}>
+          <BotonChico icono="clipboard" texto="Solicitudes de apoyo" categoria="Predicaciones" isDark={isDark} onPress={() => navigation.navigate('Tablon', { soloGrupo: 'Predicaciones' })} />
+        </View>
 
                 <View style={{ width: '95%', maxWidth: 850 }} onLayout={(e) => { listaRolY.current = e.nativeEvent.layout.y; }}>
           {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
@@ -2094,27 +2103,13 @@ function GruposScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-                                <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })}>
-          <Feather name="clipboard" size={20} color={colors.textSub} />
-                    <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Solicitudes de Apoyo</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]} onPress={() => navigation.navigate('Coritos')}>
-          <Feather name="music" size={20} color={colors.textSub} />
-          <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Coritos</Text>
-        </TouchableOpacity>
-
-                                {vistaCompleta && coordinadorMes ? (
-          <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]}>
-            <Feather name="user" size={20} color={colors.textSub} />
-            <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Coordinador de {mesRef}: {nombreDe(coordinadorMes)}</Text>
-          </View>
-        ) : null}
-        {!vistaCompleta && coordinador ? (
-          <View style={[styles.tablonButton, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax, marginBottom: 15 }]}>
-            <Feather name="user" size={20} color={colors.textSub} />
-            <Text style={[styles.tablonButtonText, { color: colors.textSub }]}>Mi coordinador: {nombreDe(coordinador)}</Text>
-          </View>
-        ) : null}
+                                        <View style={{ width: '95%', maxWidth: anchoMax, flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
+          <BotonChico icono="clipboard" texto="Solicitudes de apoyo" categoria="Clases de niños" isDark={isDark} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })} />
+          <BotonChico icono="music" texto="Coritos" categoria="Coritos" isDark={isDark} onPress={() => navigation.navigate('Coritos')} />
+          {(vistaCompleta ? coordinadorMes : coordinador) ? (
+            <BotonChico icono="user" texto={`Coordinador: ${nombreDe(vistaCompleta ? coordinadorMes : coordinador)}`} isDark={isDark} neutro />
+          ) : null}
+        </View>
         {!vistaCompleta && !cargandoAsig && gruposAsignados.length === 0 ? (
           <Text style={{ color: colors.textSub, fontSize: 14, marginTop: 20, textAlign: 'center' }}>No tienes clases asignadas por ahora.</Text>
         ) : null}
@@ -2699,17 +2694,10 @@ function ClaseDetalleScreen({ route, navigation }) {
         <RenderSeccion titulo="Puntos a Resaltar (15 min)" texto={clase.puntos_resaltar} />
         <RenderSeccion titulo="Versículo a Memorizar (15 min)" texto={clase.versiculo_memoria} />
                 <RenderSeccion titulo="Actividad Sugerida (25 min)" texto={clase.actividad_sugerida} />
-        {GRUPOS_CORITOS.includes(grupo) ? <SeccionCoritos idsClases={[clase.id]} grupo={grupo} isDark={isDark} puedeElegir={rolUsuarioActivoGlobal === 'administrador'} /> : null}
 
-        <View style={{ flexDirection: 'column', gap: 12, marginTop: 20 }}>
-          <TouchableOpacity onPress={abrirApoyo} style={[styles.solicitarBtnClaro, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}>
-            <Feather name="life-buoy" size={16} color={colors.textSub} />
-            <Text style={[styles.solicitarBtnClaroText, { color: colors.textSub }]}>Solicitar apoyo para esta clase</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={descargarPDF} style={[styles.primaryButton, { backgroundColor: theme.main }]}>
-            <Feather name="download" size={16} color="#FFFFFF" />
-            <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>Descargar PDF</Text>
-          </TouchableOpacity>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 }}>
+          <BotonChico icono="life-buoy" texto="Solicitar apoyo" categoria={grupo} isDark={isDark} onPress={abrirApoyo} />
+          <BotonChico icono="download" texto="Descargar PDF" categoria={grupo} isDark={isDark} onPress={descargarPDF} />
         </View>
       </ScrollView>
             <AlertaPersonalizada {...alerta} />
@@ -2943,14 +2931,12 @@ function DomingoDetalleScreen({ route, navigation }) {
             <Text style={{ fontSize: 14, color: colors.textSub, marginBottom: 12, lineHeight: 20 }}>En la tarde se repasan las dos últimas clases de {info.repasoDe} de la mañana. Prepara tu propio material.</Text>
             <BloqueClase etiqueta="Clase del domingo anterior" dato={repaso && repaso.anterior} />
                         <BloqueClase etiqueta="Clase de este domingo" dato={repaso && repaso.actual} />
-            {grupo === 'Tarde 4 a 8' ? <SeccionCoritos idsClases={[repaso && repaso.anterior && repaso.anterior.clase.id, repaso && repaso.actual && repaso.actual.clase.id]} grupo={grupo} isDark={isDark} puedeElegir={false} /> : null}
           </>
         ) : null}
 
-        <TouchableOpacity onPress={abrirApoyo} style={[styles.solicitarBtnClaro, { backgroundColor: colors.background, borderColor: colors.cardBorder, marginTop: 10 }]}>
-          <Feather name="life-buoy" size={16} color={colors.textSub} />
-          <Text style={[styles.solicitarBtnClaroText, { color: colors.textSub }]}>Solicitar apoyo para este domingo</Text>
-        </TouchableOpacity>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+          <BotonChico icono="life-buoy" texto="Solicitar apoyo" categoria={grupo} isDark={isDark} onPress={abrirApoyo} />
+        </View>
       </ScrollView>
       <AlertaPersonalizada {...alerta} />
       <ModalSolicitarApoyo visible={mostrarApoyo} tipoItem="clase" item={asignacion} maestrosElegibles={maestrosElegibles} usuarioPropio={usuarioActivoGlobal} isDark={isDark} onCancelar={() => setMostrarApoyo(false)} onConfirmar={enviarSolicitud} />
@@ -2960,34 +2946,31 @@ function DomingoDetalleScreen({ route, navigation }) {
 }
 
 // ==========================================
-// PANTALLA: CORITOS (biblioteca con buscador, filtro por grupo y mini reproductor)
+// PANTALLA: CORITOS (lista completa con buscador y reproductor abajo)
 // ==========================================
 function CoritosScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Coritos'];
-  const columnas = useColumnas();
-    const rep = useReproductor();
+  const rep = useReproductor();
   const [coritos, setCoritos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
-  const [filtro, setFiltro] = useState('Todos');
   const [letra, setLetra] = useState(null);
 
-  const cargar = async () => {
-    const { data } = await supabase.from('coritos').select('*').order('titulo', { ascending: true });
-    setCoritos(data || []);
-    setCargando(false);
-  };
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('coritos').select('*').order('titulo', { ascending: true });
+      setCoritos(data || []);
+      setCargando(false);
+    })();
+  }, []);
 
-  const visibles = coritos.filter((c) => (filtro === 'Todos' || gruposDeCoritos(filtro).some((g) => (c.grupos || []).includes(g))) && sinAcentos(c.titulo).includes(sinAcentos(busqueda)));
-
-  const anchoFila = columnas === 3 ? '32.5%' : columnas === 2 ? '49.3%' : '100%';
+  const visibles = coritos.filter((c) => sinAcentos(c.titulo).includes(sinAcentos(busqueda)));
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
-      <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, flex: 1 }}>
+      <View style={{ width: '95%', maxWidth: 850, flex: 1 }}>
         <View style={[styles.headerRowSpaceBetween, { alignItems: 'center' }]}>
           <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8, marginLeft: -8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -3001,13 +2984,10 @@ function CoritosScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 10 }]} placeholder="Buscar corito" placeholderTextColor={colors.textSub} value={busqueda} onChangeText={setBusqueda} />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-          {FILTROS_CORITOS.map((g) => (
-            <TouchableOpacity key={g} onPress={() => setFiltro(g)} style={{ paddingVertical: 9, paddingHorizontal: 15, borderRadius: 999, borderWidth: 1, borderColor: filtro === g ? paleta.texto : colors.cardBorder, backgroundColor: filtro === g ? paleta.fondo : colors.cardBg }}>
-              <Text style={{ color: filtro === g ? paleta.texto : colors.textMain, fontWeight: '600', fontSize: 13 }}>{g}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 999, paddingHorizontal: 16, marginBottom: 12 }}>
+          <Feather name="search" size={18} color={colors.textSub} />
+          <TextInput style={{ flex: 1, fontSize: 15, color: colors.inputText, paddingVertical: 12, outlineStyle: 'none' }} placeholder="Buscar corito" placeholderTextColor={colors.textSub} value={busqueda} onChangeText={setBusqueda} />
+          {busqueda ? <TouchableOpacity onPress={() => setBusqueda('')} style={{ padding: 4 }} accessibilityLabel="Borrar búsqueda"><Feather name="x-circle" size={18} color={colors.textSub} /></TouchableOpacity> : null}
         </View>
 
         {cargando ? (
@@ -3018,18 +2998,16 @@ function CoritosScreen({ navigation }) {
               <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                 <Feather name="music" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
                 <Text style={[styles.emptyTitle, { color: colors.textMain }]}>{coritos.length === 0 ? 'Aún no hay coritos' : 'Sin resultados'}</Text>
-                <Text style={[styles.emptyText, { color: colors.textSub }]}>{coritos.length === 0 ? 'Aquí aparecerán los coritos cuando se suban.' : 'Prueba con otra palabra o con otro grupo.'}</Text>
+                <Text style={[styles.emptyText, { color: colors.textSub }]}>{coritos.length === 0 ? 'Aquí aparecerán los coritos cuando se suban.' : 'Prueba con otra palabra.'}</Text>
               </View>
-            ) : (
-              <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-                                {visibles.map((c) => <FilaCorito key={c.id} corito={c} rep={rep} lista={visibles} onLetra={setLetra} isDark={isDark} ancho={anchoFila} />)}
-              </View>
-            )}
+            ) : visibles.map((c) => <FilaCorito key={c.id} corito={c} rep={rep} lista={visibles} onLetra={setLetra} isDark={isDark} />)}
           </ScrollView>
         )}
-        <BarraReproductor rep={rep} isDark={isDark} />
+        <View style={{ paddingTop: 6, paddingBottom: 12 }}>
+          <BarraReproductor rep={rep} isDark={isDark} lista={visibles} onLetra={setLetra} />
+        </View>
       </View>
-            <ModalLetra corito={letra} onCerrar={() => setLetra(null)} isDark={isDark} />
+      <ModalLetra corito={letra} onCerrar={() => setLetra(null)} isDark={isDark} />
     </SafeAreaView>
   );
 }
@@ -4009,7 +3987,25 @@ export default function App() {
       }
             meta.setAttribute('content', getColors(isDark).background);
       document.documentElement.style.backgroundColor = getColors(isDark).background;
-      document.body.style.backgroundColor = getColors(isDark).background;
+            document.body.style.backgroundColor = getColors(isDark).background;
+      // Barra de desplazamiento delgada y redondeada, clara u oscura según el tema (se nota en PC)
+      document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+      let estiloBarra = document.getElementById('estilo-barra');
+      if (!estiloBarra) {
+        estiloBarra = document.createElement('style');
+        estiloBarra.id = 'estilo-barra';
+        document.head.appendChild(estiloBarra);
+      }
+      const pulgar = isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.18)';
+      const pulgarEncima = isDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.32)';
+      estiloBarra.textContent = `
+        * { scrollbar-width: thin; scrollbar-color: ${pulgar} transparent; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: ${pulgar}; border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: ${pulgarEncima}; }
+        ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+      `;
     }
   }, [isDark]);
 
