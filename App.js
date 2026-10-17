@@ -2104,11 +2104,11 @@ function GruposScreen({ navigation }) {
         </View>
 
                                         <View style={{ width: '95%', maxWidth: anchoMax, flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
-          <BotonChico icono="clipboard" texto="Solicitudes de apoyo" categoria="Clases de niños" isDark={isDark} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })} />
-          <BotonChico icono="music" texto="Coritos" categoria="Coritos" isDark={isDark} onPress={() => navigation.navigate('Coritos')} />
-          {(vistaCompleta ? coordinadorMes : coordinador) ? (
+                    {(vistaCompleta ? coordinadorMes : coordinador) ? (
             <BotonChico icono="user" texto={`Coordinador: ${nombreDe(vistaCompleta ? coordinadorMes : coordinador)}`} isDark={isDark} neutro />
           ) : null}
+          <BotonChico icono="clipboard" texto="Solicitudes de apoyo" categoria="Clases de niños" isDark={isDark} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })} />
+          <BotonChico icono="music" texto="Coritos" categoria="Coritos" isDark={isDark} onPress={() => navigation.navigate('Coritos')} />
         </View>
         {!vistaCompleta && !cargandoAsig && gruposAsignados.length === 0 ? (
           <Text style={{ color: colors.textSub, fontSize: 14, marginTop: 20, textAlign: 'center' }}>No tienes clases asignadas por ahora.</Text>
