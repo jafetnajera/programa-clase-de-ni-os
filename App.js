@@ -3764,7 +3764,7 @@ function AdminScreen({ navigation, route }) {
       const valores = partir(linea);
       const leido = {};
       encabezados.forEach((encabezado, i) => { leido[encabezado] = valores[i]; });
-      return { fecha: normalizarFecha(leido.fecha), horario: normalizarHorario(leido.horario), nombre_usuario: (leido.nombre_usuario || '').trim() };
+      return { fecha: normalizarFecha(leido.fecha), horario: normalizarHorario(leido.horario), nombre_usuario: usuarioSeguro(leido.nombre_usuario) };
     }).filter((fila) => fila.fecha && fila.fecha.trim() !== '');
   };  
 
@@ -3775,7 +3775,15 @@ function AdminScreen({ navigation, route }) {
     const lector = new FileReader();
     lector.onload = (e) => {
       try {
-        setPreviaRol(parsearCSV(e.target.result));
+                const filas = parsearCSV(e.target.result);
+        const conocidos = new Set(maestros.map((m) => usuarioSeguro(m.nombre_usuario)));
+        const faltan = [...new Set(filas.map((f) => f.nombre_usuario).filter((u) => !conocidos.has(u)))];
+        if (faltan.length > 0) {
+          setPreviaRol([]);
+          setAlerta({ visible: true, titulo: "Revisa los usuarios", mensaje: `Estos usuarios no existen en la app: ${faltan.join(', ')}.\n\nCorrígelos en el archivo (deben ser iguales a los de Administración → Usuarios) y vuelve a subirlo.`, onConfirmar: cerrarAlerta, isDark: isDark });
+        } else {
+          setPreviaRol(filas);
+        }
       } catch (error) {
         setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo leer el archivo. Revisa que sea un CSV válido.", onConfirmar: cerrarAlerta, isDark: isDark });
       }
