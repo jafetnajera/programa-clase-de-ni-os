@@ -110,9 +110,9 @@ const parsearMesAnio = (texto) => {
 // Clases de niños: cada columna del CSV representa un grupo
 const GRUPOS_CLASES = [
   { columna: 'grupo_cuneros', grupo: 'Cuneros', horario: 'mañana' },
-  { columna: 'grupo_3_6', grupo: 'Niños', horario: 'mañana' },
+    { columna: 'grupo_4_6', alias: 'grupo_3_6', grupo: 'Niños', horario: 'mañana' },
   { columna: 'grupo_7_9', grupo: 'Pre adolescentes', horario: 'mañana' },
-  { columna: 'grupo_10_13', grupo: 'Adolescentes', horario: 'mañana' },
+  { columna: 'grupo_10_12', alias: 'grupo_10_13', grupo: 'Adolescentes', horario: 'mañana' },
   { columna: 'grupo_cuneros_tarde', grupo: 'Cuneros tarde', horario: 'tarde' },
   { columna: 'grupo_4_8', grupo: 'Tarde 4 a 8', horario: 'tarde' },
   { columna: 'grupo_9_12', grupo: 'Tarde 9 a 12', horario: 'tarde' },
@@ -3739,16 +3739,31 @@ function AdminScreen({ navigation, route }) {
   };
 
   // Lee el texto del CSV y lo convierte en una lista de filas
-   const parsearCSV = (texto) => {
-    const lineas = texto.trim().split('\n');
-    const encabezados = lineas[0].split(',').map(h => h.trim().toLowerCase());
-    return lineas.slice(1).filter(l => l.trim() !== '').map(linea => {
-      const valores = linea.split(',').map(v => v.trim());
-      const fila = {};
-      encabezados.forEach((encabezado, i) => { fila[encabezado] = valores[i]; });
-      return fila;
-    }).filter(fila => fila.fecha && fila.fecha.trim() !== '');
-  };
+      const parsearCSV = (texto) => {
+    // Acepta CSV de Excel o Google Sheets: con coma o punto y coma, y con o sin marca BOM al inicio
+    const lineas = texto.replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n').filter((l) => l.trim() !== '');
+    if (lineas.length < 2) return [];
+    const separador = (lineas[0].match(/;/g) || []).length > (lineas[0].match(/,/g) || []).length ? ';' : ',';
+    const partir = (l) => l.split(separador).map((v) => v.trim().replace(/^"|"$/g, '').trim());
+    const encabezados = partir(lineas[0]).map((h) => h.toLowerCase());
+    // Excel a veces cambia la fecha a 03/01/2027: se convierte a 2027-01-03
+    const normalizarFecha = (f) => { const m = (f || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : (f || ''); };
+    // Excel a veces cambia la hora a "18:00" o "6:00:00 p. m.": se deja como "6:00 pm"
+    const normalizarHorario = (h) => {
+      const m = (h || '').toLowerCase().replace(/\s+/g, ' ').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(?:([ap])\.?\s*m\.?)?$/);
+      if (!m) return h || '';
+      let hora = parseInt(m[1], 10);
+      let ampm = m[3] ? `${m[3]}m` : null;
+      if (!ampm) { ampm = hora >= 12 ? 'pm' : 'am'; if (hora > 12) hora -= 12; if (hora === 0) hora = 12; }
+      return `${hora}:${m[2]} ${ampm}`;
+    };
+    return lineas.slice(1).map((linea) => {
+      const valores = partir(linea);
+      const leido = {};
+      encabezados.forEach((encabezado, i) => { leido[encabezado] = valores[i]; });
+      return { fecha: normalizarFecha(leido.fecha), horario: normalizarHorario(leido.horario), nombre_usuario: (leido.nombre_usuario || '').trim() };
+    }).filter((fila) => fila.fecha && fila.fecha.trim() !== '');
+  };  
 
   // Se activa cuando el admin selecciona el archivo CSV
   const manejarArchivoCSV = (evento) => {
@@ -3831,7 +3846,7 @@ function AdminScreen({ navigation, route }) {
         else coordinador = c.nombre_usuario;
       }
       GRUPOS_CLASES.forEach((g) => {
-        (fila[g.columna] || '').split(/[\/;|]/).map((n) => n.trim()).filter(Boolean).forEach((nombre) => {
+                (fila[g.columna] || (g.alias ? fila[g.alias] : '') || '').split(/[\/;|]/).map((n) => n.trim()).filter(Boolean).forEach((nombre) => {
           const m = buscarMaestro(nombre);
           if (!m) { errores.push(`Fila ${numero}: "${nombre}" (${g.grupo}) no existe como usuario.`); return; }
           if (!m.elegible_clases_ninos) avisos.push(`${m.nombre_usuario} no está marcado como elegible para Clases de niños.`);
