@@ -1042,10 +1042,10 @@ const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, isD
 
 // Botón pequeño en forma de pastilla, con el mismo estilo que «Tomar lista».
 // Sin onPress se muestra como etiqueta (por ejemplo, el nombre del coordinador).
-const BotonChico = ({ icono, texto, onPress, categoria, isDark, neutro }) => {
+const BotonChico = ({ icono, texto, onPress, categoria, isDark, neutro, peligro }) => {
   const colors = getColors(isDark);
   const tonos = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
-  const p = tonos[categoria] || tonos['Clases de niños'];
+  const p = peligro ? (isDark ? { fondo: '#D9A3A3', texto: '#4A1515' } : { fondo: '#F2CFCF', texto: '#7A2E2E' }) : (tonos[categoria] || tonos['Clases de niños']);
   const color = neutro ? colors.textSub : p.texto;
   const Contenedor = onPress ? TouchableOpacity : View;
   return (
@@ -2695,24 +2695,12 @@ function DetalleUsuarioScreen({ route, navigation }) {
           <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 4 }}>{maestro.elegible_clases_ninos ? '✓' : '✗'} Clases de niños</Text>
           <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 20 }}>{maestro.elegible_predicaciones ? '✓' : '✗'} Predicaciones y Clases</Text>
 
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-            <TouchableOpacity style={[styles.primaryButton, { flex: 1, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, marginTop: 0 }]} onPress={compartirWhatsApp}>
-              <Feather name="share-2" size={16} color={colors.textMain} />
-              <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Compartir</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.primaryButton, { flex: 1, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, marginTop: 0 }]} onPress={copiarInfo}>
-              <Feather name="copy" size={16} color={colors.textMain} />
-              <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Copiar</Text>
-            </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+            <BotonChico icono="edit-2" texto="Editar" categoria="Usuarios" isDark={isDark} onPress={() => setMostrarModal(true)} />
+            <BotonChico icono="share-2" texto="Compartir" neutro isDark={isDark} onPress={compartirWhatsApp} />
+            <BotonChico icono="copy" texto="Copiar" neutro isDark={isDark} onPress={copiarInfo} />
+            <BotonChico icono="trash-2" texto="Dar de baja" peligro isDark={isDark} onPress={confirmarBaja} />
           </View>
-
-                    <TouchableOpacity style={styles.primaryButton} onPress={() => setMostrarModal(true)}>
-            <Text style={styles.primaryButtonText}>Editar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.primaryButton, { backgroundColor: '#C97A7A' }]} onPress={confirmarBaja}>
-            <Feather name="trash-2" size={16} color="#FFFFFF" />
-            <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>Dar de baja</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
       <ModalEdicion visible={mostrarModal} maestro={maestro} onCancelar={() => setMostrarModal(false)} onGuardar={guardarEdicion} isDark={isDark} />
@@ -2759,10 +2747,11 @@ function TemasScreen({ route, navigation }) {
         const tema = (temas || []).find((t) => (t.mes_anio || '').toLowerCase() === mesAnio.toLowerCase());
         porMes[mesAnio] = { mesAnio, fecha, tema: tema || { id: null, titulo_tema: mesAnio, mes_anio: mesAnio }, conContenido: !!(tema && idsConContenido.has(tema.id)) };
       });
-      setMeses(Object.values(porMes).sort((a, b) => a.fecha - b.fecha));
+            // Solo el mes en curso; si este mes no hay clases, el siguiente que tenga. Desde el aviso de «el próximo mes», también ese.
+      setMeses(Object.values(porMes).sort((a, b) => a.fecha - b.fecha).slice(0, verFuturo ? 2 : 1));
       setCargando(false);
     })();
-  }, [grupo]);
+  }, [grupo, verFuturo]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
