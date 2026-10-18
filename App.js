@@ -2301,7 +2301,7 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
                         <Feather name={esClase ? "calendar" : "mic"} size={16} color={tintText} />
                       </View>
                                             <View style={{ flex: 1 }}>
-                                                <Text style={{ fontSize: 13, color: colors.textMain }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario}` : ''}</Text>
+                                                <Text style={{ fontSize: 13, color: colors.textMain }}>{item.horario}{rolUsuarioActivoGlobal === 'administrador' ? ` • ${ponerMayusculas(mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario)}` : ''}</Text>
                         {esObjetivo(item) && item.estado_confirmacion !== 'confirmado' && item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() && (
                           <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#9FBCE8' : '#2C4A73', marginTop: 3 }}>Confirma aquí tu asistencia 👉</Text>
                         )}
