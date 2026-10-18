@@ -2534,13 +2534,15 @@ function TodosUsuariosScreen({ navigation }) {
   const [maestros, setMaestros] = useState([]);
   const [cargando, setCargando] = useState(true);
 
-    useEffect(() => {
+      const listaRef = useRef(null);
+  const [verArriba, setVerArriba] = useState(false);
+  useFocusEffect(React.useCallback(() => {
     (async () => {
       const { data } = await supabase.from('maestros').select('*').order('nombre_usuario', { ascending: true });
       setMaestros(data || []);
       setCargando(false);
     })();
-  }, []);
+  }, []));
 
   const descargarCSV = () => {
     const encabezados = ['Usuario', 'Nombre completo', 'PIN', 'Celular', 'Rol', 'Elegible Clases de niños', 'Elegible Predicaciones y Clases'];
@@ -2568,7 +2570,7 @@ function TodosUsuariosScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+            <ScrollView ref={listaRef} onScroll={(e) => setVerArriba(e.nativeEvent.contentOffset.y > 700)} scrollEventThrottle={100} contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
         <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, marginLeft: -8 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -2590,13 +2592,18 @@ function TodosUsuariosScreen({ navigation }) {
                     {!cargando && maestros.map((maestro) => (
             <TouchableOpacity key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => navigation.navigate('DetalleUsuario', { maestro })}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.userTextName, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
+                                <Text style={[styles.userTextName, { color: colors.textMain }]}>{ponerMayusculas(maestro.nombre_completo || maestro.nombre_usuario)}</Text>
               </View>
               <Feather name="chevron-right" size={20} color={colors.textSub} />
             </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
+      {verArriba ? (
+        <TouchableOpacity onPress={() => listaRef.current && listaRef.current.scrollTo({ y: 0, animated: true })} accessibilityLabel="Volver arriba" style={{ position: 'absolute', right: 20, bottom: 28, width: 52, height: 52, borderRadius: 26, backgroundColor: PALETA_MENU[isDark ? 'oscuro' : 'claro']['Usuarios'].fondo, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 }}>
+          <Feather name="arrow-up" size={22} color={PALETA_MENU[isDark ? 'oscuro' : 'claro']['Usuarios'].texto} />
+        </TouchableOpacity>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -2624,6 +2631,20 @@ function DetalleUsuarioScreen({ route, navigation }) {
   const copiarInfo = async () => {
     await Clipboard.setStringAsync(`Usuario: ${maestro.nombre_usuario}\nPIN: ${maestro.pin_acceso}`);
     setAlerta({ visible: true, titulo: "Copiado", mensaje: "La información se copió al portapapeles.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#7EA0D8' });
+  };
+
+    // Dar de baja desde aquí, igual que en el panel (nadie puede darse de baja a sí mismo)
+  const confirmarBaja = () => {
+    if (maestro.nombre_usuario === usuarioActivoGlobal) return setAlerta({ visible: true, titulo: "Acción denegada", mensaje: "No puedes dar de baja tu propia cuenta.", onConfirmar: cerrarAlerta, isDark: isDark });
+    setAlerta({
+      visible: true, titulo: "Dar de baja", mensaje: `¿Seguro que quieres dar de baja a ${ponerMayusculas(maestro.nombre_completo || maestro.nombre_usuario)}? Ya no podrá entrar a la app.`, textoConfirmar: "Dar de baja", onCancelar: cerrarAlerta, isDark: isDark, themeColor: '#C97A7A',
+      onConfirmar: async () => {
+        cerrarAlerta();
+        const { data: resultado, error } = await supabase.functions.invoke('eliminar-maestro', { body: { maestro_id: maestro.id } });
+        if (error || resultado?.error) return setTimeout(() => setAlerta({ visible: true, titulo: "Error", mensaje: resultado?.error || error?.message || "No se pudo dar de baja.", onConfirmar: cerrarAlerta, isDark: isDark }), 300);
+        if (navigation.canGoBack()) navigation.goBack(); else navigation.navigate('Admin');
+      },
+    });
   };
 
   const recargar = async () => {
@@ -2685,8 +2706,12 @@ function DetalleUsuarioScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.primaryButton} onPress={() => setMostrarModal(true)}>
+                    <TouchableOpacity style={styles.primaryButton} onPress={() => setMostrarModal(true)}>
             <Text style={styles.primaryButtonText}>Editar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.primaryButton, { backgroundColor: '#C97A7A' }]} onPress={confirmarBaja}>
+            <Feather name="trash-2" size={16} color="#FFFFFF" />
+            <Text style={[styles.primaryButtonText, { marginLeft: 8 }]}>Dar de baja</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -2702,30 +2727,42 @@ function DetalleUsuarioScreen({ route, navigation }) {
 function TemasScreen({ route, navigation }) {
   const { grupo } = route.params;
   const { isDark } = useContext(ThemeContext);
-  const [temas, setTemas] = useState([]);
+    const [meses, setMeses] = useState([]);
   const [cargando, setCargando] = useState(true);
         const [verFuturo, setVerFuturo] = useState(!!route?.params?.verFuturo);
   const columnas = useColumnas();
   const theme = getThemeColors(grupo, isDark);
   const colors = getColors(isDark);
 
+    // Meses del temario: los que tienen clases asignadas en este grupo (a ti, si eres maestro), desde el mes actual.
+  // Si el mes aún no tiene contenido, igual aparece, con sus domingos en blanco.
   useEffect(() => {
-    async function obtenerTemas() {
-      let { data, error } = await supabase.from('temas_mensuales').select('*').order('orden', { ascending: true });
-      if (!error) setTemas(data);
+    (async () => {
+      const hoy = new Date();
+      const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+      let consulta = supabase.from('clases_asignadas').select('mes_anio').eq('grupo', grupo).range(0, 4999);
+      if (!esAdmin) consulta = consulta.or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`);
+      const [{ data: asignadas }, { data: temas }, { data: conContenido }] = await Promise.all([
+        consulta,
+        supabase.from('temas_mensuales').select('*'),
+        supabase.from('clases_detalle').select('tema_id').eq('rango_edad', grupo).range(0, 4999),
+      ]);
+      const etiquetas = new Set((asignadas || []).map((r) => r.mes_anio).filter(Boolean));
+      if (esAdmin) (temas || []).forEach((t) => { if (t.mes_anio) etiquetas.add(t.mes_anio); });
+      const idsConContenido = new Set((conContenido || []).map((c) => c.tema_id));
+      const porMes = {};
+      etiquetas.forEach((etq) => {
+        const fecha = parsearMesAnio(etq);
+        if (!fecha || fecha < inicioMes) return;
+        const mesAnio = `${NOMBRES_MESES[fecha.getMonth()]} ${fecha.getFullYear()}`;
+        const tema = (temas || []).find((t) => (t.mes_anio || '').toLowerCase() === mesAnio.toLowerCase());
+        porMes[mesAnio] = { mesAnio, fecha, tema: tema || { id: null, titulo_tema: mesAnio, mes_anio: mesAnio }, conContenido: !!(tema && idsConContenido.has(tema.id)) };
+      });
+      setMeses(Object.values(porMes).sort((a, b) => a.fecha - b.fecha));
       setCargando(false);
-    }
-    obtenerTemas();
-  }, []);
-
-  const ordenActual = (() => {
-    const hoy = new Date();
-    const añoActual = hoy.getFullYear();
-    if (añoActual < 2027) return 1; 
-    return (añoActual - 2027) * 12 + hoy.getMonth() + 1;
-  })();
-
-  const temasFiltrados = temas.filter((tema) => verFuturo ? tema.orden >= ordenActual : tema.orden === ordenActual);
+    })();
+  }, [grupo]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -2748,8 +2785,14 @@ function TemasScreen({ route, navigation }) {
             <View style={styles.center}><ActivityIndicator size="large" color={theme.main} /></View>
           ) : (
                         <View style={[styles.listContainer, columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
-              {temasFiltrados.map((tema) => (
-                <TarjetaLista key={tema.id} icono="calendar" titulo={tema.titulo_tema} subtitulo={tema.mes_anio} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('Clases', { tema: tema, grupo: grupo })} />
+                            {meses.length === 0 ? (
+                <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '100%' }]}>
+                  <Feather name="calendar" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
+                  <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Sin meses próximos</Text>
+                  <Text style={[styles.emptyText, { color: colors.textSub }]}>Cuando se asignen clases de este grupo, aparecerán aquí.</Text>
+                </View>
+              ) : meses.map((m) => (
+                <TarjetaLista key={m.mesAnio} icono="calendar" titulo={m.mesAnio} subtitulo={m.conContenido ? (m.tema.titulo_tema && m.tema.titulo_tema !== m.mesAnio ? m.tema.titulo_tema : 'Contenido listo') : 'Contenido pendiente'} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('Clases', { tema: m.tema, grupo: grupo })} />
               ))}
             </View>
           )}
@@ -2771,7 +2814,10 @@ function ClasesScreen({ route, navigation }) {
         // Los maestros solo ven sus clases que aún no pasan; coordinadores y administradores ven todas
     const hoyClases = fechaISO(new Date());
     const yaPaso = (c) => { const f = fechaDeClase(c); return !!f && f < hoyClases; };
-    const clasesVisibles = fechasPermitidas ? clasesReales.filter((c) => fechasPermitidas.includes(fechaDeClase(c)) && !yaPaso(c)) : clasesReales;
+        const domingosMes = (() => { const m = parsearMesAnio(tema.mes_anio); return m ? domingosDelMes(m.getFullYear(), m.getMonth()) : []; })();
+    // Cada domingo con su clase; si todavía no se sube el contenido, aparece como «Contenido pendiente»
+    const clasesDelMes = domingosMes.map((f, i) => clasesReales.find((c) => c.numero_clase === i + 1) || { id: `pendiente-${i + 1}`, numero_clase: i + 1, titulo_clase: `Clase ${i + 1}`, pendiente: true });
+    const clasesVisibles = fechasPermitidas ? clasesDelMes.filter((c) => fechasPermitidas.includes(fechaDeClase(c)) && !yaPaso(c)) : clasesDelMes;
     const [filasMes, setFilasMes] = useState([]);
   const [pendientesIds, setPendientesIds] = useState([]);
   const enfocada = useIsFocused();
@@ -2820,7 +2866,7 @@ function ClasesScreen({ route, navigation }) {
 
   useEffect(() => {
     async function obtenerClases() {
-      const { data, error } = await supabase.from('clases_detalle').select('*').eq('tema_id', tema.id).eq('rango_edad', grupo).order('numero_clase', { ascending: true });
+            const { data, error } = tema.id ? await supabase.from('clases_detalle').select('*').eq('tema_id', tema.id).eq('rango_edad', grupo).order('numero_clase', { ascending: true }) : { data: [], error: null };
       if (!error && data) {
         let permitidas = null;
         const mesTema = parsearMesAnio(tema.mes_anio);
@@ -2869,7 +2915,7 @@ function ClasesScreen({ route, navigation }) {
             ) : (
                             <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
                 {clasesVisibles.map((clase) => (
-                  <TarjetaLista key={clase.id} icono="book-open" titulo={clase.titulo_clase} subtitulo={fechaBonitaDeClase(clase)} detalle={clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} etiqueta={yaPaso(clase) ? 'Ya pasó' : apoyoPendiente(clase) ? 'Apoyo pendiente' : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
+                  <TarjetaLista key={clase.id} icono={clase.pendiente ? 'clock' : 'book-open'} titulo={clase.titulo_clase} subtitulo={fechaBonitaDeClase(clase)} detalle={clase.pendiente ? 'Contenido pendiente' : (clase.texto_base ? `Base: ${clase.texto_base}` : null)} asignado={textoAsignado(clase)} etiqueta={yaPaso(clase) ? 'Ya pasó' : apoyoPendiente(clase) ? 'Apoyo pendiente' : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
                 ))}
               </View>
             )}
@@ -3028,8 +3074,8 @@ function ClaseDetalleScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
         <Text style={[styles.detalleTitleMain, { color: colors.textMain }]}>{clase.titulo_clase}</Text>
-        <Text style={[styles.detalleSubtitle, { color: theme.main }]}>Clase {clase.numero_clase} • {grupo}</Text>
-                <Text style={[styles.detalleBase, { color: colors.textSub }]}>Base bíblica: {clase.texto_base}</Text>
+                <Text style={[styles.detalleSubtitle, { color: theme.main }]}>{fechaClase ? (() => { const t = new Date(fechaClase + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }); return t.charAt(0).toUpperCase() + t.slice(1); })() : `Clase ${clase.numero_clase}`} • {grupo}</Text>
+                                {clase.texto_base ? <Text style={[styles.detalleBase, { color: colors.textSub }]}>Base bíblica: {clase.texto_base}</Text> : null}
         <TouchableOpacity onPress={abrirLista} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, backgroundColor: paletaGrupo.fondo }}>
           <Feather name="check-circle" size={18} color={paletaGrupo.texto} />
           <Text style={{ color: paletaGrupo.texto, fontWeight: '700', fontSize: 14 }}>Tomar lista</Text>
@@ -3037,7 +3083,14 @@ function ClaseDetalleScreen({ route, navigation }) {
         
         <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
 
-                {Array.isArray(clase.secciones) && clase.secciones.length > 0 ? clase.secciones.map((s, i) => <SeccionDeClase key={i} seccion={s} />) : (<>
+                        {clase.pendiente ? (
+          <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, padding: 20, marginBottom: 14 }}>
+            <Feather name="clock" size={22} color={theme.textDark} />
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain, marginTop: 8 }}>Contenido pendiente</Text>
+            <Text style={{ fontSize: 14, color: colors.textSub, marginTop: 4, lineHeight: 20 }}>El contenido de esta clase todavía no se ha subido. Aun así puedes tomar lista o pedir apoyo.</Text>
+          </View>
+        ) : null}
+        {Array.isArray(clase.secciones) && clase.secciones.length > 0 ? clase.secciones.map((s, i) => <SeccionDeClase key={i} seccion={s} />) : (<>
         <RenderSeccion titulo="Objetivo del Maestro" texto={clase.objetivo} />
         <RenderSeccion titulo="Puntos Clave" texto={clase.puntos_clave} />
         <RenderSeccion titulo="Bienvenida y Rompehielos (15 min)" texto={clase.rompehielos} />
@@ -3050,7 +3103,7 @@ function ClaseDetalleScreen({ route, navigation }) {
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 }}>
           <BotonChico icono="life-buoy" texto="Solicitar apoyo" categoria={grupo} isDark={isDark} onPress={abrirApoyo} />
-          <BotonChico icono="download" texto="Descargar PDF" categoria={grupo} isDark={isDark} onPress={descargarPDF} />
+                    {clase.url_pdf ? <BotonChico icono="download" texto="Descargar PDF" categoria={grupo} isDark={isDark} onPress={descargarPDF} /> : null}
         </View>
       </ScrollView>
             <AlertaPersonalizada {...alerta} />
@@ -3844,8 +3897,10 @@ function AdminScreen({ navigation, route }) {
     const buscarMaestro = (t) => porUsuario[normalizarUsuario(t)];
     const gruposPorPersonaMes = {};
 
-    filasCSV.forEach((fila, idx) => {
+        filasCSV.forEach((fila, idx) => {
       const numero = idx + 2;
+      // Excel a veces guarda filas en blanco (solo comas) al final: se ignoran
+      if (!Object.values(fila).some((v) => (v || '').trim())) return;
       const fechaMes = parsearMesAnio(fila.mes);
       if (!fechaMes) { errores.push(`Fila ${numero}: el mes "${fila.mes || ''}" no se entiende (usa por ejemplo "Octubre 2026").`); return; }
       const mesAnio = `${NOMBRES_MESES[fechaMes.getMonth()]} ${fechaMes.getFullYear()}`;
