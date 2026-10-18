@@ -1531,15 +1531,18 @@ const leerZip = async (buffer) => {
     archivos[nombre] = { metodo: datos.getUint16(p + 10, true), tamano: datos.getUint32(p + 20, true), inicio: datos.getUint32(p + 42, true) };
     p += 46 + largoNombre + datos.getUint16(p + 30, true) + datos.getUint16(p + 32, true);
   }
-  const leer = async (nombre) => {
+    const leer = async (nombre, binario) => {
     const a = archivos[nombre];
     if (!a) return null;
     const desde = a.inicio + 30 + datos.getUint16(a.inicio + 26, true) + datos.getUint16(a.inicio + 28, true);
     const crudo = bytes.subarray(desde, desde + a.tamano);
-    if (a.metodo === 0) return decodificar.decode(crudo);
-    if (typeof DecompressionStream === 'undefined') throw new Error('Este navegador no puede leer archivos Word. Usa Chrome o Safari actualizados.');
-    const flujo = new Blob([crudo]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-    return await new Response(flujo).text();
+    let respuesta;
+    if (a.metodo === 0) respuesta = new Response(crudo);
+    else {
+      if (typeof DecompressionStream === 'undefined') throw new Error('Este navegador no puede leer archivos Word. Usa Chrome o Safari actualizados.');
+      respuesta = new Response(new Blob([crudo]).stream().pipeThrough(new DecompressionStream('deflate-raw')));
+    }
+    return binario ? await respuesta.blob() : await respuesta.text();
   };
   return { nombres: Object.keys(archivos), leer };
 };
@@ -1565,10 +1568,12 @@ const parrafosDelWord = (xml) => {
     info.texto = info.texto.replace(/[ \u00a0]+/g, ' ').replace(/ *\n */g, '\n').trim();
     return info;
   };
+    const fotosDe = (nodo) => Array.from(nodo.getElementsByTagName('a:blip')).map((b) => b.getAttribute('r:embed')).filter(Boolean);
   const recorrer = (nodo) => {
     Array.from(nodo.childNodes || []).forEach((h) => {
-      if (h.nodeName === 'w:p') { const info = leerParrafo(h); if (info.texto) parrafos.push(info); }
-      else if (h.nodeName !== 'w:tbl' && h.childNodes && h.childNodes.length) recorrer(h);
+      if (h.nodeName === 'w:p') { const info = leerParrafo(h); if (info.texto) parrafos.push(info); fotosDe(h).forEach((id) => parrafos.push({ foto: id })); }
+      else if (h.nodeName === 'w:tbl') fotosDe(h).forEach((id) => parrafos.push({ foto: id }));
+      else if (h.childNodes && h.childNodes.length) recorrer(h);
     });
   };
   recorrer(doc.documentElement);
@@ -1579,11 +1584,14 @@ const parrafosDelWord = (xml) => {
 const leerClaseDelWord = async (archivo) => {
   const zip = await leerZip(await archivo.arrayBuffer());
   const cuerpo = await zip.leer('word/document.xml');
-  if (!cuerpo) throw new Error('El archivo no parece un Word (.docx).');
+    if (!cuerpo) throw new Error('El archivo no parece un Word (.docx).');
+  const destinos = {};
+  const rels = await zip.leer('word/_rels/document.xml.rels');
+  if (rels) Array.from(new DOMParser().parseFromString(rels, 'application/xml').getElementsByTagName('Relationship')).forEach((r) => { destinos[r.getAttribute('Id')] = 'word/' + (r.getAttribute('Target') || '').replace(/^\.?\//, ''); });
   const encabezado = [];
   for (const nombre of zip.nombres.filter((n) => /^word\/header\d*\.xml$/.test(n)).sort()) encabezado.push(...parrafosDelWord(await zip.leer(nombre)));
   // Encabezado: "Domingo 1 (3 de enero): La Creación" y "Texto base: Génesis 1:1 – 2:3"
-  const lineasEnc = encabezado.map((p) => p.texto);
+    const lineasEnc = encabezado.filter((p) => p.texto).map((p) => p.texto);
   let numeroEnc = null; let titulo = ''; let textoBase = '';
   lineasEnc.forEach((t, i) => {
     const d = t.match(/^domingo\s*(\d+)\s*(\([^)]*\))?\s*:?\s*(.*)$/i);
@@ -1594,7 +1602,8 @@ const leerClaseDelWord = async (archivo) => {
   // Cuerpo: se reparte en secciones según sus títulos
   const secciones = [];
   let actual = null;
-  parrafosDelWord(cuerpo).forEach((p) => {
+    parrafosDelWord(cuerpo).forEach((p) => {
+    if (p.foto) { const ruta = destinos[p.foto]; if (actual && ruta && /\.(png|jpe?g|gif|bmp|webp)$/i.test(ruta)) actual.fotos.push(ruta); return; }
     const limpio = sinAcentos(p.texto.replace(/^\d+[.)]\s*/, '')).trim();
     if (/^itinerario\s*:?$/.test(limpio)) return;
     const tipo = SECCIONES_CLASE.find((s) => s.patron.test(limpio));
@@ -1603,7 +1612,7 @@ const leerClaseDelWord = async (archivo) => {
       const sinTiempo = p.texto.replace(/\(\d+\s*min[a-z.]*\)/i, '');
       const dosPuntos = sinTiempo.indexOf(':');
       const resto = dosPuntos >= 0 ? sinTiempo.slice(dosPuntos + 1).trim() : '';
-      actual = { clave: tipo.clave, titulo: tipo.titulo, tiempo: tiempo.replace(/\.$/, ''), lineas: resto && resto !== '.' ? [resto.charAt(0).toUpperCase() + resto.slice(1)] : [] };
+      actual = { clave: tipo.clave, titulo: tipo.titulo, tiempo: tiempo.replace(/\.$/, ''), lineas: resto && resto !== '.' ? [resto.charAt(0).toUpperCase() + resto.slice(1)] : [], fotos: [] };
       secciones.push(actual);
       return;
     }
@@ -1611,13 +1620,16 @@ const leerClaseDelWord = async (archivo) => {
     actual.lineas.push(p.lista ? `${p.nivel > 0 ? '    ◦ ' : '• '}${p.texto}` : p.texto);
   });
   if (secciones.length === 0) throw new Error('No encontré las secciones de la clase (Objetivo, Puntos clave, Itinerario…).');
-  const listas = secciones.map((s) => ({ titulo: s.titulo, tiempo: s.tiempo, texto: s.lineas.join('\n').trim(), clave: s.clave }));
+    const tipoDe = (ruta) => (/\.png$/i.test(ruta) ? 'image/png' : /\.gif$/i.test(ruta) ? 'image/gif' : /\.webp$/i.test(ruta) ? 'image/webp' : /\.bmp$/i.test(ruta) ? 'image/bmp' : 'image/jpeg');
+  for (const s of secciones) s.fotos = (await Promise.all(s.fotos.map(async (ruta) => { const b = await zip.leer(ruta, true); return b ? new Blob([b], { type: tipoDe(ruta) }) : null; }))).filter(Boolean);
+  const listas = secciones.map((s) => ({ titulo: s.titulo, tiempo: s.tiempo, texto: s.lineas.join('\n').trim(), clave: s.clave, fotos: s.fotos }));
   const de = (clave) => (listas.find((s) => s.clave === clave) || {}).texto || null;
   const actividades = de('actividades') || '';
   const lineaVersiculo = actividades.split('\n').find((l) => /^[•◦\s]*vers[ií]culo/i.test(l));
   return {
-    numeroEnc, titulo, textoBase,
-    secciones: listas.map(({ titulo: t, tiempo, texto }) => ({ titulo: t, tiempo, texto })),
+        numeroEnc, titulo, textoBase,
+    totalFotos: listas.reduce((n, s) => n + s.fotos.length, 0),
+    secciones: listas.map(({ titulo: t, tiempo, texto, fotos }) => ({ titulo: t, tiempo, texto, fotos })),
     campos: {
       objetivo: de('objetivo'), puntos_clave: de('puntos'), rompehielos: de('rompehielos'), introduccion: de('introduccion'),
       historia: de('historia'), puntos_resaltar: de('resaltar'), actividad_sugerida: actividades || null,
@@ -1635,6 +1647,24 @@ const datosDelNombre = (nombre) => {
     numero: parseInt(m[1], 10), mes, anio, codigo: m[4], tipo: m[5].toUpperCase(), grupo: CODIGOS_GRUPO[m[4]] || null,
     clave: `${parseInt(m[1], 10)}_${String(mes).padStart(2, '0')}_${m[3]}_${m[4]}`,
   };
+};
+
+// Reduce una foto a máximo 1000 px y la convierte a JPG para que pese poco (si no se puede leer, se omite)
+const comprimirFoto = async (blob) => {
+  try {
+    const img = await createImageBitmap(blob);
+    const escala = Math.min(1, 1000 / Math.max(img.width, img.height));
+    const ancho = Math.round(img.width * escala);
+    const alto = Math.round(img.height * escala);
+    const lienzo = document.createElement('canvas');
+    lienzo.width = ancho; lienzo.height = alto;
+    const ctx = lienzo.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, ancho, alto);
+    ctx.drawImage(img, 0, 0, ancho, alto);
+    const reducida = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.78));
+    return reducida ? { blob: reducida, ancho, alto } : null;
+  } catch (e) { return null; }
 };
 
 // Opción del panel: elegir varios Word y PDF, revisar la vista previa y subirlos
@@ -1688,7 +1718,27 @@ const SubirContenidoClases = ({ isDark }) => {
       temaId = data.id;
     }
     const datos = {};
-    if (it.contenido) Object.assign(datos, it.contenido.campos, { titulo_clase: it.contenido.titulo, texto_base: it.contenido.textoBase || null, secciones: it.contenido.secciones });
+        if (it.contenido) {
+      // Fotos de muestra: se borran las anteriores de esta clase y se suben las nuevas, ya reducidas
+      const { data: viejas } = await supabase.storage.from('clases').list(it.clave);
+      if (viejas && viejas.length) await supabase.storage.from('clases').remove(viejas.map((f) => `${it.clave}/${f.name}`));
+      let n = 0;
+      const secciones = [];
+      for (const s of it.contenido.secciones) {
+        const imagenes = [];
+        for (const foto of s.fotos || []) {
+          const lista = await comprimirFoto(foto);
+          if (!lista) continue;
+          n += 1;
+          const ruta = `${it.clave}/foto${n}.jpg`;
+          const { error } = await supabase.storage.from('clases').upload(ruta, lista.blob, { contentType: 'image/jpeg', upsert: true });
+          if (error) throw error;
+          imagenes.push({ url: `${supabase.storage.from('clases').getPublicUrl(ruta).data.publicUrl}?v=${Date.now()}`, ancho: lista.ancho, alto: lista.alto });
+        }
+        secciones.push({ titulo: s.titulo, tiempo: s.tiempo, texto: s.texto, ...(imagenes.length ? { imagenes } : {}) });
+      }
+      Object.assign(datos, it.contenido.campos, { titulo_clase: it.contenido.titulo, texto_base: it.contenido.textoBase || null, secciones });
+    }
     if (it.actividad) {
       const ruta = `${it.clave}A.pdf`;
       const { error } = await supabase.storage.from('clases').upload(ruta, it.actividad, { contentType: 'application/pdf', upsert: true });
@@ -1737,7 +1787,7 @@ const SubirContenidoClases = ({ isDark }) => {
           <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{it.contenido && it.contenido.titulo ? it.contenido.titulo : `Clase ${it.numero}`}</Text>
           <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>Clase {it.numero} • {fechaDe(it) || `${NOMBRES_MESES[it.mes - 1] || '?'} ${it.anio}`} • {it.grupo || it.codigo}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-            {[['Contenido', it.contenido, it.contenido ? `${it.contenido.secciones.length} secciones` : 'sin Word'], ['Actividad', it.actividad, it.actividad ? 'PDF listo' : 'sin PDF']].map(([etq, ok, det]) => (
+            {[['Contenido', it.contenido, it.contenido ? `${it.contenido.secciones.length} secciones${it.contenido.totalFotos ? ` • ${it.contenido.totalFotos} fotos` : ''}` : 'sin Word'], ['Actividad', it.actividad, it.actividad ? 'PDF listo' : 'sin PDF']].map(([etq, ok, det]) => (
               <View key={etq} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999, backgroundColor: ok ? paleta.fondo : colors.background }}>
                 <Feather name={ok ? 'check' : 'minus'} size={13} color={ok ? paleta.texto : colors.textSub} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: ok ? paleta.texto : colors.textSub }}>{etq}: {det}</Text>
@@ -2932,13 +2982,24 @@ function ClaseDetalleScreen({ route, navigation }) {
     Linking.openURL(clase.url_pdf).catch(err => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo abrir el enlace.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }));
   }
 
-    const SeccionDeClase = ({ seccion }) => (
+      const [fotoAbierta, setFotoAbierta] = useState(null);
+  const columnasFotos = useColumnas();
+  const SeccionDeClase = ({ seccion }) => (
     <View style={styles.seccionDetalle}>
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
         <Text style={[styles.seccionTitulo, { color: theme.textDark, marginBottom: 0 }]}>{seccion.titulo}</Text>
         {seccion.tiempo ? <View style={{ paddingVertical: 3, paddingHorizontal: 10, borderRadius: 999, backgroundColor: paletaGrupo.fondo }}><Text style={{ fontSize: 12, fontWeight: '700', color: paletaGrupo.texto }}>{seccion.tiempo}</Text></View> : null}
       </View>
-      {seccion.texto ? <Text style={[styles.seccionTexto, { color: colors.textMain }]}>{seccion.texto}</Text> : null}
+            {seccion.texto ? <Text style={[styles.seccionTexto, { color: colors.textMain }]}>{seccion.texto}</Text> : null}
+      {Array.isArray(seccion.imagenes) && seccion.imagenes.length > 0 ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 10, marginTop: 12 }}>
+          {seccion.imagenes.map((f, i) => (
+            <TouchableOpacity key={i} activeOpacity={0.85} onPress={() => setFotoAbierta(f)} accessibilityLabel="Ver foto" style={{ width: columnasFotos === 3 ? '23%' : columnasFotos === 2 ? '31%' : '47%', borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: colors.cardBorder }}>
+              <Image source={{ uri: f.url }} style={{ width: '100%', aspectRatio: f.ancho && f.alto ? f.ancho / f.alto : 1 }} resizeMode="contain" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -2991,7 +3052,15 @@ function ClaseDetalleScreen({ route, navigation }) {
       </ScrollView>
             <AlertaPersonalizada {...alerta} />
       <ModalSolicitarApoyo visible={mostrarApoyo} tipoItem="clase" item={asignacion} maestrosElegibles={maestrosElegibles} usuarioPropio={usuarioActivoGlobal} isDark={isDark} onCancelar={() => setMostrarApoyo(false)} onConfirmar={enviarSolicitudClase} />
-      <ModalAsistencia visible={mostrarLista} onCerrar={() => setMostrarLista(false)} fecha={fechaClase} grupo={grupo} isDark={isDark} usuario={usuarioActivoGlobal} />
+            <ModalAsistencia visible={mostrarLista} onCerrar={() => setMostrarLista(false)} fecha={fechaClase} grupo={grupo} isDark={isDark} usuario={usuarioActivoGlobal} />
+      <Modal visible={!!fotoAbierta} transparent animationType="fade" onRequestClose={() => setFotoAbierta(null)}>
+        <TouchableOpacity activeOpacity={1} onPress={() => setFotoAbierta(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          {fotoAbierta ? <Image source={{ uri: fotoAbierta.url }} style={{ width: '100%', height: '85%' }} resizeMode="contain" /> : null}
+          <View style={{ position: 'absolute', top: 36, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' }}>
+            <Feather name="x" size={24} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -3632,7 +3701,7 @@ function AdminScreen({ navigation, route }) {
     async function guardarEdicion(datos) {
     setMaestroEditando(null);
     setEquipoSeleccionadoAdmin(null);
-                await supabase.from('maestros').update({ telefono: datos.telefono, nombre_completo: datos.nombre_completo, elegible_clases_ninos: datos.elegible_clases_ninos, elegible_predicaciones: datos.elegible_predicaciones }).eq('id', maestroEditando.id);
+                await supabase.from('maestros').update({ telefono: datos.telefono, nombre_completo: datos.nombre_completo, elegible_clases_ninos: datos.elegible_clases_ninos, elegible_predicaciones: datos.elegible_predicaciones, rol: datos.rol, equipo: datos.equipo }).eq('id', maestroEditando.id);
     obtenerMaestros();
   }
 
