@@ -159,8 +159,11 @@ const domingosDelMes = (anio, mes) => {
   }
   return fechas;
 };
-// Convierte "Neri Sánchez" en "nerisanchez" (conserva la ñ), igual que los usuarios
-const normalizarUsuario = (texto) => (texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, (m) => (m === '\u0303' ? m : '')).normalize('NFC').replace(/\s+/g, '').toLowerCase();
+// Convierte "Neri Sánchez" en "nerisanchez" (conserva la ñ), igual que los usuarios// Usuario para entrar a la app: sin acentos, la ñ se vuelve n, sin espacios y en minúsculas.
+// Supabase no acepta ñ ni acentos en el correo interno (usuario@indus.app).
+const usuarioSeguro = (texto) => (texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
+const normalizarUsuario = usuarioSeguro;
+
 const normalizarEncabezado = (texto) => (texto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
 const parsearHorarioMinutos = (horario) => {
@@ -1983,7 +1986,7 @@ function LoginScreen({ navigation }) {
     if (!usuarioLogin || !pinLogin) return setAlerta({ visible: true, titulo: "Aviso", mensaje: "Ingresa tu usuario y PIN." });
     setIngresando(true);
     try {
-      const email = `${usuarioLogin.trim().toLowerCase()}@indus.app`;
+            const email = `${usuarioSeguro(usuarioLogin)}@indus.app`;
       const password = `IndusApp-${pinLogin.trim()}`;
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError || !authData.session) {
@@ -3662,7 +3665,7 @@ function AdminScreen({ navigation, route }) {
     setNombreCompleto(texto);
     // Preserva la ñ/Ñ (se descompone en "n" + tilde con NFD) y solo quita acentos del resto de letras
     const usuarioLimpio = texto.normalize("NFD").replace(/[̀-ͯ]/g, (m) => (m === '\u0303' ? m : '')).normalize("NFC").replace(/\s+/g, '');
-    setUsuarioGenerado(usuarioLimpio);
+        setUsuarioGenerado(usuarioSeguro(usuarioLimpio));
     if (!pinGenerado && texto.length > 0) setPinGenerado(Math.floor(1000 + Math.random() * 9000).toString());
     if (texto.length === 0) setPinGenerado('');
   };
@@ -4116,7 +4119,7 @@ function AdminScreen({ navigation, route }) {
         {usuarioGenerado !== '' && (
           <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
             <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Accesos que se crearán:</Text>
-            <View style={styles.autoGenRow}><Text style={[styles.autoGenLabel, { color: colors.textSub }]}>Usuario:</Text><TextInput style={[styles.autoGenInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} value={usuarioGenerado} onChangeText={setUsuarioGenerado} /></View>
+            <View style={styles.autoGenRow}><Text style={[styles.autoGenLabel, { color: colors.textSub }]}>Usuario:</Text><TextInput style={[styles.autoGenInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} value={usuarioGenerado} onChangeText={(t) => setUsuarioGenerado(usuarioSeguro(t))} /></View>
             <View style={styles.autoGenRow}><Text style={[styles.autoGenLabel, { color: colors.textSub }]}>PIN (4 dígitos):</Text><View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}><TextInput style={[styles.autoGenInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, flex: 1 }]} value={pinGenerado} onChangeText={setPinGenerado} keyboardType="numeric" maxLength={4} /><TouchableOpacity onPress={generarNuevoPin} style={{ padding: 10 }}><Feather name="refresh-cw" size={18} color={colors.textSub} /></TouchableOpacity></View></View>
           </View>
         )}
