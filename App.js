@@ -2480,7 +2480,7 @@ function NotificacionesScreen({ navigation }) {
     })();
   }, []);
 
-  const nombreBonito = (usuario) => mapaNombres[(usuario || '').toLowerCase()] || usuario;
+  const nombreBonito = (usuario) => ponerMayusculas(mapaNombres[(usuario || '').toLowerCase()] || usuario);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -3411,7 +3411,7 @@ function TablonScreen({ navigation, route }) {
     setRefrescando(false);
   }, []);
 
-  const nombreBonito = (usuario) => mapaNombres[(usuario || '').toLowerCase()] || usuario;
+  const nombreBonito = (usuario) => ponerMayusculas(mapaNombres[(usuario || '').toLowerCase()] || usuario);
 
   function cerrarAlerta() { setAlerta({ ...alerta, visible: false }); }
 
