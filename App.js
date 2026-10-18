@@ -120,9 +120,9 @@ const GRUPOS_CLASES = [
 // Cómo funciona cada grupo: con temario propio, solo cuidado (cuneros) o repaso de un grupo de la mañana
 const GRUPOS_INFO = {
   'Cuneros': { turno: 'Mañana', edades: '0 a 3 años', icono: 'heart', cuidado: true },
-  'Niños': { turno: 'Mañana', edades: '3 a 6 años', icono: 'smile', temario: true },
+    'Niños': { turno: 'Mañana', edades: '4 a 6 años', icono: 'smile', temario: true },
   'Pre adolescentes': { turno: 'Mañana', edades: '7 a 9 años', icono: 'users', temario: true },
-  'Adolescentes': { turno: 'Mañana', edades: '10 a 13 años', icono: 'book', temario: true },
+    'Adolescentes': { turno: 'Mañana', edades: '10 a 12 años', icono: 'book', temario: true },
   'Cuneros tarde': { turno: 'Tarde', edades: '0 a 3 años', icono: 'moon', cuidado: true },
   'Tarde 4 a 8': { turno: 'Tarde', edades: '4 a 8 años', icono: 'sun', repasoDe: 'Niños' },
   'Tarde 9 a 12': { turno: 'Tarde', edades: '9 a 12 años', icono: 'sunset', repasoDe: 'Adolescentes' },
@@ -250,7 +250,9 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
     const [nuevoTelefono, setNuevoTelefono] = useState('');
   const [nuevoNombreCompleto, setNuevoNombreCompleto] = useState('');
   const [nuevoElegibleClases, setNuevoElegibleClases] = useState(false);
-  const [nuevoElegiblePredicaciones, setNuevoElegiblePredicaciones] = useState(false);
+    const [nuevoElegiblePredicaciones, setNuevoElegiblePredicaciones] = useState(false);
+  const [nuevoEsAdmin, setNuevoEsAdmin] = useState(false);
+  const esYoMismo = !!maestro && maestro.nombre_usuario === usuarioActivoGlobal;
   const colors = getColors(isDark);
   
   useEffect(() => { 
@@ -260,7 +262,8 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
       setNuevoTelefono(maestro.telefono || '');
       setNuevoNombreCompleto(maestro.nombre_completo || '');
       setNuevoElegibleClases(!!maestro.elegible_clases_ninos);
-      setNuevoElegiblePredicaciones(!!maestro.elegible_predicaciones);
+            setNuevoElegiblePredicaciones(!!maestro.elegible_predicaciones);
+      setNuevoEsAdmin(maestro.rol === 'administrador');
     } 
   }, [maestro]);
 
@@ -290,6 +293,13 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             keyboardType="numeric" 
           />
 
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.label, { color: colors.textSub }]}>Es administrador</Text>
+              {esYoMismo ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>No puedes quitarte a ti mismo</Text> : null}
+            </View>
+            <Switch trackColor={{ false: colors.cardBorder, true: "#EFBC68" }} thumbColor={"#FFFFFF"} onValueChange={setNuevoEsAdmin} value={nuevoEsAdmin} disabled={esYoMismo} />
+          </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
             <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Clases de niños</Text>
             <Switch trackColor={{ false: colors.cardBorder, true: "#5FA8A0" }} thumbColor={"#FFFFFF"} onValueChange={setNuevoElegibleClases} value={nuevoElegibleClases} />
@@ -303,7 +313,7 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.cardBorder }]} onPress={onCancelar}>
               <Text style={[styles.modalCancelText, { color: colors.textSub }]}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto, elegible_clases_ninos: nuevoElegibleClases, elegible_predicaciones: nuevoElegiblePredicaciones }); }}>
+            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto, elegible_clases_ninos: nuevoElegibleClases, elegible_predicaciones: nuevoElegiblePredicaciones, rol: nuevoEsAdmin ? 'administrador' : 'maestro', equipo: nuevoEsAdmin ? 'Administradores' : (maestro.equipo === 'Administradores' ? 'Sin equipo' : maestro.equipo) }); }}>
               <Text style={styles.modalConfirmText}>Guardar</Text>
             </TouchableOpacity>
           </View>
@@ -397,7 +407,7 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
   const overlayOpacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.4] });
 
   return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents={visible ? 'auto' : 'none'}>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999, overflow: 'hidden' }]} pointerEvents={visible ? 'auto' : 'none'}>
       <TouchableOpacity activeOpacity={1} onPress={onCerrar} style={StyleSheet.absoluteFill}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
       </TouchableOpacity>
@@ -465,7 +475,7 @@ const PanelNotificaciones = ({ visible, onCerrar, onNavegar, onRevisadas, isDark
   const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [400, 0] });
   const overlayOpacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.4] });
   return (
-    <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents={visible ? 'auto' : 'none'}>
+    <View style={[StyleSheet.absoluteFill, { zIndex: 999, overflow: 'hidden' }]} pointerEvents={visible ? 'auto' : 'none'}>
       <TouchableOpacity activeOpacity={1} onPress={onCerrar} style={StyleSheet.absoluteFill}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
       </TouchableOpacity>
@@ -577,7 +587,7 @@ const PREGUNTAS_AYUDA = [
   },
   {
     id: 'subirArchivos', soloAdmin: true, pregunta: '¿Cómo subo el rol o las clases?',
-    respuesta: 'Ajustes → Administración, y luego:\n• Predicaciones → «Subir rol».\n• Clases de niños → «Subir clases».\n\nSe sube un archivo CSV. Revisa la vista previa antes de confirmar.',
+    respuesta: 'Ajustes → Administración, y luego:\n• Predicaciones → «Subir rol» (archivo CSV).\n• Clases de niños → «Asignar maestros a las clases» (archivo CSV).\n• Clases de niños → «Subir contenido de clases» (Word y PDF).\n\nRevisa la vista previa antes de confirmar.',
     claves: 'csv archivo subir rol clases cargar excel',
     ir: { pantalla: 'Admin', texto: 'Ir a Administración' },
   },
@@ -1484,6 +1494,273 @@ const SeccionCoritos = ({ idsClases, grupo, isDark, puedeElegir }) => {
   );
 };
 
+// ---- CONTENIDO DE CLASES: se sube el Word (contenido) y el PDF (actividad para imprimir) ----
+// Nombre de los archivos: clase_mes_año_grupo y una letra. Ej. 1_01_27_4_6C.docx (contenido) y 1_01_27_4_6A.pdf (actividad)
+const CODIGOS_GRUPO = { '4_6': 'Niños', '7_9': 'Pre adolescentes', '10_12': 'Adolescentes' };
+// Títulos que trae el Word, en el orden de la clase
+const SECCIONES_CLASE = [
+  { clave: 'objetivo', titulo: 'Objetivo para el maestro', patron: /^objetivo/ },
+  { clave: 'puntos', titulo: 'Puntos clave', patron: /^puntos clave/ },
+  { clave: 'palabras', titulo: 'Palabras para explicar', patron: /^palabras para explicar/ },
+  { clave: 'oracion', titulo: 'Oración de inicio y cantos', patron: /^oracion de inicio/ },
+  { clave: 'rompehielos', titulo: 'Bienvenida y rompehielos', patron: /^bienvenida/ },
+  { clave: 'introduccion', titulo: 'Introducción', patron: /^introduccion/ },
+  { clave: 'historia', titulo: 'Historia bíblica', patron: /^historia biblica/ },
+  { clave: 'resaltar', titulo: 'Puntos a resaltar', patron: /^puntos a resaltar/ },
+  { clave: 'ofrenda', titulo: 'Espacio para ofrendar', patron: /^espacio para ofrendar/ },
+  { clave: 'actividades', titulo: 'Versículo y actividades', patron: /^versiculo y actividades/ },
+  { clave: 'cierre', titulo: 'Cierre y oración final', patron: /^cierre/ },
+];
+
+// Un .docx es un .zip: aquí se abre con lo que ya trae el navegador, sin instalar nada
+const leerZip = async (buffer) => {
+  const datos = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  const decodificar = new TextDecoder();
+  let fin = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (datos.getUint32(i, true) === 0x06054b50) { fin = i; break; }
+  }
+  if (fin < 0) throw new Error('El archivo no parece un Word (.docx).');
+  const total = datos.getUint16(fin + 10, true);
+  let p = datos.getUint32(fin + 16, true);
+  const archivos = {};
+  for (let n = 0; n < total && datos.getUint32(p, true) === 0x02014b50; n++) {
+    const largoNombre = datos.getUint16(p + 28, true);
+    const nombre = decodificar.decode(bytes.subarray(p + 46, p + 46 + largoNombre));
+    archivos[nombre] = { metodo: datos.getUint16(p + 10, true), tamano: datos.getUint32(p + 20, true), inicio: datos.getUint32(p + 42, true) };
+    p += 46 + largoNombre + datos.getUint16(p + 30, true) + datos.getUint16(p + 32, true);
+  }
+  const leer = async (nombre) => {
+    const a = archivos[nombre];
+    if (!a) return null;
+    const desde = a.inicio + 30 + datos.getUint16(a.inicio + 26, true) + datos.getUint16(a.inicio + 28, true);
+    const crudo = bytes.subarray(desde, desde + a.tamano);
+    if (a.metodo === 0) return decodificar.decode(crudo);
+    if (typeof DecompressionStream === 'undefined') throw new Error('Este navegador no puede leer archivos Word. Usa Chrome o Safari actualizados.');
+    const flujo = new Blob([crudo]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(flujo).text();
+  };
+  return { nombres: Object.keys(archivos), leer };
+};
+
+// Saca los párrafos del Word: su texto y si son viñetas (y de qué nivel). Las tablas solo traen fotos y se omiten.
+const parrafosDelWord = (xml) => {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const parrafos = [];
+  const DENTRO = ['w:pPr', 'w:numPr', 'w:r', 'w:hyperlink', 'w:smartTag', 'w:ins', 'w:sdt', 'w:sdtContent', 'w:fldSimple'];
+  const leerParrafo = (p) => {
+    const info = { texto: '', lista: false, nivel: 0 };
+    const visitar = (n) => {
+      Array.from(n.childNodes || []).forEach((h) => {
+        if (h.nodeName === 'w:t') info.texto += h.textContent;
+        else if (h.nodeName === 'w:tab') info.texto += ' ';
+        else if (h.nodeName === 'w:br' || h.nodeName === 'w:cr') info.texto += '\n';
+        else if (h.nodeName === 'w:numPr') { info.lista = true; visitar(h); }
+        else if (h.nodeName === 'w:ilvl') info.nivel = parseInt(h.getAttribute('w:val') || '0', 10) || 0;
+        else if (DENTRO.includes(h.nodeName)) visitar(h);
+      });
+    };
+    visitar(p);
+    info.texto = info.texto.replace(/[ \u00a0]+/g, ' ').replace(/ *\n */g, '\n').trim();
+    return info;
+  };
+  const recorrer = (nodo) => {
+    Array.from(nodo.childNodes || []).forEach((h) => {
+      if (h.nodeName === 'w:p') { const info = leerParrafo(h); if (info.texto) parrafos.push(info); }
+      else if (h.nodeName !== 'w:tbl' && h.childNodes && h.childNodes.length) recorrer(h);
+    });
+  };
+  recorrer(doc.documentElement);
+  return parrafos;
+};
+
+// Convierte el Word en los datos de la clase: título, texto base y cada sección con su tiempo
+const leerClaseDelWord = async (archivo) => {
+  const zip = await leerZip(await archivo.arrayBuffer());
+  const cuerpo = await zip.leer('word/document.xml');
+  if (!cuerpo) throw new Error('El archivo no parece un Word (.docx).');
+  const encabezado = [];
+  for (const nombre of zip.nombres.filter((n) => /^word\/header\d*\.xml$/.test(n)).sort()) encabezado.push(...parrafosDelWord(await zip.leer(nombre)));
+  // Encabezado: "Domingo 1 (3 de enero): La Creación" y "Texto base: Génesis 1:1 – 2:3"
+  const lineasEnc = encabezado.map((p) => p.texto);
+  let numeroEnc = null; let titulo = ''; let textoBase = '';
+  lineasEnc.forEach((t, i) => {
+    const d = t.match(/^domingo\s*(\d+)\s*(\([^)]*\))?\s*:?\s*(.*)$/i);
+    if (d && !titulo) { numeroEnc = parseInt(d[1], 10); titulo = (d[3] || '').trim(); }
+    const b = t.match(/^texto base\s*:?\s*(.*)$/i);
+    if (b && !textoBase) textoBase = (b[1] || '').trim() || (lineasEnc[i + 1] || '').trim();
+  });
+  // Cuerpo: se reparte en secciones según sus títulos
+  const secciones = [];
+  let actual = null;
+  parrafosDelWord(cuerpo).forEach((p) => {
+    const limpio = sinAcentos(p.texto.replace(/^\d+[.)]\s*/, '')).trim();
+    if (/^itinerario\s*:?$/.test(limpio)) return;
+    const tipo = SECCIONES_CLASE.find((s) => s.patron.test(limpio));
+    if (tipo && !secciones.some((s) => s.clave === tipo.clave)) {
+      const tiempo = (p.texto.match(/\((\d+\s*min[a-z.]*)\)/i) || [])[1] || '';
+      const sinTiempo = p.texto.replace(/\(\d+\s*min[a-z.]*\)/i, '');
+      const dosPuntos = sinTiempo.indexOf(':');
+      const resto = dosPuntos >= 0 ? sinTiempo.slice(dosPuntos + 1).trim() : '';
+      actual = { clave: tipo.clave, titulo: tipo.titulo, tiempo: tiempo.replace(/\.$/, ''), lineas: resto && resto !== '.' ? [resto.charAt(0).toUpperCase() + resto.slice(1)] : [] };
+      secciones.push(actual);
+      return;
+    }
+    if (!actual) return;
+    actual.lineas.push(p.lista ? `${p.nivel > 0 ? '    ◦ ' : '• '}${p.texto}` : p.texto);
+  });
+  if (secciones.length === 0) throw new Error('No encontré las secciones de la clase (Objetivo, Puntos clave, Itinerario…).');
+  const listas = secciones.map((s) => ({ titulo: s.titulo, tiempo: s.tiempo, texto: s.lineas.join('\n').trim(), clave: s.clave }));
+  const de = (clave) => (listas.find((s) => s.clave === clave) || {}).texto || null;
+  const actividades = de('actividades') || '';
+  const lineaVersiculo = actividades.split('\n').find((l) => /^[•◦\s]*vers[ií]culo/i.test(l));
+  return {
+    numeroEnc, titulo, textoBase,
+    secciones: listas.map(({ titulo: t, tiempo, texto }) => ({ titulo: t, tiempo, texto })),
+    campos: {
+      objetivo: de('objetivo'), puntos_clave: de('puntos'), rompehielos: de('rompehielos'), introduccion: de('introduccion'),
+      historia: de('historia'), puntos_resaltar: de('resaltar'), actividad_sugerida: actividades || null,
+      versiculo_memoria: lineaVersiculo ? lineaVersiculo.replace(/^[•◦\s]*vers[ií]culo[^:]*:\s*/i, '').trim() : null,
+    },
+  };
+};
+
+// Lee el nombre del archivo: 1_01_27_4_6C → clase 1, enero de 2027, grupo 4 a 6, C = contenido
+const datosDelNombre = (nombre) => {
+  const m = (nombre || '').match(/(\d+)_(\d{1,2})_(\d{2})_(\d+_\d+)\s*([CA])(?=[^A-Za-z]*\.\w+$)/i);
+  if (!m) return null;
+  const mes = parseInt(m[2], 10); const anio = 2000 + parseInt(m[3], 10);
+  return {
+    numero: parseInt(m[1], 10), mes, anio, codigo: m[4], tipo: m[5].toUpperCase(), grupo: CODIGOS_GRUPO[m[4]] || null,
+    clave: `${parseInt(m[1], 10)}_${String(mes).padStart(2, '0')}_${m[3]}_${m[4]}`,
+  };
+};
+
+// Opción del panel: elegir varios Word y PDF, revisar la vista previa y subirlos
+const SubirContenidoClases = ({ isDark }) => {
+  const colors = getColors(isDark);
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Clases de niños'];
+  const inputRef = useRef(null);
+  const [items, setItems] = useState([]);
+  const [leyendo, setLeyendo] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
+  const [mensaje, setMensaje] = useState('');
+  const fechaDe = (it) => { const f = domingosDelMes(it.anio, it.mes - 1)[it.numero - 1]; return f ? new Date(f + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : null; };
+
+  const elegir = async (lista) => {
+    setMensaje(''); setLeyendo(true);
+    const porClase = {};
+    const sueltos = [];
+    for (const archivo of lista) {
+      const d = datosDelNombre(archivo.name);
+      if (!d) { sueltos.push(`«${archivo.name}»: el nombre no sigue el formato (ej. 1_01_27_4_6C.docx).`); continue; }
+      const it = porClase[d.clave] || (porClase[d.clave] = { ...d, contenido: null, actividad: null, errores: [], avisos: [] });
+      if (!it.grupo) it.errores.push(`No conozco el código de grupo «${d.codigo}» (usa 4_6, 7_9 o 10_12).`);
+      if (d.tipo === 'C') {
+        if (!/\.docx$/i.test(archivo.name)) { it.errores.push('El contenido (C) debe ser un Word .docx.'); continue; }
+        try {
+          it.contenido = await leerClaseDelWord(archivo);
+          if (!it.contenido.titulo) it.errores.push('No encontré el título en el encabezado («Domingo 1 (…): Título»).');
+          if (it.contenido.numeroEnc && it.contenido.numeroEnc !== d.numero) it.avisos.push(`El Word dice «Domingo ${it.contenido.numeroEnc}» pero el nombre dice clase ${d.numero}. Se usará la ${d.numero}.`);
+        } catch (e) { it.errores.push(e.message || 'No se pudo leer el Word.'); }
+      } else {
+        if (!/\.pdf$/i.test(archivo.name)) { it.errores.push('La actividad (A) debe ser un PDF.'); continue; }
+        if (archivo.size > 15 * 1024 * 1024) { it.errores.push('El PDF pesa más de 15 MB.'); continue; }
+        it.actividad = archivo;
+      }
+    }
+    Object.values(porClase).forEach((it) => { if (!domingosDelMes(it.anio, it.mes - 1)[it.numero - 1]) it.errores.push(`${NOMBRES_MESES[it.mes - 1] || 'Ese mes'} ${it.anio} no tiene domingo ${it.numero}.`); });
+    const ordenados = Object.values(porClase).sort((a, b) => (a.anio - b.anio) || (a.mes - b.mes) || (ORDEN_GRUPOS.indexOf(a.grupo) - ORDEN_GRUPOS.indexOf(b.grupo)) || (a.numero - b.numero));
+    setItems(ordenados);
+    if (sueltos.length) setMensaje(sueltos.join('\n'));
+    setLeyendo(false);
+  };
+
+  const guardarUna = async (it) => {
+    const mesAnio = `${NOMBRES_MESES[it.mes - 1]} ${it.anio}`;
+    const { data: temas, error: errorTema } = await supabase.from('temas_mensuales').select('id').ilike('mes_anio', mesAnio).limit(1);
+    if (errorTema) throw errorTema;
+    let temaId = temas && temas[0] && temas[0].id;
+    if (!temaId) {
+      const { data, error } = await supabase.from('temas_mensuales').insert([{ titulo_tema: mesAnio, mes_anio: mesAnio, orden: (it.anio - 2027) * 12 + it.mes }]).select('id').single();
+      if (error) throw error;
+      temaId = data.id;
+    }
+    const datos = {};
+    if (it.contenido) Object.assign(datos, it.contenido.campos, { titulo_clase: it.contenido.titulo, texto_base: it.contenido.textoBase || null, secciones: it.contenido.secciones });
+    if (it.actividad) {
+      const ruta = `${it.clave}A.pdf`;
+      const { error } = await supabase.storage.from('clases').upload(ruta, it.actividad, { contentType: 'application/pdf', upsert: true });
+      if (error) throw error;
+      datos.url_pdf = `${supabase.storage.from('clases').getPublicUrl(ruta).data.publicUrl}?v=${Date.now()}`;
+    }
+    const { data: existentes, error: errorBuscar } = await supabase.from('clases_detalle').select('id').eq('tema_id', temaId).eq('rango_edad', it.grupo).eq('numero_clase', it.numero).limit(1);
+    if (errorBuscar) throw errorBuscar;
+    if (existentes && existentes[0]) {
+      const { error } = await supabase.from('clases_detalle').update(datos).eq('id', existentes[0].id);
+      if (error) throw error;
+    } else {
+      if (!it.contenido) throw new Error('Esta clase todavía no existe: sube también su Word.');
+      const { error } = await supabase.from('clases_detalle').insert([{ tema_id: temaId, rango_edad: it.grupo, numero_clase: it.numero, ...datos }]);
+      if (error) throw error;
+    }
+  };
+
+  const listas = items.filter((it) => it.errores.length === 0);
+  const subir = async () => {
+    setSubiendo(true);
+    const fallas = [];
+    let hechas = 0;
+    for (const it of listas) {
+      setMensaje(`Subiendo ${hechas + 1} de ${listas.length}…`);
+      try { await guardarUna(it); hechas += 1; } catch (e) { fallas.push(`Clase ${it.numero} de ${it.grupo}: ${e.message || 'no se pudo guardar'}`); }
+    }
+    setSubiendo(false);
+    setItems(fallas.length ? items : []);
+    setMensaje(`Listo: ${hechas} de ${listas.length} clases guardadas.${fallas.length ? '\n' + fallas.join('\n') : ''}`);
+  };
+
+  return (
+    <View>
+      <Text style={{ color: colors.textSub, fontSize: 13, lineHeight: 19, marginBottom: 12 }}>Elige los Word (contenido) y los PDF (actividad) de una vez. Nombre: clase_mes_año_grupo y la letra C o A. Ej. 1_01_27_4_6C.docx y 1_01_27_4_6A.pdf</Text>
+      {Platform.OS === 'web' ? (
+        <input ref={inputRef} type="file" multiple accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style={{ display: 'none' }} onChange={(e) => { const lista = Array.from(e.target.files || []); e.target.value = ''; if (lista.length) elegir(lista); }} />
+      ) : null}
+      <TouchableOpacity onPress={() => inputRef.current && inputRef.current.click()} disabled={leyendo || subiendo} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.textSub, backgroundColor: colors.cardBg, marginBottom: 12 }}>
+        {leyendo ? <ActivityIndicator color={colors.textSub} /> : <Feather name="file-plus" size={20} color={colors.textSub} />}
+        <Text style={{ flex: 1, color: colors.textMain, fontWeight: '700', fontSize: 14 }}>{leyendo ? 'Leyendo archivos…' : 'Elegir archivos (Word y PDF)'}</Text>
+      </TouchableOpacity>
+
+      {items.map((it) => (
+        <View key={it.clave} style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: it.errores.length ? '#C97A7A' : colors.cardBorder, borderRadius: 20, padding: 14, marginBottom: 10 }}>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{it.contenido && it.contenido.titulo ? it.contenido.titulo : `Clase ${it.numero}`}</Text>
+          <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>Clase {it.numero} • {fechaDe(it) || `${NOMBRES_MESES[it.mes - 1] || '?'} ${it.anio}`} • {it.grupo || it.codigo}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            {[['Contenido', it.contenido, it.contenido ? `${it.contenido.secciones.length} secciones` : 'sin Word'], ['Actividad', it.actividad, it.actividad ? 'PDF listo' : 'sin PDF']].map(([etq, ok, det]) => (
+              <View key={etq} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999, backgroundColor: ok ? paleta.fondo : colors.background }}>
+                <Feather name={ok ? 'check' : 'minus'} size={13} color={ok ? paleta.texto : colors.textSub} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: ok ? paleta.texto : colors.textSub }}>{etq}: {det}</Text>
+              </View>
+            ))}
+          </View>
+          {it.contenido && it.contenido.textoBase ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 8 }}>Texto base: {it.contenido.textoBase}</Text> : null}
+          {it.contenido ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4 }}>{it.contenido.secciones.map((s) => s.titulo).join(' • ')}</Text> : null}
+          {it.avisos.map((t, i) => <Text key={`a${i}`} style={{ fontSize: 12, color: '#C9A227', marginTop: 6 }}>• {t}</Text>)}
+          {it.errores.map((t, i) => <Text key={`e${i}`} style={{ fontSize: 12, color: '#C97A7A', marginTop: 6 }}>• {t}</Text>)}
+        </View>
+      ))}
+
+      {mensaje ? <Text style={{ color: colors.textSub, fontSize: 13, lineHeight: 19, marginBottom: 8 }}>{mensaje}</Text> : null}
+      {listas.length > 0 ? (
+        <TouchableOpacity onPress={subir} disabled={subiendo} style={[styles.primaryButton, { backgroundColor: isDark ? paleta.fondo : paleta.texto, opacity: subiendo ? 0.6 : 1 }]}>
+          {subiendo ? <ActivityIndicator color={isDark ? paleta.texto : '#FFFFFF'} /> : <Text style={[styles.primaryButtonText, { color: isDark ? paleta.texto : '#FFFFFF' }]}>Subir {listas.length} {listas.length === 1 ? 'clase' : 'clases'}</Text>}
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+};
+
 // Ventana para tomar lista de una clase: buscar a un niño, o agregarlo si no existe
 const ModalAsistencia = ({ visible, onCerrar, fecha, grupo, isDark, usuario }) => {
   const colors = getColors(isDark);
@@ -2307,7 +2584,7 @@ function DetalleUsuarioScreen({ route, navigation }) {
             telefono: datos.telefono,
       nombre_completo: datos.nombre_completo,
       elegible_clases_ninos: datos.elegible_clases_ninos,
-      elegible_predicaciones: datos.elegible_predicaciones,
+      elegible_predicaciones: datos.elegible_predicaciones, rol: datos.rol, equipo: datos.equipo,
     }).eq('id', maestro.id);
     recargar();
   };
@@ -2655,6 +2932,16 @@ function ClaseDetalleScreen({ route, navigation }) {
     Linking.openURL(clase.url_pdf).catch(err => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo abrir el enlace.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }));
   }
 
+    const SeccionDeClase = ({ seccion }) => (
+    <View style={styles.seccionDetalle}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+        <Text style={[styles.seccionTitulo, { color: theme.textDark, marginBottom: 0 }]}>{seccion.titulo}</Text>
+        {seccion.tiempo ? <View style={{ paddingVertical: 3, paddingHorizontal: 10, borderRadius: 999, backgroundColor: paletaGrupo.fondo }}><Text style={{ fontSize: 12, fontWeight: '700', color: paletaGrupo.texto }}>{seccion.tiempo}</Text></View> : null}
+      </View>
+      {seccion.texto ? <Text style={[styles.seccionTexto, { color: colors.textMain }]}>{seccion.texto}</Text> : null}
+    </View>
+  );
+
   const RenderSeccion = ({ titulo, texto }) => {
     if (!texto) return null;
     return (
@@ -2686,6 +2973,7 @@ function ClaseDetalleScreen({ route, navigation }) {
         
         <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
 
+                {Array.isArray(clase.secciones) && clase.secciones.length > 0 ? clase.secciones.map((s, i) => <SeccionDeClase key={i} seccion={s} />) : (<>
         <RenderSeccion titulo="Objetivo del Maestro" texto={clase.objetivo} />
         <RenderSeccion titulo="Puntos Clave" texto={clase.puntos_clave} />
         <RenderSeccion titulo="Bienvenida y Rompehielos (15 min)" texto={clase.rompehielos} />
@@ -2694,6 +2982,7 @@ function ClaseDetalleScreen({ route, navigation }) {
         <RenderSeccion titulo="Puntos a Resaltar (15 min)" texto={clase.puntos_resaltar} />
         <RenderSeccion titulo="Versículo a Memorizar (15 min)" texto={clase.versiculo_memoria} />
                 <RenderSeccion titulo="Actividad Sugerida (25 min)" texto={clase.actividad_sugerida} />
+        </>)}
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 }}>
           <BotonChico icono="life-buoy" texto="Solicitar apoyo" categoria={grupo} isDark={isDark} onPress={abrirApoyo} />
@@ -3867,7 +4156,10 @@ function AdminScreen({ navigation, route }) {
         </>)}
 
         {seccion === 'clases' && (<>
-        <OpcionAdmin {...opc('subirClases')} icono="upload" titulo="Subir clases" subtitulo="Archivo CSV con equipos, coordinadores y grupos">
+                <OpcionAdmin {...opc('contenidoClases')} icono="file-text" titulo="Subir contenido de clases" subtitulo="Word con la clase y PDF con la actividad">
+          <SubirContenidoClases isDark={isDark} />
+        </OpcionAdmin>
+        <OpcionAdmin {...opc('subirClases')} icono="upload" titulo="Asignar maestros a las clases" subtitulo="Archivo CSV con equipos, coordinadores y grupos">
         <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el CSV con equipo, mes, coordinador y grupos. Se crea una clase por cada domingo del mes.</Text>
 
         {Platform.OS === 'web' && (
