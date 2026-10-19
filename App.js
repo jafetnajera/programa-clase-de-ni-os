@@ -2500,7 +2500,7 @@ function GruposScreen({ navigation, route }) {
         </View>
 
         <View style={{ width: '95%', maxWidth: anchoMax, flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
-          {esAdmin && !mesVista ? <BotonChico icono="grid" texto="Vista de administrador" categoria="Usuarios" isDark={isDark} onPress={() => navigation.navigate('VistaAdmin')} /> : null}
+                    {esAdmin && !mesVista ? <BotonChico icono="toggle-left" texto="Vista de administrador" neutro isDark={isDark} onPress={() => navigation.replace('VistaAdmin')} /> : null}
           <BotonChico icono="clipboard" texto="Solicitudes de apoyo" categoria="Clases de niños" isDark={isDark} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })} />
           <BotonChico icono="music" texto="Coritos" categoria="Coritos" isDark={isDark} onPress={() => navigation.navigate('Coritos')} />
         </View>
@@ -2563,12 +2563,15 @@ function VistaAdminScreen({ navigation }) {
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 8 }}>
-            <Text style={[styles.title, { color: colors.textMain }]}>Vista de administrador</Text>
+                        <Text style={[styles.title, { color: colors.textMain }]}>Vista de administrador</Text>
             <Text style={[styles.subtitle, { color: colors.textSub }]}>Rol de clases por mes</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
           </TouchableOpacity>
+        </View>
+        <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
+          <BotonChico icono="toggle-right" texto="Vista de administrador" categoria="Usuarios" isDark={isDark} onPress={() => navigation.replace('Grupos')} />
         </View>
         {cargando ? (
           <ActivityIndicator size="large" color={colors.textSub} style={{ marginTop: 30 }} />
