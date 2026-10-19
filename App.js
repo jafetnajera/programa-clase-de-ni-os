@@ -2737,12 +2737,11 @@ function TemasScreen({ route, navigation }) {
         supabase.from('clases_detalle').select('tema_id').eq('rango_edad', grupo).range(0, 4999),
       ]);
             // Cada quien ve todos los meses donde tiene clases (como maestro o coordinador).
-      // El administrador además ve el mes en curso (o el siguiente que tenga clases) para supervisar.
+            // El administrador ve todos los meses programados, desde el mes en curso.
       const yo = (usuarioActivoGlobal || '').toLowerCase();
       const esMia = (r) => (r.nombre_usuario || '').toLowerCase() === yo || (r.coordinador || '').toLowerCase() === yo;
       const lista = (asignadas || []).filter((r) => parsearMesAnio(r.mes_anio) && parsearMesAnio(r.mes_anio) >= inicioMes);
-      const etiquetas = new Set(lista.filter(esMia).map((r) => r.mes_anio));
-      if (esAdmin && lista.length > 0) etiquetas.add(lista.map((r) => r.mes_anio).sort((a, b) => parsearMesAnio(a) - parsearMesAnio(b))[0]);
+      const etiquetas = new Set((esAdmin ? lista : lista.filter(esMia)).map((r) => r.mes_anio));
       const idsConContenido = new Set((conContenido || []).map((c) => c.tema_id));
       const porMes = {};
       etiquetas.forEach((etq) => {
@@ -3145,11 +3144,9 @@ function DomingosScreen({ route, navigation }) {
         const mesDe = (r) => r.fecha.slice(0, 7);
         // Meses que coordino: ahí veo todos los domingos del grupo
         const mesesCoordino = new Set(todas.filter((r) => (r.coordinador || '').toLowerCase() === yo).map(mesDe));
-        // El administrador además ve el mes en curso (o el siguiente que tenga domingos)
-        const mesAdmin = esAdmin && todas.length > 0 ? mesDe(todas[0]) : null;
-        setVerTodo(esAdmin || mesesCoordino.size > 0);
-        // Los maestros ven todos sus domingos que aún no pasan, de todos los meses
-        const visibles = todas.filter((r) => ((r.nombre_usuario || '').toLowerCase() === yo && r.fecha >= hoy) || mesesCoordino.has(mesDe(r)) || mesDe(r) === mesAdmin);
+                setVerTodo(esAdmin || mesesCoordino.size > 0);
+        // Los maestros ven todos sus domingos que aún no pasan, de todos los meses; el administrador ve todos los programados
+        const visibles = todas.filter((r) => esAdmin || ((r.nombre_usuario || '').toLowerCase() === yo && r.fecha >= hoy) || mesesCoordino.has(mesDe(r)));
         setFilas(visibles);
         setCargando(false);
         if (info.repasoDe) {
