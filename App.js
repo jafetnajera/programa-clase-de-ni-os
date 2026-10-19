@@ -56,7 +56,8 @@ const PALETA_MENU = {
     'Tarde 4 a 8': { fondo: '#E3B59B', texto: '#5E3420' },
         'Tarde 9 a 12': { fondo: '#B7C9A8', texto: '#34472A' },
         'Coritos': { fondo: '#D9B8C9', texto: '#55304A' },
-    'Usuarios': { fondo: '#F3D9A8', texto: '#6B4A12' },
+        'Usuarios': { fondo: '#F3D9A8', texto: '#6B4A12' },
+    'Cena': { fondo: '#CFA7A7', texto: '#5A2626' },
   },
   oscuro: {
     'Clases de niños': { fondo: '#8FB9B1', texto: '#173B37' },
@@ -72,7 +73,8 @@ const PALETA_MENU = {
     'Tarde 4 a 8': { fondo: '#D29F84', texto: '#4A2614' },
         'Tarde 9 a 12': { fondo: '#A0B591', texto: '#26381D' },
         'Coritos': { fondo: '#C7A0B4', texto: '#422238' },
-    'Usuarios': { fondo: '#DFC18C', texto: '#4A3208' },
+        'Usuarios': { fondo: '#DFC18C', texto: '#4A3208' },
+    'Cena': { fondo: '#B98E8E', texto: '#3E1717' },
   },
 };
 
@@ -256,7 +258,9 @@ const linking = {
       Notificaciones: 'notificaciones',
             Grupos: 'grupos',
       VistaAdmin: 'vista-admin',
-      MiRol: 'mi-rol',
+            MiRol: 'mi-rol',
+      Roles: 'roles',
+      Cena: 'cena',
       Temas: 'temas',
       Clases: 'clases',
             ClaseDetalle: 'clase-detalle',
@@ -305,7 +309,9 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
     const [nuevoTelefono, setNuevoTelefono] = useState('');
   const [nuevoNombreCompleto, setNuevoNombreCompleto] = useState('');
   const [nuevoElegibleClases, setNuevoElegibleClases] = useState(false);
-    const [nuevoElegiblePredicaciones, setNuevoElegiblePredicaciones] = useState(false);
+        const [nuevoElegiblePredicaciones, setNuevoElegiblePredicaciones] = useState(false);
+  const [nuevoPresidir, setNuevoPresidir] = useState(false);
+  const [nuevoMesa, setNuevoMesa] = useState(false);
   const [nuevoEsAdmin, setNuevoEsAdmin] = useState(false);
   const esYoMismo = !!maestro && maestro.nombre_usuario === usuarioActivoGlobal;
   const colors = getColors(isDark);
@@ -317,7 +323,9 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
       setNuevoTelefono(maestro.telefono || '');
       setNuevoNombreCompleto(maestro.nombre_completo || '');
       setNuevoElegibleClases(!!maestro.elegible_clases_ninos);
-            setNuevoElegiblePredicaciones(!!maestro.elegible_predicaciones);
+                        setNuevoElegiblePredicaciones(!!maestro.elegible_predicaciones);
+      setNuevoPresidir(!!maestro.elegible_presidir);
+      setNuevoMesa(!!maestro.elegible_mesa);
       setNuevoEsAdmin(maestro.rol === 'administrador');
     } 
   }, [maestro]);
@@ -360,15 +368,23 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             <Switch trackColor={{ false: colors.cardBorder, true: "#5FA8A0" }} thumbColor={"#FFFFFF"} onValueChange={setNuevoElegibleClases} value={nuevoElegibleClases} />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-            <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Predicaciones y Clases</Text>
+                        <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Predicaciones y Clases</Text>
             <Switch trackColor={{ false: colors.cardBorder, true: "#7EA0D8" }} thumbColor={"#FFFFFF"} onValueChange={setNuevoElegiblePredicaciones} value={nuevoElegiblePredicaciones} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+            <Text style={[styles.label, { color: colors.textSub }]}>Cena del Señor: presidir</Text>
+            <Switch trackColor={{ false: colors.cardBorder, true: "#B98E8E" }} thumbColor={"#FFFFFF"} onValueChange={setNuevoPresidir} value={nuevoPresidir} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+            <Text style={[styles.label, { color: colors.textSub }]}>Cena del Señor: servir la mesa</Text>
+            <Switch trackColor={{ false: colors.cardBorder, true: "#B98E8E" }} thumbColor={"#FFFFFF"} onValueChange={setNuevoMesa} value={nuevoMesa} />
           </View>
 
           <View style={[styles.modalButtons, { marginTop: 20 }]}>
             <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.cardBorder }]} onPress={onCancelar}>
               <Text style={[styles.modalCancelText, { color: colors.textSub }]}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto, elegible_clases_ninos: nuevoElegibleClases, elegible_predicaciones: nuevoElegiblePredicaciones, rol: nuevoEsAdmin ? 'administrador' : 'maestro', equipo: nuevoEsAdmin ? 'Administradores' : (maestro.equipo === 'Administradores' ? 'Sin equipo' : maestro.equipo) }); }}>
+            <TouchableOpacity style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]} onPress={() => { onGuardar({ telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto, elegible_clases_ninos: nuevoElegibleClases, elegible_predicaciones: nuevoElegiblePredicaciones, elegible_presidir: nuevoPresidir, elegible_mesa: nuevoMesa, rol: nuevoEsAdmin ? 'administrador' : 'maestro', equipo: nuevoEsAdmin ? 'Administradores' : (maestro.equipo === 'Administradores' ? 'Sin equipo' : maestro.equipo) }); }}>
               <Text style={styles.modalConfirmText}>Guardar</Text>
             </TouchableOpacity>
           </View>
@@ -550,9 +566,10 @@ const PanelNotificaciones = ({ visible, onCerrar, onNavegar, onRevisadas, isDark
           <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 6 }}>
             {avisos.map((s) => (
               <TouchableOpacity key={s.clave} activeOpacity={0.8} onPress={() => { onCerrar(); onNavegar(s.destino ? s.destino.pantalla : 'Tablon', s.destino ? s.destino.params : {}); }} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 22, paddingVertical: 13, paddingHorizontal: 16, marginBottom: 10, opacity: (!s.accion && !s.abierta && vistasPrevias.includes(s.clave)) ? 0.5 : 1 }}>
-                <View style={{ flex: 1 }}>
+                                <View style={{ flex: 1 }}>
                   <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 14 }}>{s.mensaje}</Text>
                   <Text style={{ color: colors.textSub, fontSize: 12.5, marginTop: 2 }}>{s.detalle}</Text>
+                  {s.cenaTurno ? <AccionesCena turno={s.cenaTurno} isDark={isDark} onHecho={(r) => { if (r === 'confirmar') { onCerrar(); onNavegar('Cena', {}); } else setAvisos((prev) => prev.filter((x) => x.clave !== s.clave)); }} /> : null}
                 </View>
                 <Feather name="chevron-right" size={18} color={colors.textSub} />
               </TouchableOpacity>
@@ -576,6 +593,12 @@ const PREGUNTAS_AYUDA = [
     id: 'spam', pregunta: 'Me sale «Posible spam» en un aviso',
     respuesta: 'Es una revisión automática de Chrome en Android, no un problema de la app. Para que no vuelva a salir:\n\n• Toca el aviso y elige «Ver notificación».\n• Luego toca «Permitir siempre» (o «Informar que no es spam»).\n\nSolo se hace una vez en cada celular.',
     claves: 'spam posible sospechoso chrome android aviso notificacion bloqueado advertencia',
+  },
+    {
+    id: 'cena', pregunta: '¿Cómo funciona la Cena del Señor?',
+    respuesta: 'Cada martes la app invita a 7 hermanos para el domingo: 1 preside y 6 sirven la mesa.\n\n• Te llega el aviso «Confirma tu apoyo para la Cena del Señor». Respóndelo desde los avisos con «Confirmar» o «No puedo».\n• Si confirmas, en «Rol de predicaciones y Cena del Señor» → «Rol de la Cena del Señor» verás tu lugar y el recorrido que te toca.\n• Si no puedes, la app invita a otro hermano.',
+    claves: 'cena senor santa cena mesa presidir servir charolas repartir confirmar',
+    ir: { pantalla: 'Cena', texto: 'Ver la Cena del Señor' },
   },
   {
     id: 'cuando', pregunta: '¿Dónde veo cuándo me toca?',
@@ -925,7 +948,19 @@ const obtenerNotificaciones = async () => {
       } else if (!confirmada && !porConfirmarLejos) porConfirmarLejos = r;
     });
     if (porConfirmarLejos) recordatorios.push({ clave: 'rec-rol-pend', accion: true, destino: { pantalla: 'MiRol', params: { servicioId: porConfirmarLejos.id } }, mensaje: 'Tienes fechas por confirmar en tu rol', detalle: 'Toca para revisarlas en Mi rol' });
-    items.unshift(...recordatorios);
+        items.unshift(...recordatorios);
+    // ---- CENA DEL SEÑOR: invitación por responder (con botones), asignación y lugares que faltan ----
+    const { data: turnosCena } = await supabase.from('cena_turnos').select('id, fecha, posicion, nombre_usuario, estado, asignado_por').gte('fecha', hoy).in('estado', ['invitado', 'confirmado']);
+    (turnosCena || []).filter((t) => (t.nombre_usuario || '').toLowerCase() === yo).forEach((t) => {
+      if (t.estado === 'invitado') items.unshift({ clave: `cena-inv:${t.id}`, accion: true, cenaTurno: t.id, destino: { pantalla: 'Cena' }, mensaje: 'Confirma tu apoyo para la Cena del Señor', detalle: `${fechaLargaCena(t.fecha)} • ${t.posicion === 0 ? 'Presidir' : 'Servir la mesa'}` });
+      else if (t.asignado_por) items.unshift({ clave: `cena-asig:${t.id}`, accion: false, destino: { pantalla: 'Cena' }, mensaje: 'Fuiste asignado para la Cena del Señor', detalle: `${fechaLargaCena(t.fecha)} • ${t.posicion === 0 ? 'Presides' : `Posición ${t.posicion}`}` });
+    });
+    const ahoraCena = new Date();
+    if (rolUsuarioActivoGlobal === 'administrador' && ((ahoraCena.getDay() === 6 && ahoraCena.getHours() >= 12) || ahoraCena.getDay() === 0)) {
+      const domingoCena = proximoDomingo();
+      const faltan = 7 - new Set((turnosCena || []).filter((t) => t.fecha === domingoCena && t.estado === 'confirmado').map((t) => t.posicion)).size;
+      if (faltan > 0) items.unshift({ clave: `cena-faltan:${domingoCena}:${faltan}`, accion: true, destino: { pantalla: 'Cena' }, mensaje: `Faltan ${faltan} lugar(es) para la Cena del Señor`, detalle: 'Toca para asignarlos' });
+    }
   } catch (e) { console.error('Error leyendo notificaciones:', e); }
   let vistas = [];
   try { vistas = JSON.parse((await AsyncStorage.getItem(claveVistas())) || '[]'); } catch (e) {}
@@ -2108,7 +2143,7 @@ function MenuPrincipalScreen({ navigation }) {
   const esTablet = columnas >= 2;
   const tarjetas = [
     tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') },
-        tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones', categoria: 'Predicaciones', onPress: () => navigation.navigate('MiRol') },
+                tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') },
     { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) },
     { icono: 'heart', titulo: 'Petición de oración', categoria: 'Petición', pronto: true, onPress: () => proximamente(getThemeColors('Petición', isDark).textDark) },
     { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', pronto: true, onPress: () => proximamente(getThemeColors('Calendario', isDark).textDark) },
@@ -2127,8 +2162,11 @@ function MenuPrincipalScreen({ navigation }) {
       if (rolUsuarioActivoGlobal === 'administrador') { setTieneRol(true); setTieneClases(true); return () => clearInterval(temporizador); }
       (async () => {
         const hoy = fechaISO(new Date());
-        const { data } = await supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy);
-        setTieneRol(data && data.length > 0);
+                const [{ data }, { data: cena }] = await Promise.all([
+          supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy),
+          supabase.from('cena_turnos').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).in('estado', ['invitado', 'confirmado']).limit(1),
+        ]);
+        setTieneRol((data && data.length > 0) || (cena && cena.length > 0));
       })();
             (async () => {
         const { data } = await supabase.from('clases_asignadas').select('id').or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`).gte('fecha', fechaISO(new Date())).limit(1);
@@ -2595,7 +2633,352 @@ function VistaAdminScreen({ navigation }) {
     </SafeAreaView>
   );
 }
+// ==========================================
+// CENA DEL SEÑOR (1 preside y 6 sirven la mesa)
+// ==========================================
+// Domingo que se está organizando: el próximo (si hoy es domingo, hoy)
+const proximoDomingo = () => { const d = new Date(); d.setDate(d.getDate() + ((7 - d.getDay()) % 7)); return fechaISO(d); };
+const ORDEN_SALIDA_CENA = [1, 2, 4, 3, 5, 6];
+const ORDEN_REGRESO_CENA = [5, 6, 4, 3, 1, 2];
+// Por dónde reparte cada posición: lado del pasillo, hilera donde empieza y hacia dónde avanza
+const RECORRIDO_CENA = {
+  1: { lado: 'izq', fila: 15, hasta: 13 },
+  2: { lado: 'der', fila: 11, hasta: 13 },
+  3: { lado: 'izq', fila: 5, hasta: 7 },
+  4: { lado: 'der', fila: 10, hasta: 8 },
+  5: { lado: 'izq', fila: 4, hasta: 2 },
+  6: { lado: 'der', fila: 1, hasta: 3 },
+};
+const INSTRUCCIONES_DIRIGE = [
+  'Menciona textos que hablen del mandamiento: 1 Corintios 11:23-25, Mateo 26:26-29 o pasajes paralelos.',
+  'Si queda tiempo, puedes leer textos que hablen del sufrimiento de Cristo o de lo que hizo su muerte por nuestra vida, para motivar a la concentración.',
+  'No trates de innovar: no importa que siempre se lean los mismos textos. No leas textos que no son para este acto ni hagas comentarios ajenos.',
+  'La oración debe contener los 6 puntos del acto de oración.',
+  'En las peticiones, pide bendición por el pan o el fruto de la vid, bendición para el que participa y perdón si no lo hicimos adecuadamente.',
+  'Si mencionas el propósito fuera de la oración, menciona al menos el primero de los tres: 1. Recordar, 2. Tener comunión con Cristo y la iglesia, 3. Anunciar su muerte. Con este acto NO anunciamos la venida del Señor, sino su muerte hasta que Él venga.',
+  'Espera a que los 6 hermanos estén listos y con sus charolas.',
+];
+const INSTRUCCIONES_REPARTE = [
+  'Respeta la posición que tomaste al frente hasta que todo termine.',
+  'Mantente concentrado en dónde debes iniciar a repartir y en el acto mismo.',
+  'Si terminas antes que el que va delante de ti, espera a que termine para avanzar al frente. No brincar.',
+  'Las posiciones 1 y 2 entregan las charolas a su grupo: por ejemplo, el 1 toma las tres charolas de su grupo, entrega dos al 3 y el 3 entrega una al 5. Lo mismo del otro lado.',
+  'Si llegas a una hilera que no te correspondía, cuando la termines regresa a repartir la que dejaste.',
+  'El 6 sirve al que dirige.',
+];
+const responderCena = async (turnoId, respuesta) => {
+  const { data, error } = await supabase.functions.invoke('cena', { body: { accion: 'responder', turno_id: turnoId, respuesta } });
+  if (error || (data && data.error)) throw new Error((data && data.error) || (error && error.message) || 'Error');
+  return data;
+};
+const fechaLargaCena = (iso) => { const t = new Date(iso + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }); return t.charAt(0).toUpperCase() + t.slice(1); };
 
+// Botones «Confirmar» y «No puedo» de una invitación (en avisos y en la pantalla de la Cena)
+const AccionesCena = ({ turno, isDark, onHecho }) => {
+  const [enviando, setEnviando] = useState(false);
+  const responderInvitacion = async (respuesta) => {
+    setEnviando(true);
+    try {
+      await responderCena(turno, respuesta);
+      onHecho(respuesta);
+    } catch (e) {
+      setEnviando(false);
+      if (typeof window !== 'undefined' && window.alert) window.alert('No se pudo enviar tu respuesta: ' + e.message);
+    }
+  };
+  if (enviando) return <ActivityIndicator style={{ marginTop: 10, alignSelf: 'flex-start' }} color={getColors(isDark).textSub} />;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+      <BotonChico icono="check" texto="Confirmar" categoria="Cena" isDark={isDark} onPress={() => responderInvitacion('confirmar')} />
+      <BotonChico icono="x" texto="No puedo" neutro isDark={isDark} onPress={() => responderInvitacion('declinar')} />
+    </View>
+  );
+};
+
+// Diagrama del salón con el recorrido de una posición: un punto sale del frente y recorre su hilera
+const DiagramaCena = ({ posicion, isDark }) => {
+  const colors = getColors(isDark);
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Cena'];
+  const avance = useRef(new Animated.Value(0)).current;
+  const W = 300;
+  const FILA0 = 92;
+  const PASO = 21;
+  const H = FILA0 + 14 * PASO + 24;
+  const xCirculo = { 5: 30, 3: 72, 1: 114, 2: 186, 4: 228, 6: 270 };
+  const yFila = (f) => FILA0 + (f - 1) * PASO;
+  const r = RECORRIDO_CENA[posicion];
+  const izq = r && r.lado === 'izq';
+  const puntos = r ? [
+    [xCirculo[posicion], 50],
+    [xCirculo[posicion], 66],
+    [izq ? 136 : 164, 66],
+    [izq ? 136 : 164, yFila(r.fila)],
+    [izq ? 96 : 204, yFila(r.fila)],
+    [izq ? 96 : 204, yFila(r.hasta)],
+  ] : [];
+  useEffect(() => {
+    if (!r) return undefined;
+    avance.setValue(0);
+    const animacion = Animated.loop(Animated.sequence([
+      Animated.timing(avance, { toValue: 1, duration: 5000, useNativeDriver: false }),
+      Animated.delay(900),
+      Animated.timing(avance, { toValue: 0, duration: 0, useNativeDriver: false }),
+    ]));
+    animacion.start();
+    return () => animacion.stop();
+  }, [posicion]);
+  if (!r) return null;
+  // Reparte el tiempo de la animación según lo largo de cada tramo
+  const largos = puntos.slice(1).map((p, i) => Math.abs(p[0] - puntos[i][0]) + Math.abs(p[1] - puntos[i][1]));
+  const total = largos.reduce((a, b) => a + b, 0) || 1;
+  const entradas = [0];
+  largos.forEach((l) => entradas.push(entradas[entradas.length - 1] + l / total));
+  entradas[entradas.length - 1] = 1;
+  const x = avance.interpolate({ inputRange: entradas, outputRange: puntos.map((p) => p[0] - 8) });
+  const y = avance.interpolate({ inputRange: entradas, outputRange: puntos.map((p) => p[1] - 8) });
+  const camino = puntos.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' ');
+  const flecha = r.hasta < r.fila ? `M${puntos[5][0] - 6} ${puntos[5][1] + 7} L${puntos[5][0]} ${puntos[5][1]} L${puntos[5][0] + 6} ${puntos[5][1] + 7}` : `M${puntos[5][0] - 6} ${puntos[5][1] - 7} L${puntos[5][0]} ${puntos[5][1]} L${puntos[5][0] + 6} ${puntos[5][1] - 7}`;
+  return (
+    <View style={{ alignSelf: 'center', width: W, height: H, marginVertical: 8 }}>
+      <Svg width={W} height={H}>
+        <Path d={camino} stroke={paleta.fondo} strokeWidth={3} fill="none" strokeLinejoin="round" />
+        <Path d={flecha} stroke={paleta.fondo} strokeWidth={3} fill="none" strokeLinecap="round" />
+      </Svg>
+      {/* Mesa al frente */}
+      <View style={{ position: 'absolute', left: 120, top: 0, width: 60, height: 22, borderRadius: 6, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 10, color: colors.textSub }}>Mesa</Text>
+      </View>
+      {/* Las 6 posiciones al frente */}
+      {Object.entries(xCirculo).map(([p, cx]) => {
+        const mio = Number(p) === posicion;
+        return (
+          <View key={p} style={{ position: 'absolute', left: cx - 14, top: 24, width: 28, height: 28, borderRadius: 14, backgroundColor: mio ? paleta.fondo : 'transparent', borderWidth: 1.5, borderColor: mio ? paleta.fondo : colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: mio ? paleta.texto : colors.textSub }}>{p}</Text>
+          </View>
+        );
+      })}
+      {/* Hileras de bancas */}
+      {Array.from({ length: 15 }, (_, i) => i + 1).map((f) => (
+        <Text key={f} style={{ position: 'absolute', left: 140, top: yFila(f) - 8, width: 20, textAlign: 'center', fontSize: 11, fontWeight: f === r.fila ? '800' : '500', color: f === r.fila ? colors.textMain : colors.textSub }}>{f}</Text>
+      ))}
+      <Animated.View style={{ position: 'absolute', left: 0, top: 0, width: 16, height: 16, borderRadius: 8, backgroundColor: paleta.texto, borderWidth: 3, borderColor: paleta.fondo, transform: [{ translateX: x }, { translateY: y }] }} />
+      <Text style={{ position: 'absolute', left: 0, right: 0, bottom: 0, textAlign: 'center', fontSize: 11, color: colors.textSub }}>15 hileras de bancas</Text>
+    </View>
+  );
+};
+
+// ==========================================
+// PANTALLA: ROLES (predicaciones y Cena del Señor)
+// ==========================================
+function RolesScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const anchoMax = columnas >= 2 ? 1100 : 850;
+  const tarjetas = [
+    { icono: 'calendar', titulo: 'Rol de predicaciones', categoria: 'Predicaciones', onPress: () => navigation.navigate('MiRol') },
+    { icono: 'coffee', titulo: 'Rol de la Cena del Señor', categoria: 'Cena', onPress: () => navigation.navigate('Cena') },
+  ];
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: anchoMax, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Roles</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>Predicaciones y Cena del Señor</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.gruposContainer, { width: '95%', maxWidth: anchoMax }, columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
+          {tarjetas.map((t, i, arr) => <TarjetaMenu key={t.titulo} {...t} isDark={isDark} columnas={columnas >= 2 ? 2 : 1} esUltima={i === arr.length - 1} total={arr.length} />)}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA: ROL DE LA CENA DEL SEÑOR (semana a semana)
+// ==========================================
+function CenaScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Cena'];
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const yo = (usuarioActivoGlobal || '').toLowerCase();
+  const domingo = proximoDomingo();
+  const [turnos, setTurnos] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [eligiendo, setEligiendo] = useState(null);
+  const [elegibles, setElegibles] = useState([]);
+  const [asignando, setAsignando] = useState(false);
+  const [vistaPrevia, setVistaPrevia] = useState(1);
+  const [mapaNombres, setMapaNombres] = useState({});
+  const [alerta, setAlerta] = useState({ visible: false });
+  const cerrarAlerta = () => setAlerta({ visible: false });
+  useEffect(() => { cargarMapaNombres().then(setMapaNombres); }, []);
+  const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
+
+  const cargar = async () => {
+    const { data } = await supabase.from('cena_turnos').select('*').eq('fecha', domingo).in('estado', ['invitado', 'confirmado']).order('posicion', { ascending: true });
+    setTurnos(data || []);
+    setCargando(false);
+  };
+  useFocusEffect(React.useCallback(() => { cargar(); }, []));
+
+  const miTurno = turnos.find((t) => (t.nombre_usuario || '').toLowerCase() === yo);
+  const confirmado = miTurno && miTurno.estado === 'confirmado';
+  const verRol = esAdmin || confirmado;
+  // El botón + para asignar a mano se habilita el sábado desde las 12:00 (y el domingo)
+  const ahora = new Date();
+  const puedeAsignar = esAdmin && ((ahora.getDay() === 6 && ahora.getHours() >= 12) || ahora.getDay() === 0);
+  const turnoDe = (p) => turnos.find((t) => t.posicion === p);
+
+  const abrirAsignar = async (posicion) => {
+    setEligiendo(posicion);
+    const { data } = await supabase.from('maestros').select('nombre_usuario, nombre_completo, elegible_presidir, elegible_mesa').order('nombre_completo', { ascending: true });
+    const confirmados = turnos.filter((t) => t.estado === 'confirmado').map((t) => (t.nombre_usuario || '').toLowerCase());
+    setElegibles((data || []).filter((m) => (posicion === 0 ? m.elegible_presidir : m.elegible_mesa) && !confirmados.includes((m.nombre_usuario || '').toLowerCase())));
+  };
+  const asignar = async (persona) => {
+    setAsignando(true);
+    const { data, error } = await supabase.functions.invoke('cena', { body: { accion: 'asignar', fecha: domingo, posicion: eligiendo, nombre_usuario: persona.nombre_usuario } });
+    setAsignando(false);
+    setEligiendo(null);
+    if (error || (data && data.error)) return setAlerta({ visible: true, titulo: 'No se pudo asignar', mensaje: (data && data.error) || error.message, onConfirmar: cerrarAlerta, isDark });
+    cargar();
+  };
+
+  const tarjeta = { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, padding: 20, marginBottom: 14 };
+  const instrucciones = (lista) => lista.map((t, i) => <Text key={i} style={{ color: colors.textMain, fontSize: 14, lineHeight: 21, marginTop: 6 }}>• {t}</Text>);
+  const posicionVista = confirmado && miTurno.posicion > 0 ? miTurno.posicion : vistaPrevia;
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 30, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Cena del Señor</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{fechaLargaCena(domingo)}</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ width: '95%', maxWidth: 850 }}>
+          {cargando ? <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} /> : (<>
+            {/* Invitación pendiente */}
+            {miTurno && miTurno.estado === 'invitado' ? (
+              <View style={tarjeta}>
+                <Feather name="mail" size={22} color={paleta.fondo} />
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.textMain, marginTop: 8 }}>Te invitamos a apoyar en la Cena del Señor</Text>
+                <Text style={{ fontSize: 14, color: colors.textSub, marginTop: 4 }}>{miTurno.posicion === 0 ? 'Para presidir' : `Para servir la mesa (posición ${miTurno.posicion})`} • {fechaLargaCena(domingo)}</Text>
+                <AccionesCena turno={miTurno.id} isDark={isDark} onHecho={() => cargar()} />
+              </View>
+            ) : null}
+
+            {/* Quien no está programado esta semana */}
+            {!verRol && !(miTurno && miTurno.estado === 'invitado') ? (
+              <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+                <Feather name="coffee" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
+                <Text style={[styles.emptyTitle, { color: colors.textMain }]}>No estás programado esta semana</Text>
+                <Text style={[styles.emptyText, { color: colors.textSub }]}>Cuando te inviten a apoyar en la Cena del Señor, aquí verás tu lugar y cómo repartir.</Text>
+              </View>
+            ) : null}
+
+            {/* Tu parte (confirmado) */}
+            {confirmado ? (
+              <View style={tarjeta}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, letterSpacing: 1 }}>TU PARTE</Text>
+                {miTurno.posicion === 0 ? (<>
+                  <Text style={{ fontSize: 19, fontWeight: '800', color: colors.textMain, marginTop: 6 }}>Presides la Cena del Señor</Text>
+                  {instrucciones(INSTRUCCIONES_DIRIGE)}
+                </>) : (<>
+                  <Text style={{ fontSize: 19, fontWeight: '800', color: colors.textMain, marginTop: 6 }}>Sirves en la posición {miTurno.posicion}</Text>
+                  <Text style={{ fontSize: 14, color: colors.textSub, marginTop: 4 }}>Sales en el lugar {ORDEN_SALIDA_CENA.indexOf(miTurno.posicion) + 1} de 6 y regresas en el lugar {ORDEN_REGRESO_CENA.indexOf(miTurno.posicion) + 1} de 6.</Text>
+                  <DiagramaCena posicion={miTurno.posicion} isDark={isDark} />
+                  {instrucciones(INSTRUCCIONES_REPARTE)}
+                </>)}
+              </View>
+            ) : null}
+
+            {/* Rol de la semana: los participantes confirmados lo ven; el administrador ve también quién está pendiente */}
+            {verRol ? (
+              <View style={tarjeta}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, letterSpacing: 1, marginBottom: 6 }}>ROL DE ESTE DOMINGO</Text>
+                {[0, 1, 2, 3, 4, 5, 6].map((p) => {
+                  const t = turnoDe(p);
+                  const listo = t && t.estado === 'confirmado';
+                  const texto = listo ? nombreDe(t.nombre_usuario) : (esAdmin && t ? `${nombreDe(t.nombre_usuario)} (esperando respuesta)` : 'Por confirmar');
+                  return (
+                    <View key={p} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: p === 0 ? 0 : 1, borderTopColor: colors.cardBorder }}>
+                      <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: listo ? paleta.fondo : 'transparent', borderWidth: 1.5, borderColor: listo ? paleta.fondo : colors.cardBorder, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                        {p === 0 ? <Feather name="book-open" size={15} color={listo ? paleta.texto : colors.textSub} /> : <Text style={{ fontWeight: '700', color: listo ? paleta.texto : colors.textSub }}>{p}</Text>}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 12, color: colors.textSub }}>{p === 0 ? 'Preside' : `Posición ${p}`}</Text>
+                        <Text style={{ fontSize: 15, fontWeight: listo ? '700' : '500', color: listo ? colors.textMain : colors.textSub, fontStyle: listo ? 'normal' : 'italic' }}>{texto}</Text>
+                      </View>
+                      {puedeAsignar && !listo ? (
+                        <TouchableOpacity onPress={() => abrirAsignar(p)} accessibilityLabel="Asignar" style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center' }}>
+                          <Feather name="plus" size={20} color={paleta.texto} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  );
+                })}
+                {esAdmin && !puedeAsignar ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 8 }}>El botón + para asignar a mano se habilita el sábado a las 12:00 si queda algún lugar sin confirmar.</Text> : null}
+              </View>
+            ) : null}
+
+            {/* El administrador puede ver el recorrido de cada posición */}
+            {esAdmin && !(confirmado && miTurno.posicion > 0) ? (
+              <View style={tarjeta}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, letterSpacing: 1 }}>RECORRIDO DE CADA POSICIÓN</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                  {[1, 2, 3, 4, 5, 6].map((p) => <BotonChico key={p} icono="map-pin" texto={`${p}`} categoria="Cena" neutro={p !== posicionVista} isDark={isDark} onPress={() => setVistaPrevia(p)} />)}
+                </View>
+                <DiagramaCena posicion={posicionVista} isDark={isDark} />
+              </View>
+            ) : null}
+          </>)}
+        </View>
+      </ScrollView>
+
+      {/* Lista para asignar a mano */}
+      <Modal visible={eligiendo !== null} transparent animationType="fade" onRequestClose={() => setEligiendo(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background, maxHeight: '80%' }]}>
+            <Text style={[styles.modalTitle, { color: colors.textMain }]}>{eligiendo === 0 ? 'Quién preside' : `Posición ${eligiendo}`}</Text>
+            <Text style={[styles.modalMessage, { color: colors.textSub }]}>Elige a un hermano elegible. Quedará confirmado y le llegará un aviso.</Text>
+            {asignando ? <ActivityIndicator color={colors.textSub} style={{ marginVertical: 20 }} /> : (
+              <ScrollView style={{ maxHeight: 360, width: '100%' }}>
+                {elegibles.length === 0 ? <Text style={{ color: colors.textSub, textAlign: 'center', marginVertical: 20 }}>No hay hermanos elegibles disponibles.</Text> : elegibles.map((m) => (
+                  <TouchableOpacity key={m.nombre_usuario} onPress={() => asignar(m)} style={{ paddingVertical: 12, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+                    <Text style={{ color: colors.textMain, fontSize: 15 }}>{ponerMayusculas(m.nombre_completo || m.nombre_usuario)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.cardBorder, marginTop: 14, alignSelf: 'stretch' }]} onPress={() => setEligiendo(null)}>
+              <Text style={[styles.modalCancelText, { color: colors.textSub }]}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <AlertaPersonalizada {...alerta} />
+    </SafeAreaView>
+  );
+}
 // ==========================================
 // PANTALLA: NOTIFICACIONES
 // ==========================================
@@ -2653,9 +3036,10 @@ function NotificacionesScreen({ navigation }) {
               <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 15 }}>Tus avisos y recordatorios:</Text>
               {solicitudes.map((s) => (
                                 <TouchableOpacity key={s.clave} activeOpacity={0.8} onPress={() => navigation.navigate(s.destino ? s.destino.pantalla : 'Tablon', s.destino ? s.destino.params : {})} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, paddingVertical: 16, paddingHorizontal: 20, marginBottom: 12, opacity: (!s.accion && !s.abierta && vistasPrevias.includes(s.clave)) ? 0.5 : 1 }}>
-                  <View style={{ flex: 1 }}>
+                                    <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 15 }}>{s.mensaje}</Text>
                     <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 2 }}>{s.detalle}</Text>
+                    {s.cenaTurno ? <AccionesCena turno={s.cenaTurno} isDark={isDark} onHecho={(r) => { if (r === 'confirmar') navigation.navigate('Cena'); else setSolicitudes((prev) => prev.filter((x) => x.clave !== s.clave)); }} /> : null}
                   </View>
                   <Feather name="chevron-right" size={20} color={colors.textSub} />
                 </TouchableOpacity>
@@ -2801,7 +3185,8 @@ function DetalleUsuarioScreen({ route, navigation }) {
             telefono: datos.telefono,
       nombre_completo: datos.nombre_completo,
       elegible_clases_ninos: datos.elegible_clases_ninos,
-      elegible_predicaciones: datos.elegible_predicaciones, rol: datos.rol, equipo: datos.equipo,
+            elegible_predicaciones: datos.elegible_predicaciones, rol: datos.rol, equipo: datos.equipo,
+      elegible_presidir: datos.elegible_presidir, elegible_mesa: datos.elegible_mesa,
     }).eq('id', maestro.id);
     recargar();
   };
@@ -2836,7 +3221,9 @@ function DetalleUsuarioScreen({ route, navigation }) {
 
           <Text style={[styles.label, { color: colors.textSub }]}>Elegible para</Text>
           <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 4 }}>{maestro.elegible_clases_ninos ? '✓' : '✗'} Clases de niños</Text>
-          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 20 }}>{maestro.elegible_predicaciones ? '✓' : '✗'} Predicaciones y Clases</Text>
+                    <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 4 }}>{maestro.elegible_predicaciones ? '✓' : '✗'} Predicaciones y Clases</Text>
+          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 4 }}>{maestro.elegible_presidir ? '✓' : '✗'} Cena del Señor: presidir</Text>
+          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 20 }}>{maestro.elegible_mesa ? '✓' : '✗'} Cena del Señor: servir la mesa</Text>
 
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
             <BotonChico icono="edit-2" texto="Editar" categoria="Usuarios" isDark={isDark} onPress={() => setMostrarModal(true)} />
@@ -3821,7 +4208,9 @@ function AdminScreen({ navigation, route }) {
   const [numeroEquipoAsignado, setNumeroEquipoAsignado] = useState('');
     const [esAdmin, setEsAdmin] = useState(false);
   const [elegibleClases, setElegibleClases] = useState(false);
-  const [elegiblePredicaciones, setElegiblePredicaciones] = useState(false);
+    const [elegiblePredicaciones, setElegiblePredicaciones] = useState(false);
+  const [elegiblePresidir, setElegiblePresidir] = useState(false);
+  const [elegibleMesa, setElegibleMesa] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [maestros, setMaestros] = useState([]);
   const [equipoSeleccionadoAdmin, setEquipoSeleccionadoAdmin] = useState(null);
@@ -3888,8 +4277,10 @@ function AdminScreen({ navigation, route }) {
       if (/already been registered|already registered/i.test(detalle)) detalle = "Ya existe un usuario con ese nombre. Prueba con otro nombre o agrega un apellido.";
       setAlerta({ visible: true, titulo: "Error", mensaje: detalle, onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
+            // La Cena del Señor se guarda aparte (la función de alta no conoce estos dos datos)
+      if (elegiblePresidir || elegibleMesa) await supabase.from('maestros').update({ elegible_presidir: elegiblePresidir, elegible_mesa: elegibleMesa }).eq('nombre_usuario', usuarioGenerado);
       setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: "Usuario registrado.", onConfirmar: cerrarAlerta, isDark: isDark });
-      setNombreCompleto(''); setUsuarioGenerado(''); setPinGenerado(''); setNumeroEquipoAsignado(''); setTelefono(''); setEsAdmin(false); setElegibleClases(false); setElegiblePredicaciones(false); obtenerMaestros();
+      setNombreCompleto(''); setUsuarioGenerado(''); setPinGenerado(''); setNumeroEquipoAsignado(''); setTelefono(''); setEsAdmin(false); setElegibleClases(false); setElegiblePredicaciones(false); setElegiblePresidir(false); setElegibleMesa(false); obtenerMaestros();
     }
     setGuardando(false);
   }
@@ -3897,7 +4288,7 @@ function AdminScreen({ navigation, route }) {
     async function guardarEdicion(datos) {
     setMaestroEditando(null);
     setEquipoSeleccionadoAdmin(null);
-                await supabase.from('maestros').update({ telefono: datos.telefono, nombre_completo: datos.nombre_completo, elegible_clases_ninos: datos.elegible_clases_ninos, elegible_predicaciones: datos.elegible_predicaciones, rol: datos.rol, equipo: datos.equipo }).eq('id', maestroEditando.id);
+                await supabase.from('maestros').update({ telefono: datos.telefono, nombre_completo: datos.nombre_completo, elegible_clases_ninos: datos.elegible_clases_ninos, elegible_predicaciones: datos.elegible_predicaciones, elegible_presidir: datos.elegible_presidir, elegible_mesa: datos.elegible_mesa, rol: datos.rol, equipo: datos.equipo }).eq('id', maestroEditando.id);
     obtenerMaestros();
   }
 
@@ -4368,8 +4759,18 @@ function AdminScreen({ navigation, route }) {
         </View>
 
         <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-          <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Predicaciones y Clases</Text>
+                    <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Predicaciones y Clases</Text>
           <Switch trackColor={{ false: colors.cardBorder, true: "#7EA0D8" }} thumbColor={"#FFFFFF"} onValueChange={setElegiblePredicaciones} value={elegiblePredicaciones} />
+        </View>
+
+        <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+          <Text style={[styles.label, { color: colors.textSub }]}>Cena del Señor: presidir</Text>
+          <Switch trackColor={{ false: colors.cardBorder, true: "#B98E8E" }} thumbColor={"#FFFFFF"} onValueChange={setElegiblePresidir} value={elegiblePresidir} />
+        </View>
+
+        <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+          <Text style={[styles.label, { color: colors.textSub }]}>Cena del Señor: servir la mesa</Text>
+          <Switch trackColor={{ false: colors.cardBorder, true: "#B98E8E" }} thumbColor={"#FFFFFF"} onValueChange={setElegibleMesa} value={elegibleMesa} />
         </View>
         
         {usuarioGenerado !== '' && (
@@ -4733,7 +5134,9 @@ if (cargandoSesion) {
             <Stack.Screen name="Notificaciones" component={NotificacionesScreen} options={{ headerShown: false }} />
                         <Stack.Screen name="Grupos" component={GruposScreen} options={{ headerShown: false }} />
             <Stack.Screen name="VistaAdmin" component={VistaAdminScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="MiRol" component={MiRolScreen} options={{ headerShown: false }} />
+                        <Stack.Screen name="MiRol" component={MiRolScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Roles" component={RolesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Cena" component={CenaScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Temas" component={TemasScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Clases" component={ClasesScreen} options={{ headerShown: false }} />
                         <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ headerShown: false }} />
