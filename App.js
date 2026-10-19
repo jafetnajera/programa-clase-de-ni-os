@@ -162,6 +162,57 @@ const domingosDelMes = (anio, mes) => {
 // Convierte "Neri Sánchez" en "nerisanchez" (conserva la ñ), igual que los usuarios// Usuario para entrar a la app: sin acentos, la ñ se vuelve n, sin espacios y en minúsculas.
 // Supabase no acepta ñ ni acentos en el correo interno (usuario@indus.app).
 const usuarioSeguro = (texto) => (texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
+// Al volver a subir un rol: compara lo cargado con lo nuevo para saber qué se agrega, qué se quita y qué cambia.
+// Lo que no cambia se queda igual (conserva confirmaciones y quién cubre a quién).
+const titularDe = (r) => (r.usuario_original || r.nombre_usuario || '').toLowerCase();
+// Hora para comparar: "18:00", "6:00 pm" y "6:00:00 p. m." cuentan como la misma
+const horaClave = (h) => {
+  const m = (h || '').toLowerCase().replace(/\s+/g, ' ').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(?:([ap])\.?\s*m\.?)?$/);
+  if (!m) return (h || '').toLowerCase().trim();
+  let hora = parseInt(m[1], 10) % 12;
+  if (m[3] === 'p' || (!m[3] && parseInt(m[1], 10) >= 12)) hora += 12;
+  return `${String(hora).padStart(2, '0')}:${m[2]}`;
+};
+const compararRol = (actuales, nuevas, claveDe, campos) => {
+  const porClave = new Map(actuales.map((r) => [claveDe(r), r]));
+  const vistas = new Set();
+  const agregar = [];
+  const actualizar = [];
+  nuevas.forEach((n) => {
+    const k = claveDe(n);
+    if (vistas.has(k)) return;
+    vistas.add(k);
+    const a = porClave.get(k);
+    if (!a) return agregar.push(n);
+    const cambios = {};
+    campos.forEach((c) => { if ((a[c] || null) !== (n[c] || null)) cambios[c] = n[c] || null; });
+    if (Object.keys(cambios).length > 0) actualizar.push({ id: a.id, cambios, antes: a, despues: n });
+  });
+  return { agregar, quitar: actuales.filter((a) => !vistas.has(claveDe(a))), actualizar };
+};
+// Trae todas las filas de una consulta, de 1000 en 1000 (Supabase no regresa más de 1000 por vez)
+const traerTodo = async (armarConsulta) => {
+  const filas = [];
+  for (let i = 0; ; i += 1000) {
+    const { data, error } = await armarConsulta().range(i, i + 999);
+    if (error) throw error;
+    filas.push(...(data || []));
+    if (!data || data.length < 1000) return filas;
+  }
+};
+// Avisa por notificación a quienes les cambió algo del rol (clases o predicaciones)
+const avisarRolActualizado = (usuarios, tipo) => {
+  const lista = [...new Set((usuarios || []).filter(Boolean).map((u) => u.toLowerCase()))];
+  if (lista.length === 0) return;
+  supabase.functions.invoke('recordatorios', { body: { accion: 'rol-actualizado', tipo, usuarios: lista } }).catch((e) => console.error('No se pudo avisar del cambio de rol:', e));
+};
+// Borra por partes (para no mandar listas enormes de una vez)
+const borrarPorIds = async (tabla, ids) => {
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error } = await supabase.from(tabla).delete().in('id', ids.slice(i, i + 200));
+    if (error) throw error;
+  }
+};
 const normalizarUsuario = usuarioSeguro;
 
 const normalizarEncabezado = (texto) => (texto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -591,7 +642,7 @@ const PREGUNTAS_AYUDA = [
   },
   {
     id: 'subirArchivos', soloAdmin: true, pregunta: '¿Cómo subo el rol o las clases?',
-    respuesta: 'Ajustes → Administración, y luego:\n• Predicaciones → «Subir rol» (archivo CSV).\n• Clases de niños → «Asignar maestros a las clases» (archivo CSV).\n• Clases de niños → «Subir contenido de clases» (Word y PDF).\n\nRevisa la vista previa antes de confirmar.',
+        respuesta: 'Ajustes → Administración, y luego:\n• Predicaciones → «Subir o actualizar rol» (archivo CSV).\n• Clases de niños → «Subir o actualizar rol de clases» (archivo CSV).\n• Clases de niños → «Subir contenido de clases» (Word y PDF).\n\nSi corriges un rol, vuelve a subir el archivo: no hace falta borrar nada. La app solo aplica los cambios y avisa a quienes les cambió algo. El contenido de una clase también se reemplaza solo al subirla otra vez.',
     claves: 'csv archivo subir rol clases cargar excel',
     ir: { pantalla: 'Admin', texto: 'Ir a Administración' },
   },
@@ -3771,7 +3822,8 @@ function AdminScreen({ navigation, route }) {
   const colors = getColors(isDark);
   const [telefono, setTelefono] = useState('');
     const [busquedaUsuario, setBusquedaUsuario] = useState('');
-     const [previaRol, setPreviaRol] = useState([]);
+          const [previaRol, setPreviaRol] = useState([]);
+  const [cambiosRol, setCambiosRol] = useState(null);
   const [subiendoRol, setSubiendoRol] = useState(false);
   const [mesBuscarRol, setMesBuscarRol] = useState('');
   const [anioBuscarRol, setAnioBuscarRol] = useState('');
@@ -3781,8 +3833,7 @@ function AdminScreen({ navigation, route }) {
     const [eliminandoRol, setEliminandoRol] = useState(false);
   const [previaClases, setPreviaClases] = useState(null);
   const [subiendoClases, setSubiendoClases] = useState(false);
-    const [mesBorrarClases, setMesBorrarClases] = useState('');
-  const [mesBuscarClases, setMesBuscarClases] = useState('');
+      const [mesBuscarClases, setMesBuscarClases] = useState('');
   const [anioBuscarClases, setAnioBuscarClases] = useState('');
   const [resultadosClases, setResultadosClases] = useState([]);
   const [seleccionadasClases, setSeleccionadasClases] = useState([]);
@@ -3907,7 +3958,8 @@ function AdminScreen({ navigation, route }) {
     const archivo = evento.target.files[0];
     if (!archivo) return;
     const lector = new FileReader();
-    lector.onload = (e) => {
+        lector.onload = async (e) => {
+      setCambiosRol(null);
       try {
                 const filas = parsearCSV(e.target.result);
         const conocidos = new Set(maestros.map((m) => usuarioSeguro(m.nombre_usuario)));
@@ -3915,8 +3967,9 @@ function AdminScreen({ navigation, route }) {
         if (faltan.length > 0) {
           setPreviaRol([]);
           setAlerta({ visible: true, titulo: "Revisa los usuarios", mensaje: `Estos usuarios no existen en la app: ${faltan.join(', ')}.\n\nCorrígelos en el archivo (deben ser iguales a los de Administración → Usuarios) y vuelve a subirlo.`, onConfirmar: cerrarAlerta, isDark: isDark });
-        } else {
+                } else {
           setPreviaRol(filas);
+          setCambiosRol(await compararConRolActual(filas));
         }
       } catch (error) {
         setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo leer el archivo. Revisa que sea un CSV válido.", onConfirmar: cerrarAlerta, isDark: isDark });
@@ -3925,19 +3978,51 @@ function AdminScreen({ navigation, route }) {
     lector.readAsText(archivo);
   };
 
-  // Sube a Supabase las filas que se previsualizaron
+    // Si los meses del archivo ya tienen rol, calcula qué se agrega, qué se quita y a quién avisar
+  const compararConRolActual = async (filas) => {
+    const meses = [...new Set(filas.map((f) => f.fecha.slice(0, 7)))].sort();
+    if (meses.length === 0) return null;
+    const [anioFin, mesFin] = meses[meses.length - 1].split('-').map(Number);
+    const actuales = (await traerTodo(() => supabase.from('programa_servicios').select('id, fecha, horario, nombre_usuario, usuario_original').gte('fecha', `${meses[0]}-01`).lte('fecha', fechaISO(new Date(anioFin, mesFin, 0))).order('id', { ascending: true }))).filter((r) => meses.includes(r.fecha.slice(0, 7)));
+    if (actuales.length === 0) return null;
+    const mesesConRol = new Set(actuales.map((r) => r.fecha.slice(0, 7)));
+    const cambios = compararRol(actuales, filas, (r) => `${r.fecha}|${horaClave(r.horario)}|${titularDe(r)}`, []);
+    const hoy = fechaISO(new Date());
+    const afectados = [
+      ...cambios.agregar.filter((r) => r.fecha >= hoy && mesesConRol.has(r.fecha.slice(0, 7))).map((r) => r.nombre_usuario),
+      ...cambios.quitar.filter((r) => r.fecha >= hoy).flatMap((r) => [r.nombre_usuario, r.usuario_original]),
+    ];
+    return { ...cambios, mesesConRol: [...mesesConRol], afectados: [...new Set(afectados.filter(Boolean).map((u) => u.toLowerCase()))] };
+  };
+
+  // Sube a Supabase el rol: si es nuevo lo guarda completo; si ya existía, solo aplica los cambios
   const confirmarCargaRol = async () => {
     setSubiendoRol(true);
+    try {
+      if (!cambiosRol) {
         const { data: subidas, error } = await supabase.from('programa_servicios').insert(previaRol).select('id');
-    setSubiendoRol(false);
-    if (error) {
-            setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo subir el rol: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark });
-    } else {
-            // Avisa a cada persona programada que ya está disponible su rol nuevo
-      supabase.functions.invoke('recordatorios', { body: { accion: 'rol-nuevo', ids: (subidas || []).map((r) => r.id) } }).catch((e) => console.error('No se pudo avisar del rol nuevo:', e));
-         setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: `Se subieron ${previaRol.length} fechas correctamente.`, onConfirmar: cerrarAlerta, isDark: isDark });
+        if (error) throw error;
+        // Avisa a cada persona programada que ya está disponible su rol nuevo
+        supabase.functions.invoke('recordatorios', { body: { accion: 'rol-nuevo', ids: (subidas || []).map((r) => r.id) } }).catch((e) => console.error('No se pudo avisar del rol nuevo:', e));
+        setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: `Se subieron ${previaRol.length} fechas correctamente.`, onConfirmar: cerrarAlerta, isDark: isDark });
+      } else {
+        await borrarPorIds('programa_servicios', cambiosRol.quitar.map((r) => r.id));
+        if (cambiosRol.agregar.length > 0) {
+          const { data: subidas, error } = await supabase.from('programa_servicios').insert(cambiosRol.agregar).select('id, fecha');
+          if (error) throw error;
+          // Las fechas de meses que no tenían rol cuentan como rol nuevo
+          const deMesesNuevos = (subidas || []).filter((r) => !cambiosRol.mesesConRol.includes(r.fecha.slice(0, 7))).map((r) => r.id);
+          if (deMesesNuevos.length > 0) supabase.functions.invoke('recordatorios', { body: { accion: 'rol-nuevo', ids: deMesesNuevos } }).catch((e) => console.error('No se pudo avisar del rol nuevo:', e));
+        }
+        avisarRolActualizado(cambiosRol.afectados, 'predicaciones');
+        setAlerta({ visible: true, titulo: "Rol actualizado", mensaje: `Se agregaron ${cambiosRol.agregar.length} y se quitaron ${cambiosRol.quitar.length} fechas. Se avisó a ${cambiosRol.afectados.length} persona(s).`, onConfirmar: cerrarAlerta, isDark: isDark });
+      }
       setPreviaRol([]);
+      setCambiosRol(null);
+    } catch (error) {
+      setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo subir el rol: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark });
     }
+    setSubiendoRol(false);
   };
 
     // ---- Clases de niños: carga por CSV ----
@@ -4009,12 +4094,24 @@ function AdminScreen({ navigation, route }) {
     });
     if (filas.length === 0 && errores.length === 0) errores.push('No se encontró ninguna persona asignada en el archivo.');
 
-    const meses = [...new Set(filas.map((f) => f.mes_anio))];
-    if (meses.length > 0) {
-      const { data: existentes } = await supabase.from('clases_asignadas').select('mes_anio').in('mes_anio', meses);
-      [...new Set((existentes || []).map((x) => x.mes_anio))].forEach((mes) => errores.push(`Ya hay clases cargadas para ${mes}. Bórralas primero con "Borrar clases de un mes".`));
+        const meses = [...new Set(filas.map((f) => f.mes_anio))];
+    // Si algún mes ya tiene rol, no se borra nada: se compara y solo se aplican los cambios
+    let cambios = null;
+    if (meses.length > 0 && errores.length === 0) {
+      const actuales = await traerTodo(() => supabase.from('clases_asignadas').select('id, fecha, grupo, horario, nombre_usuario, usuario_original, coordinador, equipo, mes_anio').in('mes_anio', meses).order('id', { ascending: true }));
+      if (actuales.length > 0) {
+        const mesesConRol = [...new Set(actuales.map((r) => r.mes_anio))];
+        const c = compararRol(actuales, filas, (r) => `${r.fecha}|${r.grupo}|${titularDe(r)}`, ['coordinador', 'equipo']);
+        const hoy = fechaISO(new Date());
+        const afectados = [
+          ...c.agregar.filter((r) => r.fecha >= hoy && mesesConRol.includes(r.mes_anio)).map((r) => r.nombre_usuario),
+          ...c.quitar.filter((r) => r.fecha >= hoy).flatMap((r) => [r.nombre_usuario, r.usuario_original]),
+          ...c.actualizar.filter((u) => u.antes.fecha >= hoy && 'coordinador' in u.cambios).flatMap((u) => [u.antes.coordinador, u.despues.coordinador]),
+        ];
+        cambios = { ...c, mesesConRol, afectados: [...new Set(afectados.filter(Boolean).map((u) => u.toLowerCase()))] };
+      }
     }
-    return { filas, errores: [...new Set(errores)], avisos: [...new Set(avisos)], meses, personas: new Set(filas.map((f) => f.nombre_usuario)).size };
+    return { filas, errores: [...new Set(errores)], avisos: [...new Set(avisos)], meses, personas: new Set(filas.map((f) => f.nombre_usuario)).size, cambios };
   };
 
   const manejarArchivoClases = (evento) => {
@@ -4033,15 +4130,36 @@ function AdminScreen({ navigation, route }) {
 
   const confirmarCargaClases = async () => {
     if (!previaClases || previaClases.errores.length > 0 || previaClases.filas.length === 0) return;
-    setSubiendoClases(true);
-    const { error } = await supabase.from('clases_asignadas').insert(previaClases.filas);
-    setSubiendoClases(false);
-    if (error) {
-      setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudieron subir las clases: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark });
-    } else {
-      setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: `Se guardaron ${previaClases.filas.length} clases de ${previaClases.personas} maestros.`, onConfirmar: cerrarAlerta, isDark: isDark });
+        setSubiendoClases(true);
+    const c = previaClases.cambios;
+    try {
+      if (!c) {
+        const { error } = await supabase.from('clases_asignadas').insert(previaClases.filas);
+        if (error) throw error;
+        setAlerta({ visible: true, titulo: "¡Éxito!", mensaje: `Se guardaron ${previaClases.filas.length} clases de ${previaClases.personas} maestros.`, onConfirmar: cerrarAlerta, isDark: isDark });
+      } else {
+        await borrarPorIds('clases_asignadas', c.quitar.map((r) => r.id));
+        // Los cambios iguales (por ejemplo, el nuevo coordinador de un mes) se guardan juntos
+        const porCambio = {};
+        c.actualizar.forEach((u) => { const k = JSON.stringify(u.cambios); (porCambio[k] = porCambio[k] || []).push(u.id); });
+        for (const [k, ids] of Object.entries(porCambio)) {
+          for (let i = 0; i < ids.length; i += 200) {
+            const { error } = await supabase.from('clases_asignadas').update(JSON.parse(k)).in('id', ids.slice(i, i + 200));
+            if (error) throw error;
+          }
+        }
+        if (c.agregar.length > 0) {
+          const { error } = await supabase.from('clases_asignadas').insert(c.agregar);
+          if (error) throw error;
+        }
+        avisarRolActualizado(c.afectados, 'clases');
+        setAlerta({ visible: true, titulo: "Rol actualizado", mensaje: `Se agregaron ${c.agregar.length}, se quitaron ${c.quitar.length} y se actualizaron ${c.actualizar.length} clases. Se avisó a ${c.afectados.length} persona(s).`, onConfirmar: cerrarAlerta, isDark: isDark });
+      }
       setPreviaClases(null);
+    } catch (error) {
+      setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudieron subir las clases: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark });
     }
+    setSubiendoClases(false);
   };
 
     const buscarClases = async () => {
@@ -4079,7 +4197,9 @@ function AdminScreen({ navigation, route }) {
         const { data, error } = await supabase.from('clases_asignadas').delete().in('id', seleccionadasClases).select('id');
         setEliminandoClases(false);
         if (error) { setTimeout(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo eliminar: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark }), 500); return; }
-        const idsBorrados = (data || []).map((r) => r.id);
+                const idsBorrados = (data || []).map((r) => r.id);
+        const hoyBorrado = fechaISO(new Date());
+        avisarRolActualizado(resultadosClases.filter((r) => idsBorrados.includes(r.id) && r.fecha >= hoyBorrado).flatMap((r) => [r.nombre_usuario, r.usuario_original]), 'clases');
         setResultadosClases((prev) => prev.filter((r) => !idsBorrados.includes(r.id)));
         setSeleccionadasClases([]);
         if (idsBorrados.length < seleccionadasClases.length) {
@@ -4131,24 +4251,6 @@ function AdminScreen({ navigation, route }) {
     URL.revokeObjectURL(url);
   };
 
-  const confirmarBorrarClasesMes = () => {
-    const fechaMes = parsearMesAnio(mesBorrarClases);
-    if (!fechaMes) {
-      return setAlerta({ visible: true, titulo: "Aviso", mensaje: 'Escribe el mes así: "Octubre 2026".', onConfirmar: cerrarAlerta, isDark: isDark });
-    }
-    const mesAnio = `${NOMBRES_MESES[fechaMes.getMonth()]} ${fechaMes.getFullYear()}`;
-    setAlerta({
-      visible: true, titulo: "Borrar clases", mensaje: `¿Borrar todas las clases asignadas de ${mesAnio}? Esta acción no se puede deshacer.`,
-      textoConfirmar: "Borrar", onCancelar: cerrarAlerta, isDark: isDark, themeColor: '#C97A7A',
-      onConfirmar: async () => {
-        cerrarAlerta();
-        const { data, error } = await supabase.from('clases_asignadas').delete().eq('mes_anio', mesAnio).select('id');
-        const mensaje = error ? "No se pudo borrar: " + error.message : (data && data.length > 0 ? `Se borraron ${data.length} clases de ${mesAnio}.` : `No se encontró nada para borrar en ${mesAnio}.`);
-        setTimeout(() => setAlerta({ visible: true, titulo: error ? "Error" : "Listo", mensaje, onConfirmar: cerrarAlerta, isDark: isDark }), 500);
-      }
-    });
-  };
-
     async function buscarRol() {
     const mesNum = parseInt(mesBuscarRol);
     const anioNum = parseInt(anioBuscarRol);
@@ -4185,7 +4287,9 @@ function AdminScreen({ navigation, route }) {
         const { data, error } = await supabase.from('programa_servicios').delete().in('id', seleccionadosRol).select('id');
         setEliminandoRol(false);
         if (error) { setTimeout(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo eliminar: " + error.message, onConfirmar: cerrarAlerta, isDark: isDark }), 500); return; }
-        const idsBorrados = (data || []).map((r) => r.id);
+                const idsBorrados = (data || []).map((r) => r.id);
+        const hoyBorrado = fechaISO(new Date());
+        avisarRolActualizado(resultadosRol.filter((r) => idsBorrados.includes(r.id) && r.fecha >= hoyBorrado).flatMap((r) => [r.nombre_usuario, r.usuario_original]), 'predicaciones');
         setResultadosRol((prev) => prev.filter((r) => !idsBorrados.includes(r.id)));
         setSeleccionadosRol([]);
         if (idsBorrados.length < seleccionadosRol.length) {
@@ -4338,14 +4442,28 @@ function AdminScreen({ navigation, route }) {
         </>)}
 
         {seccion === 'predicaciones' && (<>
-        <OpcionAdmin {...opc('subirRol')} icono="upload" titulo="Subir rol" subtitulo="Archivo CSV con las fechas del periodo">
-        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las fechas del periodo.</Text>
+                <OpcionAdmin {...opc('subirRol')} icono="upload" titulo="Subir o actualizar rol" subtitulo="Archivo CSV con las fechas del periodo">
+        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las fechas del periodo. Si esos meses ya tienen rol, no se borra nada: solo se aplican los cambios y se avisa a quienes les cambió algo.</Text>
 
         {Platform.OS === 'web' && (
                     <SelectorArchivo isDark={isDark} onArchivo={manejarArchivoCSV} etiqueta="Elegir CSV del Rol" />
         )}
 
-        {previaRol.length > 0 && (
+                {previaRol.length > 0 && cambiosRol && (
+          <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+            <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Actualización del rol</Text>
+            {cambiosRol.agregar.length + cambiosRol.quitar.length === 0 ? (
+              <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 4 }}>El archivo es igual al rol que ya está cargado. No hay nada que actualizar.</Text>
+            ) : (<>
+              <Text style={{ color: colors.textMain, fontSize: 13, marginTop: 4 }}>Se agregan {cambiosRol.agregar.length} y se quitan {cambiosRol.quitar.length} fechas. Las demás se quedan igual (con su confirmación).</Text>
+              {cambiosRol.quitar.slice(0, 6).map((r) => <Text key={'q' + r.id} style={{ color: '#C97A7A', fontSize: 12, marginTop: 4 }}>– {r.fecha} • {r.horario} • {r.nombre_usuario}</Text>)}
+              {cambiosRol.agregar.slice(0, 6).map((r, i) => <Text key={'a' + i} style={{ color: '#6FA884', fontSize: 12, marginTop: 4 }}>+ {r.fecha} • {r.horario} • {r.nombre_usuario}</Text>)}
+              <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 8 }}>{cambiosRol.afectados.length > 0 ? `Se avisará a ${cambiosRol.afectados.length} persona(s): ${cambiosRol.afectados.slice(0, 8).join(', ')}${cambiosRol.afectados.length > 8 ? '…' : ''}` : 'Los cambios son de fechas que ya pasaron: no se avisará a nadie.'}</Text>
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 15 }]} onPress={confirmarCargaRol}>{subiendoRol ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Aplicar cambios</Text>}</TouchableOpacity>
+            </>)}
+          </View>
+        )}
+        {previaRol.length > 0 && !cambiosRol && (
           <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
             <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Se van a subir {previaRol.length} fechas:</Text>
             {previaRol.slice(0, 5).map((fila, index) => (
@@ -4357,8 +4475,8 @@ function AdminScreen({ navigation, route }) {
         )}
 
                 </OpcionAdmin>
-        <OpcionAdmin {...opc('borrarRol')} icono="search" titulo="Buscar y borrar fechas" subtitulo="Corrige un rol que se subió con errores">
-        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Si un rol se subió con errores, búscalo por mes y elimina lo que sobre.</Text>
+                <OpcionAdmin {...opc('borrarRol')} icono="search" titulo="Buscar y borrar fechas" subtitulo="Para quitar fechas sueltas (se avisa a quien la tenía)">
+        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Para quitar fechas sueltas. Si quieres corregir todo un rol, mejor vuelve a subir el archivo en «Subir o actualizar rol».</Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarRol} onChangeText={(t) => setMesBuscarRol(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
           <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2026)" placeholderTextColor={colors.textSub} value={anioBuscarRol} onChangeText={(t) => setAnioBuscarRol(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
@@ -4390,8 +4508,8 @@ function AdminScreen({ navigation, route }) {
                 <OpcionAdmin {...opc('contenidoClases')} icono="file-text" titulo="Subir contenido de clases" subtitulo="Word con la clase y PDF con la actividad">
           <SubirContenidoClases isDark={isDark} />
         </OpcionAdmin>
-        <OpcionAdmin {...opc('subirClases')} icono="upload" titulo="Asignar maestros a las clases" subtitulo="Archivo CSV con equipos, coordinadores y grupos">
-        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el CSV con equipo, mes, coordinador y grupos. Se crea una clase por cada domingo del mes.</Text>
+                <OpcionAdmin {...opc('subirClases')} icono="upload" titulo="Subir o actualizar rol de clases" subtitulo="Archivo CSV con equipos, coordinadores y grupos">
+        <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el CSV con equipo, mes, coordinador y grupos. Se crea una clase por cada domingo del mes. Si esos meses ya tienen rol, no se borra nada: solo se aplican los cambios y se avisa a quienes les cambió algo.</Text>
 
         {Platform.OS === 'web' && (
                     <SelectorArchivo isDark={isDark} onArchivo={manejarArchivoClases} etiqueta="Elegir CSV de clases" />
@@ -4404,6 +4522,19 @@ function AdminScreen({ navigation, route }) {
                 <Text style={[styles.autoGenTitle, { color: '#C97A7A' }]}>Corrige esto antes de subir:</Text>
                 {previaClases.errores.map((t, i) => <Text key={i} style={{ color: '#C97A7A', fontSize: 12, marginTop: 4 }}>• {t}</Text>)}
               </>
+                        ) : previaClases.cambios ? (
+              <>
+                <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Actualización del rol de {previaClases.cambios.mesesConRol.join(', ')}</Text>
+                {previaClases.cambios.agregar.length + previaClases.cambios.quitar.length + previaClases.cambios.actualizar.length === 0 ? (
+                  <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 4 }}>El archivo es igual al rol que ya está cargado. No hay nada que actualizar.</Text>
+                ) : (<>
+                  <Text style={{ color: colors.textMain, fontSize: 13, marginTop: 4 }}>Se agregan {previaClases.cambios.agregar.length} y se quitan {previaClases.cambios.quitar.length} clases. Lo demás se queda igual (incluso quién cubre a quién).</Text>
+                  {previaClases.cambios.quitar.slice(0, 6).map((r) => <Text key={'q' + r.id} style={{ color: '#C97A7A', fontSize: 12, marginTop: 4 }}>– {r.fecha} • {r.grupo} • {r.nombre_usuario}</Text>)}
+                  {previaClases.cambios.agregar.slice(0, 6).map((r, i) => <Text key={'a' + i} style={{ color: '#6FA884', fontSize: 12, marginTop: 4 }}>+ {r.fecha} • {r.grupo} • {r.nombre_usuario}</Text>)}
+                  {[...new Map(previaClases.cambios.actualizar.filter((u) => 'coordinador' in u.cambios).map((u) => [u.antes.mes_anio, u])).values()].map((u) => <Text key={'u' + u.id} style={{ color: '#C9A227', fontSize: 12, marginTop: 4 }}>~ {u.antes.mes_anio}: nuevo coordinador {u.despues.coordinador || '—'} (antes {u.antes.coordinador || '—'})</Text>)}
+                  <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 8 }}>{previaClases.cambios.afectados.length > 0 ? `Se avisará a ${previaClases.cambios.afectados.length} persona(s): ${previaClases.cambios.afectados.slice(0, 8).join(', ')}${previaClases.cambios.afectados.length > 8 ? '…' : ''}` : 'Los cambios son de fechas que ya pasaron: no se avisará a nadie.'}</Text>
+                </>)}
+              </>
             ) : (
               <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Se van a crear {previaClases.filas.length} clases para {previaClases.personas} maestros en {previaClases.meses.join(', ')}:</Text>
             )}
@@ -4413,18 +4544,18 @@ function AdminScreen({ navigation, route }) {
                 {previaClases.avisos.map((t, i) => <Text key={i} style={{ color: '#C9A227', fontSize: 12, marginTop: 4 }}>• {t}</Text>)}
               </>
             )}
-            {previaClases.errores.length === 0 && previaClases.filas.slice(0, 5).map((f, i) => (
+                        {previaClases.errores.length === 0 && !previaClases.cambios && previaClases.filas.slice(0, 5).map((f, i) => (
               <Text key={i} style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>{f.fecha} • {f.grupo} • {f.nombre_usuario}</Text>
             ))}
-            {previaClases.errores.length === 0 && previaClases.filas.length > 5 && <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>...y {previaClases.filas.length - 5} más</Text>}
-            {previaClases.errores.length === 0 && (
-              <TouchableOpacity style={[styles.primaryButton, { marginTop: 15 }]} onPress={confirmarCargaClases}>{subiendoClases ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Confirmar y subir</Text>}</TouchableOpacity>
+            {previaClases.errores.length === 0 && !previaClases.cambios && previaClases.filas.length > 5 && <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>...y {previaClases.filas.length - 5} más</Text>}
+            {previaClases.errores.length === 0 && (!previaClases.cambios || previaClases.cambios.agregar.length + previaClases.cambios.quitar.length + previaClases.cambios.actualizar.length > 0) && (
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 15 }]} onPress={confirmarCargaClases}>{subiendoClases ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>{previaClases.cambios ? 'Aplicar cambios' : 'Confirmar y subir'}</Text>}</TouchableOpacity>
             )}
           </View>
         )}
 
                         </OpcionAdmin>
-        <OpcionAdmin {...opc('borrarClases')} icono="search" titulo="Buscar y borrar clases" subtitulo="Búscalas por mes y elimina las que sobren">
+                <OpcionAdmin {...opc('borrarClases')} icono="search" titulo="Buscar y borrar clases" subtitulo="Para quitar clases sueltas (se avisa a quien la tenía)">
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarClases} onChangeText={(t) => setMesBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
           <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2027)" placeholderTextColor={colors.textSub} value={anioBuscarClases} onChangeText={(t) => setAnioBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
@@ -4448,13 +4579,6 @@ function AdminScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         )}
-
-                </OpcionAdmin>
-        <OpcionAdmin {...opc('borrarMes')} icono="trash-2" titulo="Borrar clases de un mes" subtitulo="Por si el archivo se subió con errores">
-        <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (ej. Octubre 2026)" placeholderTextColor={colors.textSub} value={mesBorrarClases} onChangeText={setMesBorrarClases} />
-        <TouchableOpacity style={[styles.primaryButton, { marginTop: 12, backgroundColor: '#C97A7A' }]} onPress={confirmarBorrarClasesMes}>
-                    <Text style={styles.primaryButtonText}>Borrar clases del mes</Text>
-        </TouchableOpacity>
 
                 </OpcionAdmin>
         <OpcionAdmin {...opc('asistencia')} icono="download" titulo="Descargar asistencia" subtitulo="En CSV, de un grupo o de todos juntos">
