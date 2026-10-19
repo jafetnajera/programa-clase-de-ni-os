@@ -1087,6 +1087,19 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
 };
 
 // Tarjeta del menú principal: esquinas muy redondeadas, ícono en círculo y título
+// Ícono de la Cena del Señor: pan y copa (dibujado, porque no existe en la librería de íconos)
+const IconoCena = ({ size = 24, color = '#000000' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M3.6 20.2C1.6 16.4 3.3 7.6 7.6 4.1C9.8 2.3 12 3 11.6 7C11.1 12 8.9 17.6 6.4 20.4C5.5 21.4 4.2 21.3 3.6 20.2Z" />
+    <Path d="M5.3 9.6C6.6 8.9 8 8.7 9.6 8.9" />
+    <Path d="M4.4 14.4C5.7 13.7 7 13.5 8.6 13.7" />
+    <Path d="M13.6 3.2H21.4C22.1 6.6 21.6 10.4 17.5 11.6C13.4 10.4 12.9 6.6 13.6 3.2Z" />
+    <Path d="M13.4 6.6H21.6" />
+    <Path d="M17.5 11.6V20.4" />
+    <Path d="M14.4 20.8H20.6" />
+  </Svg>
+);
+
 const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, etiqueta, isDark, columnas, esUltima, total, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
   const m = columnas === 3
@@ -1115,7 +1128,7 @@ const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, eti
       <View style={{ pointerEvents: 'none', position: 'absolute', right: -m.alto * 0.275, top: -m.alto * 0.35, width: m.alto * 1.25, height: m.alto * 1.25, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.30)' }} />
       <View style={{ pointerEvents: 'none', position: 'absolute', right: m.alto * 0.55, bottom: -m.alto * 0.425, width: m.alto * 0.85, height: m.alto * 0.85, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.18)' }} />
       <View style={{ width: m.circulo, height: m.circulo, borderRadius: m.circulo / 2, backgroundColor: circuloClaro, alignItems: 'center', justifyContent: 'center' }}>
-        <Feather name={icono} size={m.icono} color={paleta.texto} />
+                {icono === 'cena' ? <IconoCena size={m.icono} color={paleta.texto} /> : <Feather name={icono} size={m.icono} color={paleta.texto} />}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
                 <View style={{ flex: 1 }}>
@@ -2777,7 +2790,7 @@ function RolesScreen({ navigation }) {
   const anchoMax = columnas >= 2 ? 1100 : 850;
   const tarjetas = [
     { icono: 'calendar', titulo: 'Rol de predicaciones', categoria: 'Predicaciones', onPress: () => navigation.navigate('MiRol') },
-    { icono: 'coffee', titulo: 'Rol de la Cena del Señor', categoria: 'Cena', onPress: () => navigation.navigate('Cena') },
+        { icono: 'cena', titulo: 'Rol de la Cena del Señor', categoria: 'Cena', onPress: () => navigation.navigate('Cena') },
   ];
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -2854,6 +2867,16 @@ function CenaScreen({ navigation }) {
     cargar();
   };
 
+    // Quien ya confirmó y después no puede: libera su lugar y la app invita al siguiente
+  const cancelarMiLugar = () => setAlerta({
+    visible: true, titulo: '¿Ya no puedes apoyar?', mensaje: 'Se liberará tu lugar y la app invitará a otro hermano.', textoConfirmar: 'Liberar mi lugar', onCancelar: cerrarAlerta, isDark, themeColor: '#C97A7A',
+    onConfirmar: async () => {
+      cerrarAlerta();
+      const { data, error } = await supabase.functions.invoke('cena', { body: { accion: 'cancelar', turno_id: miTurno.id } });
+      if (error || (data && data.error)) return setTimeout(() => setAlerta({ visible: true, titulo: 'No se pudo', mensaje: (data && data.error) || error.message, onConfirmar: cerrarAlerta, isDark }), 300);
+      cargar();
+    },
+  });
   const tarjeta = { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, padding: 20, marginBottom: 14 };
   const instrucciones = (lista) => lista.map((t, i) => <Text key={i} style={{ color: colors.textMain, fontSize: 14, lineHeight: 21, marginTop: 6 }}>• {t}</Text>);
   const posicionVista = confirmado && miTurno.posicion > 0 ? miTurno.posicion : vistaPrevia;
@@ -2889,7 +2912,7 @@ function CenaScreen({ navigation }) {
             {/* Quien no está programado esta semana */}
             {!verRol && !(miTurno && miTurno.estado === 'invitado') ? (
               <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-                <Feather name="coffee" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
+                                <View style={{ marginBottom: 15 }}><IconoCena size={40} color={colors.textSub} /></View>
                 <Text style={[styles.emptyTitle, { color: colors.textMain }]}>No estás programado esta semana</Text>
                 <Text style={[styles.emptyText, { color: colors.textSub }]}>Cuando te inviten a apoyar en la Cena del Señor, aquí verás tu lugar y cómo repartir.</Text>
               </View>
@@ -2906,8 +2929,11 @@ function CenaScreen({ navigation }) {
                   <Text style={{ fontSize: 19, fontWeight: '800', color: colors.textMain, marginTop: 6 }}>Sirves en la posición {miTurno.posicion}</Text>
                   <Text style={{ fontSize: 14, color: colors.textSub, marginTop: 4 }}>Sales en el lugar {ORDEN_SALIDA_CENA.indexOf(miTurno.posicion) + 1} de 6 y regresas en el lugar {ORDEN_REGRESO_CENA.indexOf(miTurno.posicion) + 1} de 6.</Text>
                   <DiagramaCena posicion={miTurno.posicion} isDark={isDark} />
-                  {instrucciones(INSTRUCCIONES_REPARTE)}
+                                    {instrucciones(INSTRUCCIONES_REPARTE)}
                 </>)}
+                <View style={{ flexDirection: 'row', marginTop: 16 }}>
+                  <BotonChico icono="x-circle" texto="Ya no puedo" peligro isDark={isDark} onPress={cancelarMiLugar} />
+                </View>
               </View>
             ) : null}
 
