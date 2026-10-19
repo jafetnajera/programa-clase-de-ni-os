@@ -2407,12 +2407,21 @@ function GruposScreen({ navigation }) {
     filasVista.filter((r) => r.mes_anio === mesRef && r.grupo === g).forEach((r) => { const n = nombreDe(r.usuario_original || r.nombre_usuario); if (!nombres.includes(n)) nombres.push(n); });
     return nombres.length > 0 ? `Asignado a: ${nombres.join(', ')}` : 'Sin asignar';
   };
-    const abrirGrupo = (g) => { const destino = destinoDeGrupo(g); navigation.navigate(destino.pantalla, destino.params); };
+      // Desde la tarjeta de un mes (maestros), se abre directo ese mes: sus clases o sus domingos
+  const abrirGrupo = async (g, mesAnio) => {
+    if (mesAnio && GRUPOS_INFO[g] && GRUPOS_INFO[g].temario) {
+      const { data } = await supabase.from('temas_mensuales').select('*').ilike('mes_anio', mesAnio).limit(1);
+      const tema = (data && data[0]) || { id: null, titulo_tema: mesAnio, mes_anio: mesAnio };
+      return navigation.navigate('Clases', { tema, grupo: g });
+    }
+    if (mesAnio) return navigation.navigate('Domingos', { grupo: g, mes: mesAnio });
+    const destino = destinoDeGrupo(g); navigation.navigate(destino.pantalla, destino.params);
+  };
   const gruposAsignados = [];
   asignaciones.forEach((a) => {
     const clave = `${a.mes_anio}|${a.grupo}`;
     if (gruposAsignados.some((g) => g.clave === clave)) return;
-        gruposAsignados.push({ clave, icono: (GRUPOS_INFO[a.grupo] || {}).icono || 'smile', titulo: a.grupo, subtitulo: a.mes_anio, categoria: a.grupo, onPress: () => abrirGrupo(a.grupo) });
+        gruposAsignados.push({ clave, icono: (GRUPOS_INFO[a.grupo] || {}).icono || 'smile', titulo: a.grupo, subtitulo: a.mes_anio, categoria: a.grupo, onPress: () => abrirGrupo(a.grupo, a.mes_anio) });
   });
   const coordinador = asignaciones.length > 0 ? asignaciones[0].coordinador : null;
     const gruposAdmin = ORDEN_GRUPOS.map((g) => ({ icono: GRUPOS_INFO[g].icono, titulo: g, subtitulo: `${GRUPOS_INFO[g].turno} • ${GRUPOS_INFO[g].edades}`, categoria: g, onPress: () => abrirGrupo(g) }));
@@ -3117,7 +3126,10 @@ function ClaseDetalleScreen({ route, navigation }) {
 // PANTALLA: DOMINGOS DE UN GRUPO SIN TEMARIO PROPIO (cuneros y grupos de la tarde)
 // ==========================================
 function DomingosScreen({ route, navigation }) {
-  const grupo = route?.params?.grupo;
+    const grupo = route?.params?.grupo;
+  const mes = route?.params?.mes;
+  // Si se entró desde la tarjeta de un mes, solo se muestran los domingos de ese mes
+  const mesFiltro = (() => { const m = parsearMesAnio(mes); return m ? fechaISO(m).slice(0, 7) : null; })();
   const info = GRUPOS_INFO[grupo] || {};
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
@@ -3146,17 +3158,17 @@ function DomingosScreen({ route, navigation }) {
         const mesesCoordino = new Set(todas.filter((r) => (r.coordinador || '').toLowerCase() === yo).map(mesDe));
                 setVerTodo(esAdmin || mesesCoordino.size > 0);
         // Los maestros ven todos sus domingos que aún no pasan, de todos los meses; el administrador ve todos los programados
-        const visibles = todas.filter((r) => esAdmin || ((r.nombre_usuario || '').toLowerCase() === yo && r.fecha >= hoy) || mesesCoordino.has(mesDe(r)));
+                const visibles = todas.filter((r) => esAdmin || ((r.nombre_usuario || '').toLowerCase() === yo && r.fecha >= hoy) || mesesCoordino.has(mesDe(r))).filter((r) => !mesFiltro || mesDe(r) === mesFiltro);
         setFilas(visibles);
         setCargando(false);
         if (info.repasoDe) {
           const fechas = [...new Set(visibles.map((r) => r.fecha))].slice(0, 12);
           const mapa = {};
           for (const f of fechas) mapa[f] = await clasesDeRepaso(info.repasoDe, f);
-          setRepasos(mapa);
+                    setRepasos(mapa);
         }
       })();
-    }, [grupo])
+    }, [grupo, mesFiltro])
   );
 
   const fechas = [...new Set(filas.map((r) => r.fecha))];
@@ -3185,7 +3197,7 @@ function DomingosScreen({ route, navigation }) {
           </TouchableOpacity>
           <View style={[styles.headerSoloText, { flex: 1 }]}>
             <Text style={[styles.titleMini, { color: colors.textMain }]}>{(grupo || '').toUpperCase()}</Text>
-            <Text style={[styles.subtitle, { color: theme.textDark }]}>{info.turno} • {info.edades}</Text>
+                        <Text style={[styles.subtitle, { color: theme.textDark }]}>{mes ? `${mes} • ` : ''}{info.turno} • {info.edades}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
