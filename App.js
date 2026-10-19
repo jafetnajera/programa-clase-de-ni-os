@@ -2381,7 +2381,9 @@ function GruposScreen({ navigation, route }) {
           setFilasMes(data || []);
         } else {
           // Tus clases y lo que coordinas, solo del mes en curso y del próximo
-          const { data } = await supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador, nombre_usuario, equipo').gte('fecha', inicioDeMesActual()).lte('fecha', finDeVentana()).or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`).order('fecha', { ascending: true });
+                    let consulta = supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador, nombre_usuario, equipo').gte('fecha', inicioDeMesActual()).lte('fecha', finDeVentana()).order('fecha', { ascending: true }).range(0, 999);
+          if (!esAdmin) consulta = consulta.or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`);
+          const { data } = await consulta;
           setMisClases(data || []);
         }
         setCargando(false);
@@ -2408,8 +2410,8 @@ function GruposScreen({ navigation, route }) {
     if (mia && a.fecha >= hoy && !tarjetas.some((t) => t.clave === `${a.mes_anio}|${a.grupo}`)) {
       tarjetas.push({ clave: `${a.mes_anio}|${a.grupo}`, fecha: a.fecha, icono: (GRUPOS_INFO[a.grupo] || {}).icono || 'smile', titulo: a.grupo, subtitulo: a.mes_anio, detalle: a.coordinador && !coordino ? `Coordina: ${nombreDe(a.coordinador)}` : null, categoria: a.grupo, onPress: () => abrirGrupo(a.grupo, a.mes_anio) });
     }
-    if (coordino && !tarjetas.some((t) => t.clave === `coord|${a.mes_anio}`)) {
-      tarjetas.push({ clave: `coord|${a.mes_anio}`, fecha: a.fecha, icono: 'users', titulo: nombreEquipo(a.equipo) || 'Tu equipo', subtitulo: a.mes_anio, detalle: 'Todos los grupos del mes', etiqueta: 'Coordinas', categoria: 'Clases de niños', onPress: () => navigation.push('Grupos', { mes: a.mes_anio }) });
+        if ((coordino || esAdmin) && !tarjetas.some((t) => t.clave === `coord|${a.mes_anio}`)) {
+      tarjetas.push({ clave: `coord|${a.mes_anio}`, fecha: a.fecha, icono: 'users', titulo: nombreEquipo(a.equipo) || 'Tu equipo', subtitulo: a.mes_anio, detalle: coordino ? 'Todos los grupos del mes' : (a.coordinador ? `Coordina: ${nombreDe(a.coordinador)}` : 'Todos los grupos del mes'), etiqueta: coordino ? 'Coordinas' : null, categoria: 'Clases de niños', onPress: () => navigation.push('Grupos', { mes: a.mes_anio }) });
     }
   });
   tarjetas.sort((x, y) => (x.fecha < y.fecha ? -1 : x.fecha > y.fecha ? 1 : 0));
