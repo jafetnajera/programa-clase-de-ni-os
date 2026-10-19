@@ -203,7 +203,8 @@ const linking = {
       Login: 'login',
             MenuPrincipal: 'inicio',
       Notificaciones: 'notificaciones',
-      Grupos: 'grupos',
+            Grupos: 'grupos',
+      VistaAdmin: 'vista-admin',
       MiRol: 'mi-rol',
       Temas: 'temas',
       Clases: 'clases',
@@ -824,7 +825,8 @@ const obtenerNotificaciones = async () => {
     const inicioSiguienteMes = fechaISO(new Date(hoyD.getFullYear(), hoyD.getMonth() + 1, 1));
     const finSiguienteMes = fechaISO(new Date(hoyD.getFullYear(), hoyD.getMonth() + 2, 0));
     const domingosMes = domingosDelMes(hoyD.getFullYear(), hoyD.getMonth());
-    const desdeUltimoDomingo = hoy >= domingosMes[domingosMes.length - 1];
+        // Del día 1 al 7 de cada mes se avisa lo del próximo mes (es cuando se habilita su vista)
+    const avisoProximoMes = hoyD.getDate() <= 7;
     const [{ data: misClases }, { data: miRol }] = await Promise.all([
       supabase.from('clases_asignadas').select('id, fecha, grupo, nombre_usuario, coordinador').gte('fecha', hoy).lte('fecha', finSiguienteMes).or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`),
       supabase.from('programa_servicios').select('id, fecha, horario, estado_confirmacion').gte('fecha', hoy).ilike('nombre_usuario', usuarioActivoGlobal).order('fecha', { ascending: true }),
@@ -845,13 +847,13 @@ const obtenerNotificaciones = async () => {
         recordatorios.push({ clave: `rec-equipo:${c.fecha}:${c.grupo}`, accion: false, destino: irTemas, mensaje: 'Este domingo le toca a tu equipo', detalle: `Recordatorio • ${c.grupo}` });
       }
     });
-    if (desdeUltimoDomingo) {
+        if (avisoProximoMes) {
       const claveMes = inicioSiguienteMes.slice(0, 7);
       const delMes = (misClases || []).filter((c) => c.fecha >= inicioSiguienteMes);
       const propia = delMes.find((c) => (c.nombre_usuario || '').toLowerCase() === yo);
       const deEquipo = delMes.find((c) => (c.coordinador || '').toLowerCase() === yo);
-      if (propia) recordatorios.push({ clave: `rec-mes:${claveMes}:clases`, accion: false, destino: destinoDeGrupo(propia.grupo, { verFuturo: true }), mensaje: (GRUPOS_INFO[propia.grupo] || {}).cuidado ? 'El próximo mes te toca cubrir cuneros' : 'El próximo mes tienes clases programadas', detalle: `Recordatorio • ${propia.grupo}` });
-      else if (deEquipo) recordatorios.push({ clave: `rec-mes:${claveMes}:equipo`, accion: false, destino: destinoDeGrupo(deEquipo.grupo, { verFuturo: true }), mensaje: 'El próximo mes tu equipo tiene clases programadas', detalle: `Recordatorio • ${deEquipo.grupo}` });
+            if (propia) recordatorios.push({ clave: `rec-mes:${claveMes}:clases`, accion: false, destino: { pantalla: 'Grupos' }, mensaje: (GRUPOS_INFO[propia.grupo] || {}).cuidado ? 'Ya puedes consultar tus fechas de cuneros del próximo mes' : 'Ya puedes ir preparando tus clases del próximo mes', detalle: `Consulta los temas en la app • ${propia.grupo}` });
+      if (deEquipo) recordatorios.push({ clave: `rec-mes:${claveMes}:equipo`, accion: false, destino: { pantalla: 'Grupos' }, mensaje: 'Ya puedes revisar los grupos que coordinas el próximo mes', detalle: 'Recordatorio • Coordinas' });
       const rolMes = (miRol || []).find((r) => r.fecha >= inicioSiguienteMes && r.fecha <= finSiguienteMes);
       if (rolMes) recordatorios.push({ clave: `rec-mes:${claveMes}:rol`, accion: false, destino: { pantalla: 'MiRol', params: { servicioId: rolMes.id } }, mensaje: 'El próximo mes tienes predicaciones programadas', detalle: 'Recordatorio • Mi rol' });
     }
@@ -994,7 +996,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
 };
 
 // Tarjeta del menú principal: esquinas muy redondeadas, ícono en círculo y título
-const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, isDark, columnas, esUltima, total, onPress }) => {
+const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, etiqueta, isDark, columnas, esUltima, total, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
   const m = columnas === 3
     ? { alto: 236, radio: 54, circulo: 54, icono: 26, texto: 25, vertical: 24, lateral: 30, pill: 12 }
@@ -1030,9 +1032,9 @@ const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, isD
           {subtitulo ? <Text style={{ fontSize: Math.round(m.texto * 0.68), fontWeight: '500', marginTop: 2, color: paleta.texto }}>{subtitulo}</Text> : null}
           {detalle ? <Text style={{ fontSize: Math.round(m.texto * 0.62), fontWeight: '600', marginTop: 5, color: paleta.texto }}>{detalle}</Text> : null}
         </View>
-        {pronto && (
+                {(pronto || etiqueta) && (
           <View style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: pastillaFondo }}>
-            <Text style={{ fontSize: m.pill, fontWeight: '700', color: paleta.texto }}>Pronto</Text>
+            <Text style={{ fontSize: m.pill, fontWeight: '700', color: paleta.texto }}>{etiqueta || 'Pronto'}</Text>
           </View>
         )}
       </View>
@@ -2350,113 +2352,184 @@ const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
 // ==========================================
 // PANTALLA 1b: GRUPOS (clases de niños)
 // ==========================================
-function GruposScreen({ navigation }) {
+// Ventana de clases: cada quien ve lo del mes en curso y lo del próximo (se habilita un mes antes)
+const finDeVentana = () => { const h = new Date(); return fechaISO(new Date(h.getFullYear(), h.getMonth() + 2, 0)); };
+const inicioDeMesActual = () => { const h = new Date(); return fechaISO(new Date(h.getFullYear(), h.getMonth(), 1)); };
+const nombreEquipo = (equipo) => { const n = String(equipo || '').replace(/^\s*(equipo|eq)\.?\s*/i, '').trim(); return n ? `Equipo ${n}` : null; };
+
+function GruposScreen({ navigation, route }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const columnas = useColumnas();
   const anchoMax = columnas >= 2 ? 1100 : 850;
-    const esAdmin = rolUsuarioActivoGlobal === 'administrador';
-  const [asignaciones, setAsignaciones] = useState([]);
-    const [cargandoAsig, setCargandoAsig] = useState(true);
-    const [coordinadoresAdmin, setCoordinadoresAdmin] = useState([]);
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const yo = (usuarioActivoGlobal || '').toLowerCase();
+  // Si viene un mes, es la vista de ese mes: todos sus grupos (coordinadores y vista de administrador)
+  const mesVista = route?.params?.mes || null;
+  const [misClases, setMisClases] = useState([]);
+  const [filasMes, setFilasMes] = useState([]);
+  const [cargando, setCargando] = useState(true);
   const [mapaNombres, setMapaNombres] = useState({});
   useEffect(() => { cargarMapaNombres().then(setMapaNombres); }, []);
   const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
-  useFocusEffect(
-    React.useCallback(() => {
-                          if (esAdmin) {
-        (async () => {
-          const hoy = new Date();
-          const { data } = await supabase.from('clases_asignadas').select('mes_anio, coordinador, fecha').gte('fecha', fechaISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1))).order('fecha', { ascending: true }).range(0, 4999);
-          const lista = [];
-          (data || []).forEach((r) => { if (r.coordinador && !lista.some((x) => x.mes_anio === r.mes_anio && x.coordinador === r.coordinador)) lista.push({ mes_anio: r.mes_anio, coordinador: r.coordinador }); });
-          setCoordinadoresAdmin(lista);
-          setCargandoAsig(false);
-        })();
-        return;
-      }
-      (async () => {
-        const { data } = await supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', fechaISO(new Date())).in('grupo', ORDEN_GRUPOS).order('fecha', { ascending: true });
-        setAsignaciones(data || []);
-        setCargandoAsig(false);
-      })();
-    }, [])
-  );
-    const [filasVista, setFilasVista] = useState([]);
-  const [soyCoordinador, setSoyCoordinador] = useState(false);
+
   useFocusEffect(
     React.useCallback(() => {
       (async () => {
-        const hoy = new Date();
-        const yo = (usuarioActivoGlobal || '').toLowerCase();
-        let consulta = supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador, nombre_usuario, usuario_original').gte('fecha', fechaISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1))).order('fecha', { ascending: true }).range(0, 4999);
-        if (!esAdmin) consulta = consulta.or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`);
-        const { data } = await consulta;
-        const filas = data || [];
-        const coordina = filas.filter((r) => (r.coordinador || '').toLowerCase() === yo);
-        setSoyCoordinador(coordina.length > 0);
-        setFilasVista(esAdmin ? filas : coordina);
+        if (mesVista) {
+          const { data } = await supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador, nombre_usuario, usuario_original, equipo').eq('mes_anio', mesVista).range(0, 999);
+          setFilasMes(data || []);
+        } else {
+          // Tus clases y lo que coordinas, solo del mes en curso y del próximo
+          const { data } = await supabase.from('clases_asignadas').select('fecha, grupo, mes_anio, coordinador, nombre_usuario, equipo').gte('fecha', inicioDeMesActual()).lte('fecha', finDeVentana()).or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`).order('fecha', { ascending: true });
+          setMisClases(data || []);
+        }
+        setCargando(false);
       })();
-    }, [])
+    }, [mesVista])
   );
-  const vistaCompleta = esAdmin || soyCoordinador;
-  const mesRef = filasVista.length > 0 ? filasVista[0].mes_anio : null;
-  const coordinadorMes = (filasVista.find((r) => r.mes_anio === mesRef && r.coordinador) || {}).coordinador || null;
-  const asignadosA = (g) => {
-    const nombres = [];
-    filasVista.filter((r) => r.mes_anio === mesRef && r.grupo === g).forEach((r) => { const n = nombreDe(r.usuario_original || r.nombre_usuario); if (!nombres.includes(n)) nombres.push(n); });
-    return nombres.length > 0 ? `Asignado a: ${nombres.join(', ')}` : 'Sin asignar';
-  };
-      // Desde la tarjeta de un mes (maestros), se abre directo ese mes: sus clases o sus domingos
+
+  // Al tocar una tarjeta se abre solo ese mes: sus clases (con temario) o sus domingos
   const abrirGrupo = async (g, mesAnio) => {
-    if (mesAnio && GRUPOS_INFO[g] && GRUPOS_INFO[g].temario) {
+    if (GRUPOS_INFO[g] && GRUPOS_INFO[g].temario) {
       const { data } = await supabase.from('temas_mensuales').select('*').ilike('mes_anio', mesAnio).limit(1);
       const tema = (data && data[0]) || { id: null, titulo_tema: mesAnio, mes_anio: mesAnio };
       return navigation.navigate('Clases', { tema, grupo: g });
     }
-    if (mesAnio) return navigation.navigate('Domingos', { grupo: g, mes: mesAnio });
-    const destino = destinoDeGrupo(g); navigation.navigate(destino.pantalla, destino.params);
+    return navigation.navigate('Domingos', { grupo: g, mes: mesAnio });
   };
-  const gruposAsignados = [];
-  asignaciones.forEach((a) => {
-    const clave = `${a.mes_anio}|${a.grupo}`;
-    if (gruposAsignados.some((g) => g.clave === clave)) return;
-        gruposAsignados.push({ clave, icono: (GRUPOS_INFO[a.grupo] || {}).icono || 'smile', titulo: a.grupo, subtitulo: a.mes_anio, categoria: a.grupo, onPress: () => abrirGrupo(a.grupo, a.mes_anio) });
+
+  // Tarjetas: un grupo por mes donde das clase, y un equipo por mes que coordinas (con la etiqueta «Coordinas»)
+  const tarjetas = [];
+  const hoy = fechaISO(new Date());
+  misClases.forEach((a) => {
+    const mia = (a.nombre_usuario || '').toLowerCase() === yo;
+    const coordino = (a.coordinador || '').toLowerCase() === yo;
+    if (mia && a.fecha >= hoy && !tarjetas.some((t) => t.clave === `${a.mes_anio}|${a.grupo}`)) {
+      tarjetas.push({ clave: `${a.mes_anio}|${a.grupo}`, fecha: a.fecha, icono: (GRUPOS_INFO[a.grupo] || {}).icono || 'smile', titulo: a.grupo, subtitulo: a.mes_anio, detalle: a.coordinador && !coordino ? `Coordina: ${nombreDe(a.coordinador)}` : null, categoria: a.grupo, onPress: () => abrirGrupo(a.grupo, a.mes_anio) });
+    }
+    if (coordino && !tarjetas.some((t) => t.clave === `coord|${a.mes_anio}`)) {
+      tarjetas.push({ clave: `coord|${a.mes_anio}`, fecha: a.fecha, icono: 'users', titulo: nombreEquipo(a.equipo) || 'Tu equipo', subtitulo: a.mes_anio, detalle: 'Todos los grupos del mes', etiqueta: 'Coordinas', categoria: 'Clases de niños', onPress: () => navigation.push('Grupos', { mes: a.mes_anio }) });
+    }
   });
-  const coordinador = asignaciones.length > 0 ? asignaciones[0].coordinador : null;
-    const gruposAdmin = ORDEN_GRUPOS.map((g) => ({ icono: GRUPOS_INFO[g].icono, titulo: g, subtitulo: `${GRUPOS_INFO[g].turno} • ${GRUPOS_INFO[g].edades}`, categoria: g, onPress: () => abrirGrupo(g) }));
+  tarjetas.sort((x, y) => (x.fecha < y.fecha ? -1 : x.fecha > y.fecha ? 1 : 0));
+
+  // Vista de un mes: cada grupo con quién está asignado
+  const asignadosA = (g) => {
+    const nombres = [];
+    filasMes.filter((r) => r.grupo === g).forEach((r) => { const n = nombreDe(r.usuario_original || r.nombre_usuario); if (!nombres.includes(n)) nombres.push(n); });
+    return nombres.length > 0 ? `Asignado a: ${nombres.join(', ')}` : 'Sin asignar';
+  };
+  const gruposDelMes = ORDEN_GRUPOS.map((g) => ({ icono: GRUPOS_INFO[g].icono, titulo: g, subtitulo: `${GRUPOS_INFO[g].turno} • ${GRUPOS_INFO[g].edades}`, detalle: asignadosA(g), categoria: g, onPress: () => abrirGrupo(g, mesVista) }));
+  const filaConDatos = filasMes.find((r) => r.coordinador || r.equipo) || {};
+  const subtituloMes = [nombreEquipo(filaConDatos.equipo), filaConDatos.coordinador ? `Coordina: ${nombreDe(filaConDatos.coordinador)}` : null].filter(Boolean).join(' • ') || 'Todos los grupos del mes';
+  const lista = mesVista ? gruposDelMes : tarjetas;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
         <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: anchoMax, alignItems: 'center' }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8, flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal')} style={{ padding: 8, flexDirection: 'row', alignItems: 'center' }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
-                    <View style={{ flex: 1, marginLeft: 8 }}>
-            <Text style={[styles.title, { color: colors.textMain }]}>Clases de niños</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>Selecciona el grupo a impartir</Text>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>{mesVista || 'Clases de niños'}</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{mesVista ? subtituloMes : 'Selecciona el grupo a impartir'}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
           </TouchableOpacity>
         </View>
 
-                                        <View style={{ width: '95%', maxWidth: anchoMax, flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
-                    {(vistaCompleta ? coordinadorMes : coordinador) ? (
-            <BotonChico icono="user" texto={`Coordinador: ${nombreDe(vistaCompleta ? coordinadorMes : coordinador)}`} isDark={isDark} neutro />
-          ) : null}
+        <View style={{ width: '95%', maxWidth: anchoMax, flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
+          {esAdmin && !mesVista ? <BotonChico icono="grid" texto="Vista de administrador" categoria="Usuarios" isDark={isDark} onPress={() => navigation.navigate('VistaAdmin')} /> : null}
           <BotonChico icono="clipboard" texto="Solicitudes de apoyo" categoria="Clases de niños" isDark={isDark} onPress={() => navigation.navigate('Tablon', { excluirGrupo: 'Predicaciones' })} />
           <BotonChico icono="music" texto="Coritos" categoria="Coritos" isDark={isDark} onPress={() => navigation.navigate('Coritos')} />
         </View>
-        {!vistaCompleta && !cargandoAsig && gruposAsignados.length === 0 ? (
-          <Text style={{ color: colors.textSub, fontSize: 14, marginTop: 20, textAlign: 'center' }}>No tienes clases asignadas por ahora.</Text>
-        ) : null}
-        <View style={[styles.gruposContainer, { width: '95%', maxWidth: anchoMax }, columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
-          {(vistaCompleta ? gruposAdmin.map((g) => ({ ...g, detalle: asignadosA(g.titulo) })) : gruposAsignados).map((g, i, arr) => (
-            <TarjetaMenu key={g.clave || g.titulo} {...g} isDark={isDark} columnas={columnas} esUltima={i === arr.length - 1} total={arr.length} />
-          ))}
+        {cargando ? (
+          <ActivityIndicator size="large" color={colors.textSub} style={{ marginTop: 30 }} />
+        ) : !mesVista && tarjetas.length === 0 ? (
+          <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: anchoMax }]}>
+            <Feather name="calendar" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
+            <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Sin clases por ahora</Text>
+            <Text style={[styles.emptyText, { color: colors.textSub }]}>Un mes antes de que te toque, aquí aparecerán tus grupos y sus temas.</Text>
+          </View>
+        ) : (
+          <View style={[styles.gruposContainer, { width: '95%', maxWidth: anchoMax }, columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
+            {lista.map((g, i, arr) => (
+              <TarjetaMenu key={g.clave || g.titulo} {...g} isDark={isDark} columnas={columnas} esUltima={i === arr.length - 1} total={arr.length} />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// PANTALLA: VISTA DE ADMINISTRADOR (rol de clases por año y mes)
+// ==========================================
+function VistaAdminScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const [meses, setMeses] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [mapaNombres, setMapaNombres] = useState({});
+  useEffect(() => { cargarMapaNombres().then(setMapaNombres); }, []);
+  const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('clases_asignadas').select('fecha, mes_anio, coordinador, equipo').gte('fecha', inicioDeMesActual()).order('fecha', { ascending: true }).range(0, 4999);
+      const porMes = [];
+      (data || []).forEach((r) => {
+        let m = porMes.find((x) => x.mes_anio === r.mes_anio);
+        if (!m) { m = { mes_anio: r.mes_anio, fecha: parsearMesAnio(r.mes_anio), equipo: null, coordinador: null }; porMes.push(m); }
+        if (!m.equipo && r.equipo) m.equipo = r.equipo;
+        if (!m.coordinador && r.coordinador) m.coordinador = r.coordinador;
+      });
+      setMeses(porMes.filter((m) => m.fecha));
+      setCargando(false);
+    })();
+  }, []);
+
+  const anios = [...new Set(meses.map((m) => m.fecha.getFullYear()))];
+  const hoy = new Date();
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, alignItems: 'center' }]}>
+          <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Grupos')} style={{ padding: 8, marginLeft: -8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Vista de administrador</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>Rol de clases por mes</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
         </View>
+        {cargando ? (
+          <ActivityIndicator size="large" color={colors.textSub} style={{ marginTop: 30 }} />
+        ) : meses.length === 0 ? (
+          <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, width: '95%', maxWidth: 850 }]}>
+            <Feather name="calendar" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
+            <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Aún no hay rol de clases</Text>
+            <Text style={[styles.emptyText, { color: colors.textSub }]}>Cuando subas el rol, aquí verás cada mes con su equipo.</Text>
+          </View>
+        ) : anios.map((anio) => (
+          <View key={anio} style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850 }}>
+            <Text style={{ fontSize: 26, fontWeight: '800', color: colors.textMain, marginTop: 6, marginBottom: 12, marginLeft: 4 }}>{anio}</Text>
+            <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+              {meses.filter((m) => m.fecha.getFullYear() === anio).map((m) => (
+                <TarjetaLista key={m.mes_anio} icono="calendar" titulo={NOMBRES_MESES[m.fecha.getMonth()]} subtitulo={nombreEquipo(m.equipo) || 'Equipo sin número'} etiqueta={m.fecha.getFullYear() === hoy.getFullYear() && m.fecha.getMonth() === hoy.getMonth() ? 'Este mes' : null} asignado={m.coordinador ? `Coordina: ${nombreDe(m.coordinador)}` : null} categoria="Clases de niños" isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.push('Grupos', { mes: m.mes_anio })} />
+              ))}
+            </View>
+          </View>
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -2749,7 +2822,7 @@ function TemasScreen({ route, navigation }) {
             // El administrador ve todos los meses programados, desde el mes en curso.
       const yo = (usuarioActivoGlobal || '').toLowerCase();
       const esMia = (r) => (r.nombre_usuario || '').toLowerCase() === yo || (r.coordinador || '').toLowerCase() === yo;
-      const lista = (asignadas || []).filter((r) => parsearMesAnio(r.mes_anio) && parsearMesAnio(r.mes_anio) >= inicioMes);
+            const lista = (asignadas || []).filter((r) => parsearMesAnio(r.mes_anio) && parsearMesAnio(r.mes_anio) >= inicioMes && (esAdmin || parsearMesAnio(r.mes_anio) <= new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1)));
       const etiquetas = new Set((esAdmin ? lista : lista.filter(esMia)).map((r) => r.mes_anio));
       const idsConContenido = new Set((conContenido || []).map((c) => c.tema_id));
       const porMes = {};
@@ -3158,7 +3231,7 @@ function DomingosScreen({ route, navigation }) {
         const mesesCoordino = new Set(todas.filter((r) => (r.coordinador || '').toLowerCase() === yo).map(mesDe));
                 setVerTodo(esAdmin || mesesCoordino.size > 0);
         // Los maestros ven todos sus domingos que aún no pasan, de todos los meses; el administrador ve todos los programados
-                const visibles = todas.filter((r) => esAdmin || ((r.nombre_usuario || '').toLowerCase() === yo && r.fecha >= hoy) || mesesCoordino.has(mesDe(r))).filter((r) => !mesFiltro || mesDe(r) === mesFiltro);
+                        const visibles = todas.filter((r) => esAdmin || (r.fecha <= finDeVentana() && (((r.nombre_usuario || '').toLowerCase() === yo && r.fecha >= hoy) || mesesCoordino.has(mesDe(r))))).filter((r) => !mesFiltro || mesDe(r) === mesFiltro);
         setFilas(visibles);
         setCargando(false);
         if (info.repasoDe) {
@@ -4524,7 +4597,8 @@ if (cargandoSesion) {
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
                         <Stack.Screen name="MenuPrincipal" component={MenuPrincipalScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Notificaciones" component={NotificacionesScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Grupos" component={GruposScreen} options={{ headerShown: false }} />
+                        <Stack.Screen name="Grupos" component={GruposScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="VistaAdmin" component={VistaAdminScreen} options={{ headerShown: false }} />
             <Stack.Screen name="MiRol" component={MiRolScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Temas" component={TemasScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Clases" component={ClasesScreen} options={{ headerShown: false }} />
