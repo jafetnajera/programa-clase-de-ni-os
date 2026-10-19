@@ -572,6 +572,11 @@ const PREGUNTAS_AYUDA = [
     respuesta: 'Abre los ajustes (el engrane de arriba a la izquierda) y revisa que diga «Avisos activados».\n\n• Si dice «Activar avisos», tócalo y acepta el permiso.\n• Si dice «Avisos bloqueados», actívalos en los ajustes de tu teléfono o navegador.\n• En iPhone los avisos solo llegan si la app está instalada en tu pantalla de inicio.',
     claves: 'notificaciones alertas mensajes push suena llega celular permiso',
   },
+    {
+    id: 'spam', pregunta: 'Me sale «Posible spam» en un aviso',
+    respuesta: 'Es una revisión automática de Chrome en Android, no un problema de la app. Para que no vuelva a salir:\n\n• Toca el aviso y elige «Ver notificación».\n• Luego toca «Permitir siempre» (o «Informar que no es spam»).\n\nSolo se hace una vez en cada celular.',
+    claves: 'spam posible sospechoso chrome android aviso notificacion bloqueado advertencia',
+  },
   {
     id: 'cuando', pregunta: '¿Dónde veo cuándo me toca?',
     respuesta: '• Tus clases están en «Clases de niños», dentro de tu grupo.\n• Tus predicaciones están en «Rol de predicaciones».\n\nAdemás te llegan recordatorios, y todos aparecen en el botón de avisos de arriba a la derecha del inicio.',
