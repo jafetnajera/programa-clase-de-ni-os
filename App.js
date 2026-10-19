@@ -1749,7 +1749,7 @@ const leerClaseDelWord = async (archivo) => {
 
 // Lee el nombre del archivo: 1_01_27_4_6C → clase 1, enero de 2027, grupo 4 a 6, C = contenido
 const datosDelNombre = (nombre) => {
-  const m = (nombre || '').match(/(\d+)_(\d{1,2})_(\d{2})_(\d+_\d+)\s*([CA])(?=[^A-Za-z]*\.\w+$)/i);
+    const m = (nombre || '').match(/(\d+)_(\d{1,2})_(\d{2})_(\d+_\d+)\s*([CAI])(?=[^A-Za-z]*\.\w+$)/i);
   if (!m) return null;
   const mes = parseInt(m[2], 10); const anio = 2000 + parseInt(m[3], 10);
   return {
@@ -1803,10 +1803,11 @@ const SubirContenidoClases = ({ isDark }) => {
           if (!it.contenido.titulo) it.errores.push('No encontré el título en el encabezado («Domingo 1 (…): Título»).');
           if (it.contenido.numeroEnc && it.contenido.numeroEnc !== d.numero) it.avisos.push(`El Word dice «Domingo ${it.contenido.numeroEnc}» pero el nombre dice clase ${d.numero}. Se usará la ${d.numero}.`);
         } catch (e) { it.errores.push(e.message || 'No se pudo leer el Word.'); }
-      } else {
-        if (!/\.pdf$/i.test(archivo.name)) { it.errores.push('La actividad (A) debe ser un PDF.'); continue; }
+            } else {
+        const nombreTipo = d.tipo === 'I' ? 'Las ilustraciones (I)' : 'La actividad (A)';
+        if (!/\.pdf$/i.test(archivo.name)) { it.errores.push(`${nombreTipo} debe ser un PDF.`); continue; }
         if (archivo.size > 15 * 1024 * 1024) { it.errores.push('El PDF pesa más de 15 MB.'); continue; }
-        it.actividad = archivo;
+        if (d.tipo === 'I') it.ilustraciones = archivo; else it.actividad = archivo;
       }
     }
     Object.values(porClase).forEach((it) => { if (!domingosDelMes(it.anio, it.mes - 1)[it.numero - 1]) it.errores.push(`${NOMBRES_MESES[it.mes - 1] || 'Ese mes'} ${it.anio} no tiene domingo ${it.numero}.`); });
@@ -1852,7 +1853,13 @@ const SubirContenidoClases = ({ isDark }) => {
       const ruta = `${it.clave}A.pdf`;
       const { error } = await supabase.storage.from('clases').upload(ruta, it.actividad, { contentType: 'application/pdf', upsert: true });
       if (error) throw error;
-      datos.url_pdf = `${supabase.storage.from('clases').getPublicUrl(ruta).data.publicUrl}?v=${Date.now()}`;
+            datos.url_pdf = `${supabase.storage.from('clases').getPublicUrl(ruta).data.publicUrl}?v=${Date.now()}`;
+    }
+    if (it.ilustraciones) {
+      const ruta = `${it.clave}I.pdf`;
+      const { error } = await supabase.storage.from('clases').upload(ruta, it.ilustraciones, { contentType: 'application/pdf', upsert: true });
+      if (error) throw error;
+      datos.url_ilustraciones = `${supabase.storage.from('clases').getPublicUrl(ruta).data.publicUrl}?v=${Date.now()}`;
     }
     const { data: existentes, error: errorBuscar } = await supabase.from('clases_detalle').select('id').eq('tema_id', temaId).eq('rango_edad', it.grupo).eq('numero_clase', it.numero).limit(1);
     if (errorBuscar) throw errorBuscar;
@@ -1882,7 +1889,7 @@ const SubirContenidoClases = ({ isDark }) => {
 
   return (
     <View>
-      <Text style={{ color: colors.textSub, fontSize: 13, lineHeight: 19, marginBottom: 12 }}>Elige los Word (contenido) y los PDF (actividad) de una vez. Nombre: clase_mes_año_grupo y la letra C o A. Ej. 1_01_27_4_6C.docx y 1_01_27_4_6A.pdf</Text>
+      <Text style={{ color: colors.textSub, fontSize: 13, lineHeight: 19, marginBottom: 12 }}>Elige los Word (contenido) y los PDF (actividad e ilustraciones) de una vez. Nombre: clase_mes_año_grupo y la letra C, A o I. Ej. 1_01_27_4_6C.docx, 1_01_27_4_6A.pdf y 1_01_27_4_6I.pdf</Text>
       {Platform.OS === 'web' ? (
         <input ref={inputRef} type="file" multiple accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style={{ display: 'none' }} onChange={(e) => { const lista = Array.from(e.target.files || []); e.target.value = ''; if (lista.length) elegir(lista); }} />
       ) : null}
@@ -1896,7 +1903,7 @@ const SubirContenidoClases = ({ isDark }) => {
           <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{it.contenido && it.contenido.titulo ? it.contenido.titulo : `Clase ${it.numero}`}</Text>
           <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>Clase {it.numero} • {fechaDe(it) || `${NOMBRES_MESES[it.mes - 1] || '?'} ${it.anio}`} • {it.grupo || it.codigo}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-            {[['Contenido', it.contenido, it.contenido ? `${it.contenido.secciones.length} secciones${it.contenido.totalFotos ? ` • ${it.contenido.totalFotos} fotos` : ''}` : 'sin Word'], ['Actividad', it.actividad, it.actividad ? 'PDF listo' : 'sin PDF']].map(([etq, ok, det]) => (
+            {[['Contenido', it.contenido, it.contenido ? `${it.contenido.secciones.length} secciones${it.contenido.totalFotos ? ` • ${it.contenido.totalFotos} fotos` : ''}` : 'sin Word'], ['Actividad', it.actividad, it.actividad ? 'PDF listo' : 'sin PDF'], ['Ilustraciones', it.ilustraciones, it.ilustraciones ? 'PDF listo' : 'sin PDF']].map(([etq, ok, det]) => (
               <View key={etq} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999, backgroundColor: ok ? paleta.fondo : colors.background }}>
                 <Feather name={ok ? 'check' : 'minus'} size={13} color={ok ? paleta.texto : colors.textSub} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: ok ? paleta.texto : colors.textSub }}>{etq}: {det}</Text>
@@ -2716,16 +2723,14 @@ const DiagramaCena = ({ posicion, isDark }) => {
   const W = 300;
   const FILA0 = 92;
   const PASO = 21;
-  const H = FILA0 + 14 * PASO + 24;
+    const H = FILA0 + 14 * PASO + 12;
   const xCirculo = { 5: 30, 3: 72, 1: 114, 2: 186, 4: 228, 6: 270 };
   const yFila = (f) => FILA0 + (f - 1) * PASO;
   const r = RECORRIDO_CENA[posicion];
   const izq = r && r.lado === 'izq';
+    // Solo se dibuja desde tu hilera: sale hacia tu lado del pasillo y avanza 2 hileras en tu dirección
   const puntos = r ? [
-    [xCirculo[posicion], 50],
-    [xCirculo[posicion], 66],
-    [izq ? 136 : 164, 66],
-    [izq ? 136 : 164, yFila(r.fila)],
+    [izq ? 134 : 166, yFila(r.fila)],
     [izq ? 96 : 204, yFila(r.fila)],
     [izq ? 96 : 204, yFila(r.hasta)],
   ] : [];
@@ -2750,7 +2755,8 @@ const DiagramaCena = ({ posicion, isDark }) => {
   const x = avance.interpolate({ inputRange: entradas, outputRange: puntos.map((p) => p[0] - 8) });
   const y = avance.interpolate({ inputRange: entradas, outputRange: puntos.map((p) => p[1] - 8) });
   const camino = puntos.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' ');
-  const flecha = r.hasta < r.fila ? `M${puntos[5][0] - 6} ${puntos[5][1] + 7} L${puntos[5][0]} ${puntos[5][1]} L${puntos[5][0] + 6} ${puntos[5][1] + 7}` : `M${puntos[5][0] - 6} ${puntos[5][1] - 7} L${puntos[5][0]} ${puntos[5][1]} L${puntos[5][0] + 6} ${puntos[5][1] - 7}`;
+    const fin = puntos[puntos.length - 1];
+  const flecha = r.hasta < r.fila ? `M${fin[0] - 6} ${fin[1] + 7} L${fin[0]} ${fin[1]} L${fin[0] + 6} ${fin[1] + 7}` : `M${fin[0] - 6} ${fin[1] - 7} L${fin[0]} ${fin[1]} L${fin[0] + 6} ${fin[1] - 7}`;
   return (
     <View style={{ alignSelf: 'center', width: W, height: H, marginVertical: 8 }}>
       <Svg width={W} height={H}>
@@ -2775,7 +2781,6 @@ const DiagramaCena = ({ posicion, isDark }) => {
         <Text key={f} style={{ position: 'absolute', left: 140, top: yFila(f) - 8, width: 20, textAlign: 'center', fontSize: 11, fontWeight: f === r.fila ? '800' : '500', color: f === r.fila ? colors.textMain : colors.textSub }}>{f}</Text>
       ))}
       <Animated.View style={{ position: 'absolute', left: 0, top: 0, width: 16, height: 16, borderRadius: 8, backgroundColor: paleta.texto, borderWidth: 3, borderColor: paleta.fondo, transform: [{ translateX: x }, { translateY: y }] }} />
-      <Text style={{ position: 'absolute', left: 0, right: 0, bottom: 0, textAlign: 'center', fontSize: 11, color: colors.textSub }}>15 hileras de bancas</Text>
     </View>
   );
 };
@@ -2830,7 +2835,6 @@ function CenaScreen({ navigation }) {
   const [eligiendo, setEligiendo] = useState(null);
   const [elegibles, setElegibles] = useState([]);
   const [asignando, setAsignando] = useState(false);
-  const [vistaPrevia, setVistaPrevia] = useState(1);
   const [mapaNombres, setMapaNombres] = useState({});
   const [alerta, setAlerta] = useState({ visible: false });
   const cerrarAlerta = () => setAlerta({ visible: false });
@@ -2879,7 +2883,6 @@ function CenaScreen({ navigation }) {
   });
   const tarjeta = { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, padding: 20, marginBottom: 14 };
   const instrucciones = (lista) => lista.map((t, i) => <Text key={i} style={{ color: colors.textMain, fontSize: 14, lineHeight: 21, marginTop: 6 }}>• {t}</Text>);
-  const posicionVista = confirmado && miTurno.posicion > 0 ? miTurno.posicion : vistaPrevia;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -2951,7 +2954,7 @@ function CenaScreen({ navigation }) {
                         {p === 0 ? <Feather name="book-open" size={15} color={listo ? paleta.texto : colors.textSub} /> : <Text style={{ fontWeight: '700', color: listo ? paleta.texto : colors.textSub }}>{p}</Text>}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 12, color: colors.textSub }}>{p === 0 ? 'Preside' : `Posición ${p}`}</Text>
+                                                {p === 0 ? <Text style={{ fontSize: 12, color: colors.textSub }}>Preside</Text> : null}
                         <Text style={{ fontSize: 15, fontWeight: listo ? '700' : '500', color: listo ? colors.textMain : colors.textSub, fontStyle: listo ? 'normal' : 'italic' }}>{texto}</Text>
                       </View>
                       {puedeAsignar && !listo ? (
@@ -2962,20 +2965,9 @@ function CenaScreen({ navigation }) {
                     </View>
                   );
                 })}
-                {esAdmin && !puedeAsignar ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 8 }}>El botón + para asignar a mano se habilita el sábado a las 12:00 si queda algún lugar sin confirmar.</Text> : null}
               </View>
             ) : null}
 
-            {/* El administrador puede ver el recorrido de cada posición */}
-            {esAdmin && !(confirmado && miTurno.posicion > 0) ? (
-              <View style={tarjeta}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, letterSpacing: 1 }}>RECORRIDO DE CADA POSICIÓN</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                  {[1, 2, 3, 4, 5, 6].map((p) => <BotonChico key={p} icono="map-pin" texto={`${p}`} categoria="Cena" neutro={p !== posicionVista} isDark={isDark} onPress={() => setVistaPrevia(p)} />)}
-                </View>
-                <DiagramaCena posicion={posicionVista} isDark={isDark} />
-              </View>
-            ) : null}
           </>)}
         </View>
       </ScrollView>
@@ -3651,7 +3643,8 @@ function ClaseDetalleScreen({ route, navigation }) {
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 }}>
           <BotonChico icono="life-buoy" texto="Solicitar apoyo" categoria={grupo} isDark={isDark} onPress={abrirApoyo} />
-                    {clase.url_pdf ? <BotonChico icono="download" texto="Descargar PDF" categoria={grupo} isDark={isDark} onPress={descargarPDF} /> : null}
+                                        {clase.url_pdf ? <BotonChico icono="download" texto="Actividad" categoria={grupo} isDark={isDark} onPress={descargarPDF} /> : null}
+                    {clase.url_ilustraciones ? <BotonChico icono="image" texto="Ilustraciones" categoria={grupo} isDark={isDark} onPress={() => Linking.openURL(clase.url_ilustraciones).catch(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo abrir el enlace.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }))} /> : null}
         </View>
       </ScrollView>
             <AlertaPersonalizada {...alerta} />
@@ -4940,7 +4933,7 @@ function AdminScreen({ navigation, route }) {
         </>)}
 
         {seccion === 'clases' && (<>
-                <OpcionAdmin {...opc('contenidoClases')} icono="file-text" titulo="Subir contenido de clases" subtitulo="Word con la clase y PDF con la actividad">
+                <OpcionAdmin {...opc('contenidoClases')} icono="file-text" titulo="Subir contenido de clases" subtitulo="Word con la clase y PDF de actividad e ilustraciones">
           <SubirContenidoClases isDark={isDark} />
         </OpcionAdmin>
                 <OpcionAdmin {...opc('subirClases')} icono="upload" titulo="Subir o actualizar rol de clases" subtitulo="Archivo CSV con equipos, coordinadores y grupos">
