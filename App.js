@@ -1100,6 +1100,13 @@ const IconoCena = ({ size = 24, color = '#000000' }) => (
   </Svg>
 );
 
+// Palomita de trazo (como hecha a mano) para marcar a quien ya confirmó
+const IconoCheck = ({ size = 22, color = '#6FA884' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Path fill={color} d="M2.6 13.3C3.3 12.4 4.5 12.3 5.3 13.1L9.2 17.2C12.4 12.8 16.3 8.9 20.7 5.8C21.6 5.2 22.6 6.3 21.9 7.1C17.9 11.1 14.2 15.4 11 20C10.4 20.9 9.1 21 8.4 20.2L2.9 14.6C2.6 14.2 2.4 13.7 2.6 13.3Z" />
+  </Svg>
+);
+
 const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, etiqueta, isDark, columnas, esUltima, total, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
   const m = columnas === 3
@@ -2892,8 +2899,7 @@ function CenaScreen({ navigation }) {
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 8 }}>
-            <Text style={[styles.title, { color: colors.textMain }]}>Cena del Señor</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>{fechaLargaCena(domingo)}</Text>
+                        <Text style={[styles.title, { color: colors.textMain }]}>Cena del Señor</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
@@ -2943,11 +2949,13 @@ function CenaScreen({ navigation }) {
             {/* Rol de la semana: los participantes confirmados lo ven; el administrador ve también quién está pendiente */}
             {verRol ? (
               <View style={tarjeta}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, letterSpacing: 1, marginBottom: 6 }}>ROL DE ESTE DOMINGO</Text>
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, letterSpacing: 1, marginBottom: 6 }}>{`Rol del ${fechaLargaCena(domingo).replace(',', '')}`.toUpperCase()}</Text>
                 {[0, 1, 2, 3, 4, 5, 6].map((p) => {
                   const t = turnoDe(p);
                   const listo = t && t.estado === 'confirmado';
-                  const texto = listo ? nombreDe(t.nombre_usuario) : (esAdmin && t ? `${nombreDe(t.nombre_usuario)} (esperando respuesta)` : 'Por confirmar');
+                                    // Invitado sin responder: el administrador ve su nombre opaco; los demás ven «Por confirmar»
+                  const pendiente = !listo && esAdmin && !!t;
+                  const texto = listo || pendiente ? nombreDe(t.nombre_usuario) : 'Por confirmar';
                   return (
                     <View key={p} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: p === 0 ? 0 : 1, borderTopColor: colors.cardBorder }}>
                       <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: listo ? paleta.fondo : 'transparent', borderWidth: 1.5, borderColor: listo ? paleta.fondo : colors.cardBorder, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
@@ -2955,8 +2963,9 @@ function CenaScreen({ navigation }) {
                       </View>
                       <View style={{ flex: 1 }}>
                                                 {p === 0 ? <Text style={{ fontSize: 12, color: colors.textSub }}>Preside</Text> : null}
-                        <Text style={{ fontSize: 15, fontWeight: listo ? '700' : '500', color: listo ? colors.textMain : colors.textSub, fontStyle: listo ? 'normal' : 'italic' }}>{texto}</Text>
+                                                <Text style={{ fontSize: 15, fontWeight: listo || pendiente ? '700' : '500', color: listo || pendiente ? colors.textMain : colors.textSub, fontStyle: listo || pendiente ? 'normal' : 'italic', opacity: pendiente ? 0.4 : 1 }}>{texto}</Text>
                       </View>
+                                            {listo ? <IconoCheck size={22} color={isDark ? '#8FC79F' : '#6FA884'} /> : null}
                       {puedeAsignar && !listo ? (
                         <TouchableOpacity onPress={() => abrirAsignar(p)} accessibilityLabel="Asignar" style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center' }}>
                           <Feather name="plus" size={20} color={paleta.texto} />
