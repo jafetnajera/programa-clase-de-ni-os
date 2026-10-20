@@ -589,7 +589,12 @@ const PREGUNTAS_AYUDA = [
     respuesta: 'Abre los ajustes (el engrane de arriba a la izquierda) y revisa que diga «Avisos activados».\n\n• Si dice «Activar avisos», tócalo y acepta el permiso.\n• Si dice «Avisos bloqueados», actívalos en los ajustes de tu teléfono o navegador.\n• En iPhone los avisos solo llegan si la app está instalada en tu pantalla de inicio.',
     claves: 'notificaciones alertas mensajes push suena llega celular permiso',
   },
-    {
+      {
+    id: 'instalar', pregunta: '¿Cómo instalo la app en mi celular?',
+    respuesta: '• iPhone: abre la página en Safari, toca el botón Compartir (el cuadrito con flecha hacia arriba) y elige «Agregar a inicio».\n• Android: abre la página en Chrome, toca los tres puntos ⋮ y elige «Instalar app» o «Agregar a la pantalla principal».\n\nDespués ábrela siempre desde el ícono que se creó.',
+    claves: 'descargar icono pantalla inicio iphone android safari chrome agregar instalar',
+  },
+  {
     id: 'spam', pregunta: 'Me sale «Posible spam» en un aviso',
     respuesta: 'Es una revisión automática de Chrome en Android, no un problema de la app. Para que no vuelva a salir:\n\n• Toca el aviso y elige «Ver notificación».\n• Luego toca «Permitir siempre» (o «Informar que no es spam»).\n\nSolo se hace una vez en cada celular.',
     claves: 'spam posible sospechoso chrome android aviso notificacion bloqueado advertencia',
@@ -2935,14 +2940,9 @@ function CenaScreen({ navigation }) {
                   <Text style={{ fontSize: 19, fontWeight: '800', color: colors.textMain, marginTop: 6 }}>Presides la Cena del Señor</Text>
                   {instrucciones(INSTRUCCIONES_DIRIGE)}
                 </>) : (<>
-                  <Text style={{ fontSize: 19, fontWeight: '800', color: colors.textMain, marginTop: 6 }}>Sirves en la posición {miTurno.posicion}</Text>
-                  <Text style={{ fontSize: 14, color: colors.textSub, marginTop: 4 }}>Sales en el lugar {ORDEN_SALIDA_CENA.indexOf(miTurno.posicion) + 1} de 6 y regresas en el lugar {ORDEN_REGRESO_CENA.indexOf(miTurno.posicion) + 1} de 6.</Text>
+                                    <Text style={{ fontSize: 19, fontWeight: '800', color: colors.textMain, marginTop: 6 }}>Sirves en la posición {miTurno.posicion}</Text>
                   <DiagramaCena posicion={miTurno.posicion} isDark={isDark} />
-                                    {instrucciones(INSTRUCCIONES_REPARTE)}
                 </>)}
-                <View style={{ flexDirection: 'row', marginTop: 16 }}>
-                  <BotonChico icono="x-circle" texto="Ya no puedo" peligro isDark={isDark} onPress={cancelarMiLugar} />
-                </View>
               </View>
             ) : null}
 
@@ -2965,7 +2965,12 @@ function CenaScreen({ navigation }) {
                                                 {p === 0 ? <Text style={{ fontSize: 12, color: colors.textSub }}>Preside</Text> : null}
                                                 <Text style={{ fontSize: 15, fontWeight: listo || pendiente ? '700' : '500', color: listo || pendiente ? colors.textMain : colors.textSub, fontStyle: listo || pendiente ? 'normal' : 'italic', opacity: pendiente ? 0.4 : 1 }}>{texto}</Text>
                       </View>
-                                            {listo ? <IconoCheck size={22} color={isDark ? '#8FC79F' : '#6FA884'} /> : null}
+                                                                  {listo ? <IconoCheck size={22} color={isDark ? '#8FC79F' : '#6FA884'} /> : null}
+                      {listo && miTurno && t.id === miTurno.id ? (
+                        <TouchableOpacity onPress={cancelarMiLugar} accessibilityLabel="Ya no puedo" style={{ padding: 6, marginLeft: 6 }}>
+                          <Feather name="x-circle" size={22} color="#C97A7A" />
+                        </TouchableOpacity>
+                      ) : null}
                       {puedeAsignar && !listo ? (
                         <TouchableOpacity onPress={() => abrirAsignar(p)} accessibilityLabel="Asignar" style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center' }}>
                           <Feather name="plus" size={20} color={paleta.texto} />
