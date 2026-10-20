@@ -1112,6 +1112,85 @@ const IconoCheck = ({ size = 22, color = '#6FA884' }) => (
   </Svg>
 );
 
+// ---- VISOR DE PDF: muestra las páginas dentro de la app (igual en iPhone, Android y PC) ----
+// Usa pdf.js, que se carga una sola vez desde internet la primera vez que se abre un PDF
+const cargarPdfJs = (() => {
+  let promesa = null;
+  return () => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return Promise.reject(new Error('Sin navegador'));
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (!promesa) {
+      promesa = new Promise((resolver, rechazar) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; resolver(window.pdfjsLib); };
+        s.onerror = () => { promesa = null; rechazar(new Error('No se pudo cargar el visor')); };
+        document.head.appendChild(s);
+      });
+    }
+    return promesa;
+  };
+})();
+// Enlace que fuerza la descarga del archivo (Supabase lo entiende con «download»)
+const enlaceDescarga = (url) => `${url}${url.includes('?') ? '&' : '?'}download=`;
+
+const VisorPDF = ({ url, titulo, onCerrar, isDark, categoria }) => {
+  const colors = getColors(isDark);
+  const contenedor = useRef(null);
+  const [estado, setEstado] = useState('cargando');
+  useEffect(() => {
+    if (!url) return undefined;
+    let cancelado = false;
+    setEstado('cargando');
+    (async () => {
+      try {
+        const pdfjs = await cargarPdfJs();
+        const documento = await pdfjs.getDocument(url).promise;
+        // Espera a que la ventana termine de abrir
+        for (let i = 0; i < 40 && !contenedor.current; i++) await new Promise((r) => setTimeout(r, 50));
+        const caja = contenedor.current;
+        if (cancelado || !caja) return;
+        while (caja.firstChild) caja.removeChild(caja.firstChild);
+        const ancho = Math.min(caja.clientWidth || 340, 860);
+        const ratio = window.devicePixelRatio || 1;
+        for (let n = 1; n <= documento.numPages && !cancelado; n++) {
+          const pagina = await documento.getPage(n);
+          const escala = ancho / pagina.getViewport({ scale: 1 }).width;
+          const vista = pagina.getViewport({ scale: escala * ratio });
+          const lienzo = document.createElement('canvas');
+          lienzo.width = Math.floor(vista.width);
+          lienzo.height = Math.floor(vista.height);
+          Object.assign(lienzo.style, { width: `${ancho}px`, height: `${Math.floor(vista.height / ratio)}px`, display: 'block', margin: '0 auto 12px', borderRadius: '10px', background: '#FFFFFF' });
+          caja.appendChild(lienzo);
+          await pagina.render({ canvasContext: lienzo.getContext('2d'), viewport: vista }).promise;
+          if (n === 1 && !cancelado) setEstado('listo');
+        }
+      } catch (e) {
+        if (!cancelado) setEstado('error');
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [url]);
+  return (
+    <Modal visible={!!url} transparent animationType="fade" onRequestClose={onCerrar}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+        <View style={{ width: '100%', maxWidth: 900, height: '92%', backgroundColor: colors.background, borderRadius: 28, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+            <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: colors.textMain }} numberOfLines={1}>{titulo}</Text>
+            {url ? <BotonChico icono="download" texto="Descargar" categoria={categoria} isDark={isDark} onPress={() => Linking.openURL(enlaceDescarga(url))} /> : null}
+            <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ padding: 6 }}><Feather name="x" size={24} color={colors.textSub} /></TouchableOpacity>
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+            {estado === 'cargando' ? <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} /> : null}
+            {estado === 'error' ? <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 30, paddingHorizontal: 20 }}>No se pudo mostrar la vista previa. Puedes descargar el archivo con el botón de arriba.</Text> : null}
+            <View ref={contenedor} style={{ width: '100%' }} />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, etiqueta, isDark, columnas, esUltima, total, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
   const m = columnas === 3
@@ -2937,8 +3016,7 @@ function CenaScreen({ navigation }) {
               <View style={tarjeta}>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, letterSpacing: 1 }}>TU PARTE</Text>
                 {miTurno.posicion === 0 ? (<>
-                  <Text style={{ fontSize: 19, fontWeight: '800', color: colors.textMain, marginTop: 6 }}>Presides la Cena del Señor</Text>
-                  {instrucciones(INSTRUCCIONES_DIRIGE)}
+                  <Text style={{ fontSize: 19, fontWeight: '800', color: colors.textMain, marginTop: 6 }}>Presides la Cena del Señor</Text> 
                 </>) : (<>
                                     <Text style={{ fontSize: 19, fontWeight: '800', color: colors.textMain, marginTop: 6 }}>Sirves en la posición {miTurno.posicion}</Text>
                   <DiagramaCena posicion={miTurno.posicion} isDark={isDark} />
@@ -3580,9 +3658,11 @@ function ClaseDetalleScreen({ route, navigation }) {
     });
   }
 
+    // Vista previa de los PDF (actividad e ilustraciones) dentro de la app; desde ahí se pueden descargar
+  const [verPdf, setVerPdf] = useState(null);
   function descargarPDF() {
     if (!clase.url_pdf) return setAlerta({ visible: true, titulo: "Aviso", mensaje: "Esta clase aún no tiene un PDF asignado.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main });
-    Linking.openURL(clase.url_pdf).catch(err => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo abrir el enlace.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }));
+    setVerPdf({ url: clase.url_pdf, titulo: 'Actividad' });
   }
 
       const [fotoAbierta, setFotoAbierta] = useState(null);
@@ -3658,11 +3738,12 @@ function ClaseDetalleScreen({ route, navigation }) {
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 }}>
           <BotonChico icono="life-buoy" texto="Solicitar apoyo" categoria={grupo} isDark={isDark} onPress={abrirApoyo} />
                                         {clase.url_pdf ? <BotonChico icono="download" texto="Actividad" categoria={grupo} isDark={isDark} onPress={descargarPDF} /> : null}
-                    {clase.url_ilustraciones ? <BotonChico icono="image" texto="Ilustraciones" categoria={grupo} isDark={isDark} onPress={() => Linking.openURL(clase.url_ilustraciones).catch(() => setAlerta({ visible: true, titulo: "Error", mensaje: "No se pudo abrir el enlace.", onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }))} /> : null}
+                    {clase.url_ilustraciones ? <BotonChico icono="image" texto="Ilustraciones" categoria={grupo} isDark={isDark} onPress={() => setVerPdf({ url: clase.url_ilustraciones, titulo: 'Ilustraciones' })} /> : null}
         </View>
       </ScrollView>
             <AlertaPersonalizada {...alerta} />
-      <ModalSolicitarApoyo visible={mostrarApoyo} tipoItem="clase" item={asignacion} maestrosElegibles={maestrosElegibles} usuarioPropio={usuarioActivoGlobal} isDark={isDark} onCancelar={() => setMostrarApoyo(false)} onConfirmar={enviarSolicitudClase} />
+            <ModalSolicitarApoyo visible={mostrarApoyo} tipoItem="clase" item={asignacion} maestrosElegibles={maestrosElegibles} usuarioPropio={usuarioActivoGlobal} isDark={isDark} onCancelar={() => setMostrarApoyo(false)} onConfirmar={enviarSolicitudClase} />
+      <VisorPDF url={verPdf && verPdf.url} titulo={verPdf ? verPdf.titulo : ''} onCerrar={() => setVerPdf(null)} isDark={isDark} categoria={grupo} />
             <ModalAsistencia visible={mostrarLista} onCerrar={() => setMostrarLista(false)} fecha={fechaClase} grupo={grupo} isDark={isDark} usuario={usuarioActivoGlobal} />
       <Modal visible={!!fotoAbierta} transparent animationType="fade" onRequestClose={() => setFotoAbierta(null)}>
         <TouchableOpacity activeOpacity={1} onPress={() => setFotoAbierta(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
