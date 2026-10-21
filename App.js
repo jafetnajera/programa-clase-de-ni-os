@@ -1316,12 +1316,125 @@ const enlaceDescarga = (url) => `${url}${url.includes('?') ? '&' : '?'}download=
 
 const VisorPDF = ({ url, titulo, onCerrar, isDark, categoria }) => {
   const colors = getColors(isDark);
+  const marco = useRef(null);
   const contenedor = useRef(null);
+  const documentoRef = useRef(null);
+  const anchoBase = useRef(340);
+  const zoomRef = useRef(1);
+  const turnoDibujo = useRef(0);
+  const espera = useRef(null);
+  const aplicarZoomRef = useRef(null);
   const [estado, setEstado] = useState('cargando');
+  const [zoom, setZoom] = useState(1);
+
+  // Dibuja todas las páginas con la nitidez que pide el zoom actual
+  const dibujar = async (alTerminarPrimera) => {
+    const documento = documentoRef.current;
+    const caja = contenedor.current;
+    if (!documento || !caja) return;
+    const turno = ++turnoDibujo.current;
+    const z = zoomRef.current;
+    const ratio = window.devicePixelRatio || 1;
+    for (let n = 1; n <= documento.numPages; n++) {
+      const pagina = await documento.getPage(n);
+      if (turno !== turnoDibujo.current) return;
+      const base = pagina.getViewport({ scale: 1 });
+      const escalaCss = anchoBase.current / base.width;
+      const alto = base.height * escalaCss;
+      const nitidez = Math.min(ratio * z, 2400 / anchoBase.current);
+      const vista = pagina.getViewport({ scale: escalaCss * nitidez });
+      const lienzo = document.createElement('canvas');
+      lienzo.width = Math.floor(vista.width);
+      lienzo.height = Math.floor(vista.height);
+      lienzo.dataset.alto = String(alto);
+      await pagina.render({ canvasContext: lienzo.getContext('2d'), viewport: vista }).promise;
+      if (turno !== turnoDibujo.current) return;
+      const zActual = zoomRef.current;
+      Object.assign(lienzo.style, { width: `${anchoBase.current * zActual}px`, height: `${alto * zActual}px`, display: 'block', margin: '0 auto 12px', borderRadius: '10px', background: '#FFFFFF', flexShrink: '0' });
+      const anterior = caja.children[n - 1];
+      if (anterior) caja.replaceChild(lienzo, anterior);
+      else caja.appendChild(lienzo);
+      if (n === 1 && alTerminarPrimera) alTerminarPrimera();
+    }
+  };
+
+  // Cambia el zoom (entre 100% y 400%) manteniendo en su lugar el punto que se está ampliando
+  const aplicarZoom = (valor, cx, cy) => {
+    const nuevo = Math.round(Math.min(4, Math.max(1, valor)) * 100) / 100;
+    const anterior = zoomRef.current;
+    const m = marco.current;
+    const caja = contenedor.current;
+    if (nuevo === anterior || !m || !caja) return;
+    const x = cx === undefined ? m.clientWidth / 2 : cx;
+    const y = cy === undefined ? m.clientHeight / 2 : cy;
+    Array.from(caja.children).forEach((lienzo) => {
+      lienzo.style.width = `${anchoBase.current * nuevo}px`;
+      lienzo.style.height = `${Number(lienzo.dataset.alto) * nuevo}px`;
+    });
+    m.scrollLeft = ((m.scrollLeft + x) * nuevo) / anterior - x;
+    m.scrollTop = ((m.scrollTop + y) * nuevo) / anterior - y;
+    zoomRef.current = nuevo;
+    setZoom(nuevo);
+    clearTimeout(espera.current);
+    espera.current = setTimeout(() => dibujar(), 300);
+  };
+  aplicarZoomRef.current = aplicarZoom;
+
+  // Pellizcar con dos dedos (celular y tablet) o Ctrl + rueda del ratón / pellizco en el touchpad (PC)
+  const conectarGestos = (el) => {
+    let inicio = null;
+    const distancia = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const centro = (t) => {
+      const r = el.getBoundingClientRect();
+      return [(t[0].clientX + t[1].clientX) / 2 - r.left, (t[0].clientY + t[1].clientY) / 2 - r.top];
+    };
+    el.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.touches.length === 2) inicio = { d: distancia(e.touches) || 1, z: zoomRef.current };
+      },
+      { passive: true },
+    );
+    el.addEventListener(
+      'touchmove',
+      (e) => {
+        if (e.touches.length !== 2 || !inicio) return;
+        e.preventDefault();
+        const [x, y] = centro(e.touches);
+        aplicarZoomRef.current((inicio.z * distancia(e.touches)) / inicio.d, x, y);
+      },
+      { passive: false },
+    );
+    el.addEventListener(
+      'touchend',
+      (e) => {
+        if (e.touches.length < 2) inicio = null;
+      },
+      { passive: true },
+    );
+    el.addEventListener(
+      'wheel',
+      (e) => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        const r = el.getBoundingClientRect();
+        aplicarZoomRef.current(zoomRef.current * Math.exp(-e.deltaY / 200), e.clientX - r.left, e.clientY - r.top);
+      },
+      { passive: false },
+    );
+  };
+  const refMarco = (el) => {
+    if (el && el !== marco.current) conectarGestos(el);
+    marco.current = el;
+  };
+
   useEffect(() => {
     if (!url) return undefined;
     let cancelado = false;
     setEstado('cargando');
+    zoomRef.current = 1;
+    setZoom(1);
+    documentoRef.current = null;
     (async () => {
       try {
         const pdfjs = await cargarPdfJs();
@@ -1331,28 +1444,23 @@ const VisorPDF = ({ url, titulo, onCerrar, isDark, categoria }) => {
         const caja = contenedor.current;
         if (cancelado || !caja) return;
         while (caja.firstChild) caja.removeChild(caja.firstChild);
-        const ancho = Math.min(caja.clientWidth || 340, 860);
-        const ratio = window.devicePixelRatio || 1;
-        for (let n = 1; n <= documento.numPages && !cancelado; n++) {
-          const pagina = await documento.getPage(n);
-          const escala = ancho / pagina.getViewport({ scale: 1 }).width;
-          const vista = pagina.getViewport({ scale: escala * ratio });
-          const lienzo = document.createElement('canvas');
-          lienzo.width = Math.floor(vista.width);
-          lienzo.height = Math.floor(vista.height);
-          Object.assign(lienzo.style, { width: `${ancho}px`, height: `${Math.floor(vista.height / ratio)}px`, display: 'block', margin: '0 auto 12px', borderRadius: '10px', background: '#FFFFFF' });
-          caja.appendChild(lienzo);
-          await pagina.render({ canvasContext: lienzo.getContext('2d'), viewport: vista }).promise;
-          if (n === 1 && !cancelado) setEstado('listo');
-        }
+        anchoBase.current = Math.min(caja.clientWidth || 340, 860);
+        documentoRef.current = documento;
+        await dibujar(() => {
+          if (!cancelado) setEstado('listo');
+        });
       } catch (e) {
         if (!cancelado) setEstado('error');
       }
     })();
     return () => {
       cancelado = true;
+      turnoDibujo.current++;
+      clearTimeout(espera.current);
     };
   }, [url]);
+
+  const botonZoom = { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' };
   return (
     <Modal visible={!!url} transparent animationType="fade" onRequestClose={onCerrar}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
@@ -1366,11 +1474,24 @@ const VisorPDF = ({ url, titulo, onCerrar, isDark, categoria }) => {
               <Feather name="x" size={24} color={colors.textSub} />
             </TouchableOpacity>
           </View>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+          <View ref={refMarco} style={{ flex: 1, overflow: 'auto', padding: 12 }}>
             {estado === 'cargando' ? <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} /> : null}
             {estado === 'error' ? <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 30, paddingHorizontal: 20 }}>No se pudo mostrar la vista previa. Puedes descargar el archivo con el botón de arriba.</Text> : null}
-            <View ref={contenedor} style={{ width: '100%' }} />
-          </ScrollView>
+            <View ref={contenedor} style={{ width: '100%', flexShrink: 0 }} />
+          </View>
+          {estado === 'listo' ? (
+            <View style={{ position: 'absolute', right: 16, bottom: 16, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 999, padding: 4, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 10 }}>
+              <TouchableOpacity onPress={() => aplicarZoom(zoom / 1.25)} accessibilityLabel="Alejar" style={[botonZoom, { opacity: zoom <= 1 ? 0.35 : 1 }]}>
+                <Feather name="minus" size={20} color={colors.textMain} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => aplicarZoom(1)} accessibilityLabel="Tamaño original" style={{ minWidth: 52, alignItems: 'center' }}>
+                <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 13 }}>{Math.round(zoom * 100)}%</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => aplicarZoom(zoom * 1.25)} accessibilityLabel="Acercar" style={[botonZoom, { opacity: zoom >= 4 ? 0.35 : 1 }]}>
+                <Feather name="plus" size={20} color={colors.textMain} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -1429,20 +1550,20 @@ const BotonChico = ({ icono, texto, onPress, categoria, isDark, neutro, peligro 
 };
 
 // Tarjeta para listas (temario y clases): mismo estilo redondeado que las del menú
-const TarjetaLista = ({ icono, titulo, subtitulo, detalle, asignado, etiqueta, categoria, isDark, ancho, onPress }) => {
+const TarjetaLista = ({ icono, numero, titulo, subtitulo, detalle, asignado, etiqueta, categoria, isDark, ancho, onPress }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Niños'];
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={{ width: ancho || '100%', borderRadius: 38, backgroundColor: paleta.fondo, overflow: 'hidden', paddingVertical: 18, paddingHorizontal: 22, marginBottom: 14 }}>
       <View style={{ pointerEvents: 'none', position: 'absolute', right: -50, top: -60, width: 160, height: 160, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.30)' }} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isDark ? 'rgba(255,255,255,0.50)' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-          <Feather name={icono} size={22} color={paleta.texto} />
+                    {numero ? <Text style={{ fontSize: 20, fontWeight: '800', color: paleta.texto }}>{numero}</Text> : <Feather name={icono} size={22} color={paleta.texto} />}
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
-          {subtitulo ? (
+                    {subtitulo || etiqueta ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 3 }}>
-              <Text style={{ fontSize: 13, fontWeight: '500', color: paleta.texto }}>{subtitulo}</Text>
+              {subtitulo ? <Text style={{ fontSize: 13, fontWeight: '500', color: paleta.texto }}>{subtitulo}</Text> : null}
               {etiqueta ? (
                 <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.70)', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 999 }}>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: paleta.texto }}>{etiqueta}</Text>
@@ -3921,12 +4042,7 @@ function ClasesScreen({ route, navigation }) {
   const [filasMes, setFilasMes] = useState([]);
   const [pendientesIds, setPendientesIds] = useState([]);
   const enfocada = useIsFocused();
-  const fechaBonitaDeClase = (c) => {
-    const f = fechaDeClase(c);
-    if (!f) return `Clase ${c.numero_clase}`;
-    const t = new Date(f + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
-    return t.charAt(0).toUpperCase() + t.slice(1);
-  };
+  <TarjetaLista key={clase.id} icono={clase.pendiente ? 'clock' : 'book-open'} titulo={clase.titulo_clase} subtitulo={fechaBonitaDeClase(clase)} detalle={clase.pendiente ? 'Contenido pendiente' : clase.texto_base ? `Base: ${clase.texto_base}` : null}
   const apoyoPendiente = (c) => {
     const fecha = fechaDeClase(c);
     return filasMes.some((r) => r.fecha === fecha && pendientesIds.includes(r.id));
@@ -4024,7 +4140,7 @@ function ClasesScreen({ route, navigation }) {
             ) : (
               <View style={columnas >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
                 {clasesVisibles.map((clase) => (
-                  <TarjetaLista key={clase.id} icono={clase.pendiente ? 'clock' : 'book-open'} titulo={clase.titulo_clase} subtitulo={fechaBonitaDeClase(clase)} detalle={clase.pendiente ? 'Contenido pendiente' : clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} etiqueta={yaPaso(clase) ? 'Ya pasó' : apoyoPendiente(clase) ? 'Apoyo pendiente' : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
+                  <TarjetaLista key={clase.id} numero={clase.numero_clase} titulo={clase.pendiente ? 'Contenido pendiente' : clase.titulo_clase} detalle={!clase.pendiente && clase.texto_base ? `Base: ${clase.texto_base}` : null} asignado={textoAsignado(clase)} etiqueta={yaPaso(clase) ? 'Ya pasó' : apoyoPendiente(clase) ? 'Apoyo pendiente' : null} categoria={grupo} isDark={isDark} ancho={columnas >= 2 ? '48.5%' : '100%'} onPress={() => navigation.navigate('ClaseDetalle', { clase, tema, grupo })} />
                 ))}
               </View>
             )}
