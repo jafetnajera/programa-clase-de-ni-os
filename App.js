@@ -4042,7 +4042,8 @@ function ClasesScreen({ route, navigation }) {
   const [filasMes, setFilasMes] = useState([]);
   const [pendientesIds, setPendientesIds] = useState([]);
   const enfocada = useIsFocused();
-  <TarjetaLista key={clase.id} icono={clase.pendiente ? 'clock' : 'book-open'} titulo={clase.titulo_clase} subtitulo={fechaBonitaDeClase(clase)} detalle={clase.pendiente ? 'Contenido pendiente' : clase.texto_base ? `Base: ${clase.texto_base}` : null}
+    const enfocada = useIsFocused();
+  const apoyoPendiente = (c) => {
   const apoyoPendiente = (c) => {
     const fecha = fechaDeClase(c);
     return filasMes.some((r) => r.fecha === fecha && pendientesIds.includes(r.id));
