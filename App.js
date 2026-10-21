@@ -4041,9 +4041,7 @@ function ClasesScreen({ route, navigation }) {
   const clasesVisibles = fechasPermitidas ? clasesDelMes.filter((c) => fechasPermitidas.includes(fechaDeClase(c)) && !yaPaso(c)) : clasesDelMes;
   const [filasMes, setFilasMes] = useState([]);
   const [pendientesIds, setPendientesIds] = useState([]);
-  const enfocada = useIsFocused();
     const enfocada = useIsFocused();
-  const apoyoPendiente = (c) => {
   const apoyoPendiente = (c) => {
     const fecha = fechaDeClase(c);
     return filasMes.some((r) => r.fecha === fecha && pendientesIds.includes(r.id));
