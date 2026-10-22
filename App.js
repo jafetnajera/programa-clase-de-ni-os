@@ -304,6 +304,8 @@ const linking = {
       Admin: 'admin',
       TodosUsuarios: 'todos-usuarios',
       DetalleUsuario: 'detalle-usuario',
+      ResumenAsistencia: 'resumen-asistencia',
+      ResumenCena: 'resumen-cena',
     },
   },
 };
@@ -1556,12 +1558,10 @@ const TarjetaLista = ({ icono, numero, titulo, subtitulo, detalle, asignado, eti
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={{ width: ancho || '100%', borderRadius: 38, backgroundColor: paleta.fondo, overflow: 'hidden', paddingVertical: 18, paddingHorizontal: 22, marginBottom: 14 }}>
       <View style={{ pointerEvents: 'none', position: 'absolute', right: -50, top: -60, width: 160, height: 160, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.30)' }} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isDark ? 'rgba(255,255,255,0.50)' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-                    {numero ? <Text style={{ fontSize: 20, fontWeight: '800', color: paleta.texto }}>{numero}</Text> : <Feather name={icono} size={22} color={paleta.texto} />}
-        </View>
+        <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: isDark ? 'rgba(255,255,255,0.50)' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>{numero ? <Text style={{ fontSize: 20, fontWeight: '800', color: paleta.texto }}>{numero}</Text> : <Feather name={icono} size={22} color={paleta.texto} />}</View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 18, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
-                    {subtitulo || etiqueta ? (
+          {subtitulo || etiqueta ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 3 }}>
               {subtitulo ? <Text style={{ fontSize: 13, fontWeight: '500', color: paleta.texto }}>{subtitulo}</Text> : null}
               {etiqueta ? (
@@ -1589,12 +1589,12 @@ const SECCIONES_ADMIN = {
 };
 
 // Opción plegable del panel de administración: se abre al tocarla y se cierra al tocarla otra vez
-const OpcionAdmin = ({ id, titulo, subtitulo, icono, abierta, onAlternar, categoria, isDark, children }) => {
+const OpcionAdmin = ({ id, titulo, subtitulo, icono, abierta, onAlternar, onPress, categoria, isDark, children }) => {
   const colors = getColors(isDark);
   const p = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
   return (
     <View style={{ backgroundColor: abierta ? p.fondo + (isDark ? '26' : '40') : colors.cardBg, borderWidth: 1.5, borderColor: abierta ? p.fondo : colors.cardBorder, borderRadius: 28, marginBottom: 12, overflow: 'hidden' }}>
-      <TouchableOpacity activeOpacity={0.8} onPress={() => onAlternar(id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 16 }}>
+      <TouchableOpacity activeOpacity={0.8} onPress={() => (onPress ? onPress() : onAlternar(id))} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 16 }}>
         <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: p.fondo, alignItems: 'center', justifyContent: 'center' }}>
           <Feather name={icono} size={19} color={p.texto} />
         </View>
@@ -1602,7 +1602,7 @@ const OpcionAdmin = ({ id, titulo, subtitulo, icono, abierta, onAlternar, catego
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain }}>{titulo}</Text>
           {subtitulo ? <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>{subtitulo}</Text> : null}
         </View>
-        <Feather name={abierta ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSub} />
+        <Feather name={onPress ? 'chevron-right' : abierta ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSub} />
       </TouchableOpacity>
       {abierta ? <View style={{ paddingHorizontal: 18, paddingBottom: 18, paddingTop: 4 }}>{children}</View> : null}
     </View>
@@ -4041,7 +4041,7 @@ function ClasesScreen({ route, navigation }) {
   const clasesVisibles = fechasPermitidas ? clasesDelMes.filter((c) => fechasPermitidas.includes(fechaDeClase(c)) && !yaPaso(c)) : clasesDelMes;
   const [filasMes, setFilasMes] = useState([]);
   const [pendientesIds, setPendientesIds] = useState([]);
-    const enfocada = useIsFocused();
+  const enfocada = useIsFocused();
   const apoyoPendiente = (c) => {
     const fecha = fechaDeClase(c);
     return filasMes.some((r) => r.fecha === fecha && pendientesIds.includes(r.id));
@@ -5884,6 +5884,7 @@ function AdminScreen({ navigation, route }) {
                 </View>
               )}
             </OpcionAdmin>
+            <OpcionAdmin {...opc('resumenCena')} icono="bar-chart-2" titulo="Resumen de la Cena del Señor" subtitulo="Participación y respuestas a las invitaciones" onPress={() => navigation.navigate('ResumenCena')} />
           </>
         )}
 
@@ -5999,6 +6000,7 @@ function AdminScreen({ navigation, route }) {
                 </View>
               )}
             </OpcionAdmin>
+            <OpcionAdmin {...opc('resumenAsistencia')} icono="bar-chart-2" titulo="Resumen de asistencia" subtitulo="Gráficas por mes y por grupo" onPress={() => navigation.navigate('ResumenAsistencia')} />
             <OpcionAdmin {...opc('asistencia')} icono="download" titulo="Descargar asistencia" subtitulo="En CSV, de un grupo o de todos juntos">
               <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Descarga la asistencia en CSV: de un grupo o de todos juntos.</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
@@ -6039,6 +6041,605 @@ function AdminScreen({ navigation, route }) {
 // ==========================================
 // NAVEGADOR PRINCIPAL Y PROVIDER
 // ==========================================
+// ==========================================
+// RESÚMENES PARA EL ADMINISTRADOR (asistencia y Cena del Señor)
+// ==========================================
+const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const inicialesDe = (n) =>
+  (n || '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p.charAt(0).toUpperCase())
+    .join('');
+const fechaCorta = (f) => {
+  const d = new Date(f + 'T00:00:00');
+  return `${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()}`;
+};
+const fechaLarga = (f) => {
+  const d = new Date(f + 'T00:00:00');
+  return `${d.getDate()} de ${NOMBRES_MESES[d.getMonth()].toLowerCase()}`;
+};
+const claveMes = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+// Ancho de cada tarjeta: 1 columna en celular, 2 en tablet y 3 en PC (las anchas ocupan 2)
+const anchoTarjeta = (columnas, ancha) => (columnas === 1 ? '100%' : columnas === 2 ? (ancha ? '100%' : '49.3%') : ancha ? '66.2%' : '32.4%');
+
+const EncabezadoResumen = ({ titulo, subtitulo, categoria, navigation, isDark, columnas }) => {
+  const colors = getColors(isDark);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, width: '95%', maxWidth: columnas >= 2 ? 1100 : 850 }}>
+      <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Admin'))} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
+        <Feather name="arrow-left" size={22} color={colors.textSub} />
+      </TouchableOpacity>
+      <View style={[styles.headerSoloText, { flex: 1 }]}>
+        <Text style={[styles.titleMini, { color: colors.textMain }]}>{titulo.toUpperCase()}</Text>
+        <Text style={[styles.subtitle, { color: getThemeColors(categoria, isDark).textDark }]}>{subtitulo}</Text>
+      </View>
+      <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+        <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const PildorasResumen = ({ opciones, valor, onCambiar, categoria, isDark }) => {
+  const colors = getColors(isDark);
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }} style={{ marginBottom: 14, flexGrow: 0 }}>
+      {opciones.map((o) => {
+        const activa = o.valor === valor;
+        return (
+          <TouchableOpacity key={o.valor} onPress={() => onCambiar(o.valor)} style={{ paddingVertical: 9, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: activa ? p.fondo : colors.cardBorder, backgroundColor: activa ? p.fondo : colors.cardBg }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: activa ? p.texto : colors.textSub }}>{o.texto}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+};
+
+const DatoResumen = ({ valor, etiqueta, detalle, categoria, isDark }) => {
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
+  return (
+    <View style={{ flex: 1, backgroundColor: p.fondo, borderRadius: 28, paddingVertical: 16, paddingHorizontal: 14 }}>
+      <Text style={{ fontSize: 30, fontWeight: '800', letterSpacing: -1, color: p.texto }}>{valor}</Text>
+      <Text style={{ fontSize: 12.5, fontWeight: '700', color: p.texto, marginTop: 2 }}>{etiqueta}</Text>
+      {detalle ? <Text style={{ fontSize: 11.5, color: p.texto, opacity: 0.85, marginTop: 6 }}>{detalle}</Text> : null}
+    </View>
+  );
+};
+
+const TarjetaResumen = ({ titulo, subtitulo, ancho, isDark, children }) => {
+  const colors = getColors(isDark);
+  return (
+    <View style={{ width: ancho, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, padding: 18, marginBottom: 14 }}>
+      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain }}>{titulo}</Text>
+      {subtitulo ? <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 3, marginBottom: 12 }}>{subtitulo}</Text> : null}
+      {children}
+    </View>
+  );
+};
+
+const FilaResumen = ({ avatar, nombre, detalle, etiqueta, categoria, isDark, primera }) => {
+  const colors = getColors(isDark);
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Clases de niños'];
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopWidth: primera ? 0 : 1, borderTopColor: colors.cardBorder }}>
+      <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: p.fondo, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: p.texto }}>{avatar}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textMain }} numberOfLines={1}>
+          {nombre}
+        </Text>
+        {detalle ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 1 }}>{detalle}</Text> : null}
+      </View>
+      {etiqueta ? (
+        <View style={{ backgroundColor: colors.background, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSub }}>{etiqueta}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+};
+
+const SinDatosResumen = ({ texto, isDark }) => <Text style={{ fontSize: 13, color: getColors(isDark).textSub, paddingVertical: 8 }}>{texto}</Text>;
+
+// Barras apiladas: una columna por domingo, un color por grupo
+const BarrasApiladas = ({ columnas, isDark }) => {
+  const colors = getColors(isDark);
+  const alto = 170;
+  const mayor = Math.max(1, ...columnas.map((c) => c.valores.reduce((a, v) => a + v.valor, 0)));
+  const paso = mayor <= 20 ? 5 : mayor <= 60 ? 10 : 25;
+  const tope = Math.ceil((mayor * 1.12) / paso) * paso;
+  const lineas = [0, tope / 2, tope];
+  return (
+    <View style={{ height: alto + 26, marginTop: 8 }}>
+      {lineas.map((v) => (
+        <View key={v} style={{ position: 'absolute', left: 0, right: 0, top: alto - (v / tope) * alto, flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ width: 24, fontSize: 10, color: colors.textSub, marginTop: -6 }}>{Math.round(v)}</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: colors.cardBorder }} />
+        </View>
+      ))}
+      <View style={{ position: 'absolute', left: 28, right: 0, top: 0, height: alto + 26, flexDirection: 'row' }}>
+        {columnas.map((c) => {
+          const total = c.valores.reduce((a, v) => a + v.valor, 0);
+          return (
+            <View key={c.etiqueta} style={{ flex: 1, alignItems: 'center' }}>
+              <View style={{ height: alto, justifyContent: 'flex-end', alignItems: 'center', width: '64%', maxWidth: 64 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMain, marginBottom: 4 }}>{total}</Text>
+                {c.valores
+                  .filter((v) => v.valor > 0)
+                  .reverse()
+                  .map((v, i) => (
+                    <View key={i} style={{ width: '100%', height: Math.max(3, (v.valor / tope) * alto - 2), marginTop: 2, borderRadius: 6, backgroundColor: v.color }} />
+                  ))}
+              </View>
+              <Text style={{ fontSize: 11, color: colors.textSub, marginTop: 6 }}>{c.etiqueta}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+};
+
+// Línea con área: tendencia de varios meses
+const LineaResumen = ({ puntos, color, isDark }) => {
+  const colors = getColors(isDark);
+  const [ancho, setAncho] = useState(0);
+  const alto = 130;
+  const valores = puntos.map((p) => p.valor);
+  const max = Math.max(...valores, 1);
+  const min = Math.min(...valores);
+  const rango = Math.max(1, max - min);
+  const x = (i) => 18 + (i * (ancho - 36)) / Math.max(1, puntos.length - 1);
+  const y = (v) => 24 + (alto - 24) * (1 - (v - min) / rango) * 0.85;
+  const trazo = puntos.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i)} ${y(p.valor)}`).join(' ');
+  return (
+    <View onLayout={(e) => setAncho(e.nativeEvent.layout.width)} style={{ height: alto + 26, marginTop: 6 }}>
+      {ancho > 0 ? (
+        <>
+          <Svg width={ancho} height={alto} style={{ position: 'absolute', left: 0, top: 0 }}>
+            <Path d={`${trazo} L${x(puntos.length - 1)} ${alto} L${x(0)} ${alto} Z`} fill={color} opacity={0.18} />
+            <Path d={trazo} fill="none" stroke={color} strokeWidth={3} strokeLinejoin="round" />
+            {puntos.map((p, i) => (
+              <Circle key={i} cx={x(i)} cy={y(p.valor)} r={4.5} fill={color} />
+            ))}
+          </Svg>
+          {puntos.map((p, i) => (
+            <React.Fragment key={i}>
+              <Text style={{ position: 'absolute', left: x(i) - 22, width: 44, textAlign: 'center', top: y(p.valor) - 22, fontSize: 11, fontWeight: '800', color: colors.textMain }}>{p.valor}</Text>
+              <Text style={{ position: 'absolute', left: x(i) - 22, width: 44, textAlign: 'center', top: alto + 6, fontSize: 11, color: colors.textSub }}>{p.etiqueta}</Text>
+            </React.Fragment>
+          ))}
+        </>
+      ) : null}
+    </View>
+  );
+};
+
+// Cálculos del resumen de asistencia para un mes y un grupo ("Todos" = todos los grupos)
+const calcularAsistencia = (filas, mes, grupo) => {
+  const delGrupo = grupo === 'Todos' ? filas : filas.filter((f) => f.grupo === grupo);
+  const enMes = (f, d) => f.fecha.slice(0, 7) === claveMes(d);
+  // Promedio de niños por domingo (solo cuenta los domingos en que se tomó lista)
+  const promedioDe = (lista) => {
+    const fechas = new Set(lista.map((f) => f.fecha));
+    return fechas.size ? lista.length / fechas.size : 0;
+  };
+  const delMes = delGrupo.filter((f) => enMes(f, mes));
+  const anterior = new Date(mes.getFullYear(), mes.getMonth() - 1, 1);
+  const promedio = promedioDe(delMes);
+  const promedioAnterior = promedioDe(delGrupo.filter((f) => enMes(f, anterior)));
+  const nombreDe = (f) => ponerMayusculas((f.ninos && f.ninos.nombre_completo) || 'Sin nombre');
+  // Niños nuevos: su primera asistencia registrada (en cualquier grupo) cae en este mes
+  const primera = {};
+  filas.forEach((f) => {
+    if (!primera[f.nino_id] || f.fecha < primera[f.nino_id].fecha) primera[f.nino_id] = f;
+  });
+  const nuevos = Object.values(primera)
+    .filter((f) => enMes(f, mes) && (grupo === 'Todos' || f.grupo === grupo))
+    .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+    .map((f) => ({ nombre: nombreDe(f), grupo: f.grupo, fecha: f.fecha }));
+  const grupos = grupo === 'Todos' ? ORDEN_GRUPOS : [grupo];
+  const fechas = [...new Set(delMes.map((f) => f.fecha))].sort();
+  const porDomingo = fechas.map((fe) => ({ fecha: fe, porGrupo: grupos.map((g) => ({ grupo: g, valor: delMes.filter((f) => f.fecha === fe && f.grupo === g).length })) }));
+  const porGrupo = grupos.map((g) => ({ grupo: g, valor: Math.round(promedioDe(delMes.filter((f) => f.grupo === g))) })).filter((x) => x.valor > 0 || grupo !== 'Todos');
+  const seisMeses = [5, 4, 3, 2, 1, 0].map((k) => {
+    const d = new Date(mes.getFullYear(), mes.getMonth() - k, 1);
+    return { etiqueta: MESES_CORTOS[d.getMonth()], valor: Math.round(promedioDe(delGrupo.filter((f) => enMes(f, d)))) };
+  });
+  // Dejaron de venir: vinieron 3 veces o más en los 8 domingos anteriores y faltaron los últimos 3
+  const finMes = fechaISO(new Date(mes.getFullYear(), mes.getMonth() + 1, 0));
+  const fechasHasta = [...new Set(delGrupo.filter((f) => f.fecha <= finMes).map((f) => f.fecha))].sort();
+  const ultimas = fechasHasta.slice(-3);
+  const previas = fechasHasta.slice(-11, -3);
+  let dejaron = [];
+  if (ultimas.length === 3 && previas.length >= 4) {
+    const porNino = {};
+    delGrupo.forEach((f) => {
+      if (f.fecha > finMes) return;
+      const p = (porNino[f.nino_id] = porNino[f.nino_id] || { nombre: nombreDe(f), grupo: f.grupo, ultima: f.fecha, previas: 0, recientes: 0 });
+      if (f.fecha >= p.ultima) {
+        p.ultima = f.fecha;
+        p.grupo = f.grupo;
+      }
+      if (previas.includes(f.fecha)) p.previas++;
+      if (ultimas.includes(f.fecha)) p.recientes++;
+    });
+    dejaron = Object.values(porNino)
+      .filter((p) => p.previas >= 3 && p.recientes === 0)
+      .sort((a, b) => b.previas - a.previas);
+  }
+  return { promedio, promedioAnterior, distintos: new Set(delMes.map((f) => f.nino_id)).size, nuevos, porDomingo, porGrupo, seisMeses, dejaron, anterior };
+};
+
+function ResumenAsistenciaScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
+  const [filas, setFilas] = useState(null);
+  const [error, setError] = useState(false);
+  const [mes, setMes] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [grupo, setGrupo] = useState('Todos');
+  useEffect(() => {
+    traerTodo(() => supabase.from('asistencia_clases').select('id, fecha, grupo, nino_id, ninos(nombre_completo)').order('fecha', { ascending: true }).order('id', { ascending: true }))
+      .then(setFilas)
+      .catch(() => setError(true));
+  }, []);
+  const cambiarMes = (n) => setMes(new Date(mes.getFullYear(), mes.getMonth() + n, 1));
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const d = filas ? calcularAsistencia(filas, mes, grupo) : null;
+  let comparacion = 'por domingo con lista';
+  if (d && d.promedioAnterior > 0) {
+    const cambio = Math.round(((d.promedio - d.promedioAnterior) / d.promedioAnterior) * 100);
+    const mesAnt = NOMBRES_MESES[d.anterior.getMonth()].toLowerCase();
+    comparacion = cambio === 0 ? `Igual que ${mesAnt}` : `${cambio > 0 ? '▲' : '▼'} ${Math.abs(cambio)}% vs ${mesAnt}`;
+  }
+  const nombreMes = `${NOMBRES_MESES[mes.getMonth()]} ${mes.getFullYear()}`;
+  const flecha = { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.cardBg, alignItems: 'center', justifyContent: 'center' };
+  const mostrarLista = (lista, armar) => (
+    <>
+      {lista.slice(0, 8).map(armar)}
+      {lista.length > 8 ? <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 6 }}>y {lista.length - 8} más</Text> : null}
+    </>
+  );
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <EncabezadoResumen titulo="Asistencia" subtitulo="Clases de niños" categoria="Clases de niños" navigation={navigation} isDark={isDark} columnas={columnas} />
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
+        <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850 }}>
+          {!esAdmin ? (
+            <SinDatosResumen texto="Esta sección es solo para administradores." isDark={isDark} />
+          ) : (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginVertical: 10 }}>
+                <TouchableOpacity onPress={() => cambiarMes(-1)} style={flecha} accessibilityLabel="Mes anterior">
+                  <Feather name="chevron-left" size={18} color={colors.textSub} />
+                </TouchableOpacity>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.textMain, minWidth: 150, textAlign: 'center' }}>{nombreMes}</Text>
+                <TouchableOpacity onPress={() => cambiarMes(1)} style={flecha} accessibilityLabel="Mes siguiente">
+                  <Feather name="chevron-right" size={18} color={colors.textSub} />
+                </TouchableOpacity>
+              </View>
+              <PildorasResumen opciones={['Todos', ...ORDEN_GRUPOS].map((g) => ({ valor: g, texto: g }))} valor={grupo} onCambiar={setGrupo} categoria="Clases de niños" isDark={isDark} />
+              {error ? (
+                <SinDatosResumen texto="No se pudo cargar la asistencia. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
+              ) : !d ? (
+                <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                    <DatoResumen valor={Math.round(d.promedio)} etiqueta="Promedio por domingo" detalle={comparacion} categoria="Clases de niños" isDark={isDark} />
+                    <DatoResumen valor={d.distintos} etiqueta="Niños distintos" detalle="en el mes" categoria="Calendario" isDark={isDark} />
+                    <DatoResumen valor={d.nuevos.length} etiqueta="Niños nuevos" detalle={`llegaron en ${NOMBRES_MESES[mes.getMonth()].toLowerCase()}`} categoria="Usuarios" isDark={isDark} />
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    <TarjetaResumen titulo="Niños por domingo" subtitulo="Cuántos niños vinieron cada domingo del mes" ancho={anchoTarjeta(columnas, true)} isDark={isDark}>
+                      {d.porDomingo.length === 0 ? (
+                        <SinDatosResumen texto="Todavía no hay lista tomada en este mes." isDark={isDark} />
+                      ) : (
+                        <>
+                          <BarrasApiladas columnas={d.porDomingo.map((x) => ({ etiqueta: fechaCorta(x.fecha), valores: x.porGrupo.map((g) => ({ valor: g.valor, color: (paleta[g.grupo] || paleta['Niños']).fondo })) }))} isDark={isDark} />
+                          {grupo === 'Todos' ? (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
+                              {ORDEN_GRUPOS.map((g) => (
+                                <View key={g} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                  <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: paleta[g].fondo }} />
+                                  <Text style={{ fontSize: 11.5, color: colors.textSub }}>{g}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : null}
+                        </>
+                      )}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Promedio por grupo" subtitulo={`Niños por domingo en ${NOMBRES_MESES[mes.getMonth()].toLowerCase()}`} ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.porGrupo.length === 0 ? (
+                        <SinDatosResumen texto="Sin datos en este mes." isDark={isDark} />
+                      ) : (
+                        d.porGrupo.map((g) => {
+                          const mayor = Math.max(...d.porGrupo.map((x) => x.valor), 1);
+                          return (
+                            <View key={g.grupo} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 6 }}>
+                              <Text style={{ width: 118, fontSize: 13, fontWeight: '600', color: colors.textMain }}>{g.grupo}</Text>
+                              <View style={{ flex: 1, height: 12, borderRadius: 99, backgroundColor: colors.background, overflow: 'hidden' }}>
+                                <View style={{ width: `${(g.valor / mayor) * 100}%`, height: '100%', borderRadius: 99, backgroundColor: (paleta[g.grupo] || paleta['Niños']).fondo }} />
+                              </View>
+                              <Text style={{ width: 30, textAlign: 'right', fontSize: 13, fontWeight: '700', color: colors.textMain }}>{g.valor}</Text>
+                            </View>
+                          );
+                        })
+                      )}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Últimos 6 meses" subtitulo="Promedio de niños por domingo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <LineaResumen puntos={d.seisMeses} color={isDark ? '#8FB9B1' : '#6FA79D'} isDark={isDark} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Dejaron de venir" subtitulo="Venían seguido y faltaron los últimos 3 domingos" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.dejaron.length === 0 ? <SinDatosResumen texto="Nadie por ahora." isDark={isDark} /> : mostrarLista(d.dejaron, (n, i) => <FilaResumen key={n.nombre + i} primera={i === 0} avatar={inicialesDe(n.nombre)} nombre={n.nombre} detalle={n.grupo} etiqueta={`Último: ${fechaCorta(n.ultima)}`} categoria={n.grupo} isDark={isDark} />)}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Llegaron este mes" subtitulo="Primera vez que se registran" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.nuevos.length === 0 ? <SinDatosResumen texto="Nadie nuevo este mes." isDark={isDark} /> : mostrarLista(d.nuevos, (n, i) => <FilaResumen key={n.nombre + i} primera={i === 0} avatar={inicialesDe(n.nombre)} nombre={n.nombre} detalle={n.grupo} etiqueta={fechaCorta(n.fecha)} categoria={n.grupo} isDark={isDark} />)}
+                    </TarjetaResumen>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// Cálculos del resumen de la Cena del Señor entre dos fechas
+const calcularCena = (turnos, maestros, desde, hasta) => {
+  const enRango = turnos.filter((t) => t.fecha >= desde && t.fecha <= hasta);
+  const nombres = {};
+  maestros.forEach((m) => {
+    nombres[(m.nombre_usuario || '').toLowerCase()] = ponerMayusculas(m.nombre_completo || m.nombre_usuario);
+  });
+  const nombreDe = (u) => nombres[(u || '').toLowerCase()] || u;
+  const fechas = [...new Set(enRango.map((t) => t.fecha))].sort();
+  const completos = fechas.filter((f) => enRango.filter((t) => t.fecha === f && t.estado === 'confirmado').length >= 7).length;
+  // Cada lugar (domingo + posición) con sus invitaciones en orden
+  const lugares = {};
+  enRango.forEach((t) => {
+    (lugares[`${t.fecha}|${t.posicion}`] = lugares[`${t.fecha}|${t.posicion}`] || []).push(t);
+  });
+  const resueltos = Object.values(lugares).filter((l) => l.some((t) => t.estado !== 'invitado'));
+  const alaPrimera = resueltos.filter((l) => {
+    const primero = [...l].sort((a, b) => a.id - b.id)[0];
+    return primero.estado === 'confirmado' && !primero.asignado_por;
+  }).length;
+  const manuales = enRango.filter((t) => t.asignado_por);
+  const invitaciones = enRango.filter((t) => !t.asignado_por && t.estado !== 'invitado');
+  const acepto = invitaciones.filter((t) => t.estado === 'confirmado').length;
+  const declino = invitaciones.filter((t) => t.estado === 'declinado').length;
+  const sinRespuesta = invitaciones.length - acepto - declino;
+  // Participación: lugares confirmados de cada hermano
+  const part = {};
+  enRango
+    .filter((t) => t.estado === 'confirmado')
+    .forEach((t) => {
+      const p = (part[t.nombre_usuario.toLowerCase()] = part[t.nombre_usuario.toLowerCase()] || { nombre: nombreDe(t.nombre_usuario), preside: 0, mesa: 0 });
+      if (t.posicion === 0) p.preside++;
+      else p.mesa++;
+    });
+  const participacion = Object.values(part).sort((a, b) => b.preside + b.mesa - (a.preside + a.mesa) || a.nombre.localeCompare(b.nombre));
+  // Más tiempo sin participar (entre los hermanos que pueden presidir o servir la mesa)
+  const ultima = {};
+  turnos
+    .filter((t) => t.estado === 'confirmado' && t.fecha <= hasta)
+    .forEach((t) => {
+      const u = t.nombre_usuario.toLowerCase();
+      if (!ultima[u] || t.fecha > ultima[u]) ultima[u] = t.fecha;
+    });
+  const hoy = new Date(fechaISO(new Date()) + 'T00:00:00');
+  const sinParticipar = maestros
+    .filter((m) => m.elegible_presidir || m.elegible_mesa)
+    .map((m) => {
+      const f = ultima[(m.nombre_usuario || '').toLowerCase()];
+      const semanas = f ? Math.max(0, Math.floor((hoy - new Date(f + 'T00:00:00')) / (7 * 86400000))) : null;
+      return { nombre: nombreDe(m.nombre_usuario), detalle: m.elegible_presidir && m.elegible_mesa ? 'Preside y mesa' : m.elegible_presidir ? 'Preside' : 'Mesa', semanas };
+    })
+    .sort((a, b) => (a.semanas === null ? -1 : b.semanas === null ? 1 : b.semanas - a.semanas))
+    .slice(0, 5);
+  // Responden poco: dejaron vencer 2 invitaciones o más
+  const resp = {};
+  invitaciones.forEach((t) => {
+    const r = (resp[t.nombre_usuario.toLowerCase()] = resp[t.nombre_usuario.toLowerCase()] || { nombre: nombreDe(t.nombre_usuario), total: 0, acepto: 0, vencidas: 0 });
+    r.total++;
+    if (t.estado === 'confirmado') r.acepto++;
+    if (t.estado === 'sin_respuesta' || t.estado === 'reemplazado') r.vencidas++;
+  });
+  const respondenPoco = Object.values(resp)
+    .filter((r) => r.vencidas >= 2)
+    .sort((a, b) => b.vencidas - a.vencidas);
+  // Domingos difíciles: hubo que asignar lugares a mano
+  const dificiles = [...new Set(manuales.map((t) => t.fecha))].sort().map((f) => {
+    const pos = manuales
+      .filter((t) => t.fecha === f)
+      .map((t) => t.posicion)
+      .sort((a, b) => a - b);
+    const mesa = pos.filter((p) => p > 0);
+    const partes = [];
+    if (pos.includes(0)) partes.push('Preside');
+    if (mesa.length) partes.push(`Mesa ${mesa.join(', ').replace(/, (\d+)$/, ' y $1')}`);
+    return { fecha: f, cuantos: pos.length, lugares: partes.join(' y ') };
+  });
+  return { domingos: fechas.length, completos, alaPrimera: resueltos.length ? Math.round((alaPrimera / resueltos.length) * 100) : 0, manuales: manuales.length, invitaciones: invitaciones.length, acepto, declino, sinRespuesta, participacion, sinParticipar, respondenPoco, dificiles };
+};
+
+function ResumenCenaScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState(false);
+  const [periodo, setPeriodo] = useState('tres');
+  useEffect(() => {
+    Promise.all([traerTodo(() => supabase.from('cena_turnos').select('id, fecha, posicion, nombre_usuario, estado, asignado_por').order('fecha', { ascending: true }).order('id', { ascending: true })), supabase.from('maestros').select('nombre_usuario, nombre_completo, elegible_presidir, elegible_mesa')])
+      .then(([turnos, { data }]) => setDatos({ turnos, maestros: data || [] }))
+      .catch(() => setError(true));
+  }, []);
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const ahora = new Date();
+  const desde = fechaISO(periodo === 'mes' ? new Date(ahora.getFullYear(), ahora.getMonth(), 1) : periodo === 'tres' ? new Date(ahora.getFullYear(), ahora.getMonth() - 2, 1) : new Date(ahora.getFullYear(), 0, 1));
+  const d = datos ? calcularCena(datos.turnos, datos.maestros, desde, proximoDomingo()) : null;
+  const colorAcepto = paleta['Clases de niños'].fondo;
+  const colorDeclino = paleta['Petición'].fondo;
+  const colorSin = isDark ? '#6B6862' : '#C9C6BF';
+  const colorPreside = isDark ? '#EBCFCF' : '#8E5A5A';
+  const pct = (n) => (d && d.invitaciones ? Math.round((n / d.invitaciones) * 100) : 0);
+  // En tablet (2 columnas) va primero, a todo lo ancho, para que no quede un hueco a su lado
+  const mayorParticipacion = d ? Math.max(1, ...d.participacion.map((p) => p.preside + p.mesa)) : 1;
+  const tarjetaParticipacion = !d ? null : (
+    <TarjetaResumen titulo="Participación por hermano" subtitulo="Veces que presidió o sirvió la mesa" ancho={anchoTarjeta(columnas, true)} isDark={isDark}>
+      {d.participacion.length === 0 ? (
+        <SinDatosResumen texto="Todavía no hay participaciones en este periodo." isDark={isDark} />
+      ) : (
+        <>
+          {d.participacion.map((p) => (
+            <View key={p.nombre} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 5 }}>
+              <Text style={{ width: 130, fontSize: 13, fontWeight: '600', color: colors.textMain }} numberOfLines={1}>
+                {p.nombre}
+              </Text>
+              <View style={{ flex: 1, height: 14 }}>
+                <View style={{ width: `${((p.preside + p.mesa) / mayorParticipacion) * 100}%`, height: '100%', flexDirection: 'row', gap: 2 }}>
+                  {p.preside > 0 ? <View style={{ flex: p.preside, borderRadius: 7, backgroundColor: colorPreside }} /> : null}
+                  {p.mesa > 0 ? <View style={{ flex: p.mesa, borderRadius: 7, backgroundColor: paleta['Cena'].fondo }} /> : null}
+                </View>
+              </View>
+              <Text style={{ width: 26, textAlign: 'right', fontSize: 13, fontWeight: '700', color: colors.textMain }}>{p.preside + p.mesa}</Text>
+            </View>
+          ))}
+          <View style={{ flexDirection: 'row', gap: 14, marginTop: 8 }}>
+            {[
+              ['Presidió', colorPreside],
+              ['Sirvió la mesa', paleta['Cena'].fondo],
+            ].map(([t, c]) => (
+              <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: c }} />
+                <Text style={{ fontSize: 11.5, color: colors.textSub }}>{t}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+    </TarjetaResumen>
+  );
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <EncabezadoResumen titulo="Cena del Señor" subtitulo="Resumen" categoria="Predicaciones" navigation={navigation} isDark={isDark} columnas={columnas} />
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
+        <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, marginTop: 8 }}>
+          {!esAdmin ? (
+            <SinDatosResumen texto="Esta sección es solo para administradores." isDark={isDark} />
+          ) : (
+            <>
+              <PildorasResumen
+                opciones={[
+                  { valor: 'mes', texto: 'Este mes' },
+                  { valor: 'tres', texto: 'Últimos 3 meses' },
+                  { valor: 'anio', texto: 'Este año' },
+                ]}
+                valor={periodo}
+                onCambiar={setPeriodo}
+                categoria="Cena"
+                isDark={isDark}
+              />
+              {error ? (
+                <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
+              ) : !d ? (
+                <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                    <DatoResumen valor={d.domingos} etiqueta="Domingos organizados" detalle={`${d.completos} con sus 7 lugares`} categoria="Cena" isDark={isDark} />
+                    <DatoResumen valor={`${d.alaPrimera}%`} etiqueta="Confirmaron a la primera" detalle="sin necesitar reemplazo" categoria="Clases de niños" isDark={isDark} />
+                    <DatoResumen valor={d.manuales} etiqueta="Lugares asignados a mano" detalle="por un administrador" categoria="Usuarios" isDark={isDark} />
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    {columnas === 2 ? tarjetaParticipacion : null}
+                    <TarjetaResumen titulo="Respuesta a las invitaciones" subtitulo={`De ${d.invitaciones} invitaciones enviadas`} ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.invitaciones === 0 ? (
+                        <SinDatosResumen texto="Todavía no hay invitaciones en este periodo." isDark={isDark} />
+                      ) : (
+                        <>
+                          <View style={{ flexDirection: 'row', height: 20, borderRadius: 99, overflow: 'hidden', gap: 3 }}>
+                            {[
+                              [d.acepto, colorAcepto],
+                              [d.declino, colorDeclino],
+                              [d.sinRespuesta, colorSin],
+                            ]
+                              .filter(([n]) => n > 0)
+                              .map(([n, c], i) => (
+                                <View key={i} style={{ flex: n, backgroundColor: c }} />
+                              ))}
+                          </View>
+                          {[
+                            ['Aceptó', d.acepto, colorAcepto],
+                            ['Declinó', d.declino, colorDeclino],
+                            ['Sin respuesta', d.sinRespuesta, colorSin],
+                          ].map(([t, n, c]) => (
+                            <View key={t} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+                              <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: c, marginRight: 8 }} />
+                              <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: colors.textMain }}>{t}</Text>
+                              <Text style={{ fontSize: 13, fontWeight: '800', color: colors.textMain }}>{pct(n)}%</Text>
+                            </View>
+                          ))}
+                        </>
+                      )}
+                    </TarjetaResumen>
+                    {columnas !== 2 ? tarjetaParticipacion : null}
+                    <TarjetaResumen titulo="Más tiempo sin participar" subtitulo="Entre los hermanos que pueden presidir o servir" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.sinParticipar.length === 0 ? <SinDatosResumen texto="No hay hermanos marcados para la Cena." isDark={isDark} /> : d.sinParticipar.map((h, i) => <FilaResumen key={h.nombre + i} primera={i === 0} avatar={inicialesDe(h.nombre)} nombre={h.nombre} detalle={h.detalle} etiqueta={h.semanas === null ? 'Aún no participa' : h.semanas === 1 ? '1 semana' : `${h.semanas} semanas`} categoria="Cena" isDark={isDark} />)}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Responden poco" subtitulo="Invitaciones que vencieron sin respuesta" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.respondenPoco.length === 0 ? <SinDatosResumen texto="Todos están respondiendo." isDark={isDark} /> : d.respondenPoco.map((r, i) => <FilaResumen key={r.nombre + i} primera={i === 0} avatar={inicialesDe(r.nombre)} nombre={r.nombre} detalle={`Aceptó ${r.acepto} de ${r.total}`} etiqueta={`${r.vencidas} vencidas`} categoria="Cena" isDark={isDark} />)}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Domingos difíciles" subtitulo="Hubo que asignar lugares a mano" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.dificiles.length === 0 ? <SinDatosResumen texto="Ninguno en este periodo." isDark={isDark} /> : d.dificiles.map((x, i) => <FilaResumen key={x.fecha} primera={i === 0} avatar={String(new Date(x.fecha + 'T00:00:00').getDate())} nombre={fechaLarga(x.fecha)} detalle={x.cuantos === 1 ? '1 lugar' : `${x.cuantos} lugares`} etiqueta={x.lugares} categoria="Cena" isDark={isDark} />)}
+                    </TarjetaResumen>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// Si la app se recarga en una pantalla que necesita datos de la anterior (por ejemplo, una clase),
+// regresa al inicio en lugar de quedarse en blanco
+const requiereDatos = (Pantalla, valido) => {
+  const Envuelta = (props) => {
+    const ok = valido((props.route && props.route.params) || {});
+    useEffect(() => {
+      if (!ok) props.navigation.reset({ index: 0, routes: [{ name: 'MenuPrincipal' }] });
+    }, [ok]);
+    return ok ? <Pantalla {...props} /> : null;
+  };
+  return Envuelta;
+};
+const esObjeto = (x) => !!x && typeof x === 'object';
+const PantallaTemas = requiereDatos(TemasScreen, (p) => !!p.grupo);
+const PantallaClases = requiereDatos(ClasesScreen, (p) => esObjeto(p.tema) && !!p.grupo);
+const PantallaClaseDetalle = requiereDatos(ClaseDetalleScreen, (p) => esObjeto(p.clase) && esObjeto(p.tema) && !!p.grupo);
+const PantallaDomingos = requiereDatos(DomingosScreen, (p) => !!p.grupo);
+const PantallaDomingoDetalle = requiereDatos(DomingoDetalleScreen, (p) => !!p.grupo && !!p.fecha);
+const PantallaDetalleUsuario = requiereDatos(DetalleUsuarioScreen, (p) => esObjeto(p.maestro));
+
 export default function App() {
   // El modo oscuro se guarda en el dispositivo para que se respete al volver a abrir la app
   const [isDark, setIsDark] = useState(() => {
@@ -6159,16 +6760,18 @@ export default function App() {
             <Stack.Screen name="MiRol" component={MiRolScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Roles" component={RolesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Cena" component={CenaScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Temas" component={TemasScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Clases" component={ClasesScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="ClaseDetalle" component={ClaseDetalleScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Domingos" component={DomingosScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="DomingoDetalle" component={DomingoDetalleScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Temas" component={PantallaTemas} options={{ headerShown: false }} />
+            <Stack.Screen name="Clases" component={PantallaClases} options={{ headerShown: false }} />
+            <Stack.Screen name="ClaseDetalle" component={PantallaClaseDetalle} options={{ headerShown: false }} />
+            <Stack.Screen name="Domingos" component={PantallaDomingos} options={{ headerShown: false }} />
+            <Stack.Screen name="DomingoDetalle" component={PantallaDomingoDetalle} options={{ headerShown: false }} />
             <Stack.Screen name="Coritos" component={CoritosScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Tablon" component={TablonScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: false }} />
             <Stack.Screen name="TodosUsuarios" component={TodosUsuariosScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="DetalleUsuario" component={DetalleUsuarioScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="DetalleUsuario" component={PantallaDetalleUsuario} options={{ headerShown: false }} />
+            <Stack.Screen name="ResumenAsistencia" component={ResumenAsistenciaScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ResumenCena" component={ResumenCenaScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
       </View>
