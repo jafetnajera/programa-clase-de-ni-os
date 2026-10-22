@@ -495,11 +495,26 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
   const colors = getColors(isDark);
   const anim = useRef(new Animated.Value(0)).current;
   const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
-  const [avisos, setAvisos] = useState(estadoAvisos());
+    const [avisos, setAvisos] = useState(estadoAvisos());
+  const [prueba, setPrueba] = useState(null); // null, 'enviando', 'enviada' o 'error'
+  // Manda un aviso de prueba solo a quien lo pide
+  const probarAvisos = async () => {
+    if (prueba === 'enviando') return;
+    setPrueba('enviando');
+    try {
+      const { data, error } = await supabase.functions.invoke('recordatorios', { body: { accion: 'prueba' } });
+      setPrueba(error || !data || !data.ok ? 'error' : 'enviada');
+    } catch (e) {
+      setPrueba('error');
+    }
+  };
 
   useEffect(() => {
     Animated.timing(anim, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: false }).start();
-    if (visible) setAvisos(estadoAvisos());
+    if (visible) {
+      setAvisos(estadoAvisos());
+      setPrueba(null);
+    }
     if (!visible) return;
     if (usuarioActivoGlobal) {
       setNombreVisible(usuarioActivoGlobal);
@@ -559,8 +574,16 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
             <View style={{ marginLeft: 14, flex: 1 }}>
               <Text style={{ fontSize: 15, color: colors.textMain }}>{avisos === 'activo' ? 'Avisos activados' : avisos === 'pendiente' ? 'Activar avisos' : avisos === 'bloqueado' ? 'Avisos bloqueados' : 'Instala la app para recibir avisos'}</Text>
               {avisos === 'bloqueado' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Actívalos en los ajustes de tu teléfono o navegador</Text>}
-              {avisos === 'instalar' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Agrégala a tu pantalla de inicio</Text>}
+                            {avisos === 'instalar' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Agrégala a tu pantalla de inicio</Text>}
+              {avisos === 'activo' && prueba === 'enviada' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4 }}>Enviada. ¿No te llegó? Revisa Ayuda.</Text>}
+              {avisos === 'activo' && prueba === 'error' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4 }}>No se pudo enviar. Revisa tu conexión e intenta de nuevo.</Text>}
             </View>
+            {avisos === 'activo' && (
+              <TouchableOpacity onPress={probarAvisos} accessibilityLabel="Probar avisos" style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginLeft: 8, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: prueba === 'enviada' ? colors.cardBg : 'transparent' }}>
+                {prueba === 'enviando' ? <ActivityIndicator size="small" color={colors.textSub} /> : prueba === 'enviada' ? <Feather name="check" size={13} color={colors.textMain} /> : null}
+                {prueba === 'enviada' ? null : <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMain }}>Probar</Text>}
+              </TouchableOpacity>
+            )}
           </TouchableOpacity>
         )}
         {onAyuda && (
@@ -690,7 +713,7 @@ const PREGUNTAS_AYUDA = [
   {
     id: 'avisos',
     pregunta: 'No me llegan los avisos',
-    respuesta: 'Abre los ajustes (el engrane de arriba a la izquierda) y revisa que diga «Avisos activados».\n\n• Si dice «Activar avisos», tócalo y acepta el permiso.\n• Si dice «Avisos bloqueados», actívalos en los ajustes de tu teléfono o navegador.\n• En iPhone los avisos solo llegan si la app está instalada en tu pantalla de inicio.',
+    respuesta: 'Abre los ajustes (el engrane de arriba a la izquierda) y revisa que diga «Avisos activados».\n\n• Si dice «Avisos activados», toca «Probar»: en unos segundos te debe llegar un aviso de prueba. Si no llega, revisa que tu teléfono permita las notificaciones de la app (o del navegador) y que no esté en modo «No molestar».\n• Si dice «Activar avisos», tócalo y acepta el permiso.\n• Si dice «Avisos bloqueados», actívalos en los ajustes de tu teléfono o navegador.\n• En iPhone los avisos solo llegan si la app está instalada en tu pantalla de inicio.',
     claves: 'notificaciones alertas mensajes push suena llega celular permiso',
   },
   {
