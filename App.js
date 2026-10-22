@@ -2045,7 +2045,7 @@ const leerZip = async (buffer) => {
   return { nombres: Object.keys(archivos), leer };
 };
 
-// Saca los párrafos del Word: su texto y si son viñetas (y de qué nivel). Las tablas solo traen fotos y se omiten.
+// Saca los párrafos del Word: su texto y si son viñetas (y de qué nivel). Las tablas se leen fila por fila, celda por celda.
 const parrafosDelWord = (xml) => {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
   const parrafos = [];
@@ -2071,6 +2071,24 @@ const parrafosDelWord = (xml) => {
       .trim();
     return info;
   };
+  // Tabla: cada fila con sus celdas (texto de la celda y cuántas columnas ocupa)
+  const leerTabla = (tbl) =>
+    Array.from(tbl.childNodes || [])
+      .filter((tr) => tr.nodeName === 'w:tr')
+      .map((tr) =>
+        Array.from(tr.childNodes || [])
+          .filter((tc) => tc.nodeName === 'w:tc')
+          .map((tc) => {
+            const lineas = [];
+            Array.from(tc.getElementsByTagName('w:p')).forEach((p) => {
+              const info = leerParrafo(p);
+              if (info.texto) lineas.push(info.lista ? `${info.nivel > 0 ? '    ◦ ' : '• '}${info.texto}` : info.texto);
+            });
+            const span = tc.getElementsByTagName('w:gridSpan')[0];
+            return { texto: lineas.join('\n'), span: (span && parseInt(span.getAttribute('w:val') || '1', 10)) || 1 };
+          }),
+      )
+      .filter((fila) => fila.some((c) => c.texto));
   const fotosDe = (nodo) =>
     Array.from(nodo.getElementsByTagName('a:blip'))
       .map((b) => b.getAttribute('r:embed'))
@@ -2081,12 +2099,87 @@ const parrafosDelWord = (xml) => {
         const info = leerParrafo(h);
         if (info.texto) parrafos.push(info);
         fotosDe(h).forEach((id) => parrafos.push({ foto: id }));
-      } else if (h.nodeName === 'w:tbl') fotosDe(h).forEach((id) => parrafos.push({ foto: id }));
-      else if (h.childNodes && h.childNodes.length) recorrer(h);
+      } else if (h.nodeName === 'w:tbl') {
+        const filas = leerTabla(h);
+        if (filas.length) parrafos.push({ tabla: filas });
+        fotosDe(h).forEach((id) => parrafos.push({ foto: id }));
+      } else if (h.childNodes && h.childNodes.length) recorrer(h);
     });
   };
   recorrer(doc.documentElement);
   return parrafos;
+};
+
+// Texto de una sección de la clase con sus tablas del Word en el lugar donde iban
+const TextoConTablas = ({ texto, tablas, paleta, isDark, estiloTexto }) =>
+  String(texto)
+    .split(/\[\[tabla:(\d+)\]\]/)
+    .map((parte, i) => {
+      if (i % 2 === 1) {
+        const filas = (tablas || [])[parseInt(parte, 10)];
+        return filas ? <TablaClase key={i} filas={filas} paleta={paleta} isDark={isDark} /> : null;
+      }
+      const limpio = parte.replace(/^\n+|\n+$/g, '');
+      return limpio ? (
+        <Text key={i} style={estiloTexto}>
+          {limpio}
+        </Text>
+      ) : null;
+    });
+
+// Tabla del Word: en PC y tablet como tabla; en celular cada fila es una tarjeta (para que se lea sin hacer zoom)
+const TablaClase = ({ filas, paleta, isDark }) => {
+  const colors = getColors(isDark);
+  const { width } = useWindowDimensions();
+  if (width < 700)
+    return (
+      <View style={{ marginVertical: 10, gap: 10 }}>
+        {filas.map((fila, i) => {
+          const conTexto = fila.filter((c) => c.texto);
+          const cuerpo = conTexto.length > 1 ? conTexto[conTexto.length - 1] : null;
+          const encabezado = (cuerpo ? conTexto.slice(0, -1) : conTexto).map((c) => c.texto.replace(/\n/g, ' ')).join(' · ');
+          return (
+            <View key={i} style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.cardBg, overflow: 'hidden' }}>
+              <View style={{ backgroundColor: paleta.fondo, paddingVertical: 8, paddingHorizontal: 14 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: paleta.texto }}>{encabezado}</Text>
+              </View>
+              {cuerpo ? <Text style={{ fontSize: 16, lineHeight: 24, color: colors.textMain, paddingVertical: 10, paddingHorizontal: 14 }}>{cuerpo.texto}</Text> : null}
+            </View>
+          );
+        })}
+      </View>
+    );
+  // Ancho de cada columna según lo largo de su texto
+  const columnas = Math.max(...filas.map((f) => f.reduce((n, c) => n + (c.span || 1), 0)));
+  const pesos = Array.from({ length: columnas }, () => 9);
+  filas.forEach((fila) => {
+    let col = 0;
+    fila.forEach((c) => {
+      if ((c.span || 1) === 1) pesos[col] = Math.max(pesos[col], Math.min(70, Math.max(0, ...c.texto.split('\n').map((l) => l.length))));
+      col += c.span || 1;
+    });
+  });
+  return (
+    <View style={{ marginVertical: 10, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 18, overflow: 'hidden', backgroundColor: colors.cardBg }}>
+      {filas.map((fila, i) => {
+        let col = 0;
+        return (
+          <View key={i} style={{ flexDirection: 'row', borderTopWidth: i ? 1 : 0, borderTopColor: colors.cardBorder }}>
+            {fila.map((c, j) => {
+              const span = c.span || 1;
+              const flex = pesos.slice(col, col + span).reduce((a, b) => a + b, 0);
+              col += span;
+              return (
+                <View key={j} style={{ flex, paddingVertical: 10, paddingHorizontal: 12, borderLeftWidth: j ? 1 : 0, borderLeftColor: colors.cardBorder, backgroundColor: j === 0 ? paleta.fondo + (isDark ? '40' : '59') : 'transparent', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 15, lineHeight: 22, color: colors.textMain, fontWeight: j === 0 ? '700' : '400' }}>{c.texto}</Text>
+                </View>
+              );
+            })}
+          </View>
+        );
+      })}
+    </View>
+  );
 };
 
 // Convierte el Word en los datos de la clase: título, texto base y cada sección con su tiempo
@@ -2125,6 +2218,14 @@ const leerClaseDelWord = async (archivo) => {
       if (actual && ruta && /\.(png|jpe?g|gif|bmp|webp)$/i.test(ruta)) actual.fotos.push(ruta);
       return;
     }
+    if (p.tabla) {
+      // En el texto queda una marca [[tabla:N]] para mostrar la tabla en ese lugar
+      if (actual) {
+        actual.tablas.push(p.tabla);
+        actual.lineas.push(`[[tabla:${actual.tablas.length - 1}]]`);
+      }
+      return;
+    }
     const limpio = sinAcentos(p.texto.replace(/^\d+[.)]\s*/, '')).trim();
     if (/^itinerario\s*:?$/.test(limpio)) return;
     const tipo = SECCIONES_CLASE.find((s) => s.patron.test(limpio));
@@ -2133,7 +2234,7 @@ const leerClaseDelWord = async (archivo) => {
       const sinTiempo = p.texto.replace(/\(\d+\s*min[a-z.]*\)/i, '');
       const dosPuntos = sinTiempo.indexOf(':');
       const resto = dosPuntos >= 0 ? sinTiempo.slice(dosPuntos + 1).trim() : '';
-      actual = { clave: tipo.clave, titulo: tipo.titulo, tiempo: tiempo.replace(/\.$/, ''), lineas: resto && resto !== '.' ? [resto.charAt(0).toUpperCase() + resto.slice(1)] : [], fotos: [] };
+      actual = { clave: tipo.clave, titulo: tipo.titulo, tiempo: tiempo.replace(/\.$/, ''), lineas: resto && resto !== '.' ? [resto.charAt(0).toUpperCase() + resto.slice(1)] : [], fotos: [], tablas: [] };
       secciones.push(actual);
       return;
     }
@@ -2151,8 +2252,23 @@ const leerClaseDelWord = async (archivo) => {
         }),
       )
     ).filter(Boolean);
-  const listas = secciones.map((s) => ({ titulo: s.titulo, tiempo: s.tiempo, texto: s.lineas.join('\n').trim(), clave: s.clave, fotos: s.fotos }));
-  const de = (clave) => (listas.find((s) => s.clave === clave) || {}).texto || null;
+  const listas = secciones.map((s) => ({ titulo: s.titulo, tiempo: s.tiempo, texto: s.lineas.join('\n').trim(), clave: s.clave, fotos: s.fotos, tablas: s.tablas }));
+  // Versión en texto simple (las tablas, una fila por renglón) para los campos sueltos de la clase
+  const textoPlano = (s) =>
+    s.texto.replace(/\[\[tabla:(\d+)\]\]/g, (_, i) =>
+      (s.tablas[i] || [])
+        .map((fila) =>
+          fila
+            .map((c) => c.texto.replace(/\n/g, ' '))
+            .filter(Boolean)
+            .join(' · '),
+        )
+        .join('\n'),
+    );
+  const de = (clave) => {
+    const s = listas.find((x) => x.clave === clave);
+    return (s && textoPlano(s)) || null;
+  };
   const actividades = de('actividades') || '';
   const lineaVersiculo = actividades.split('\n').find((l) => /^[•◦\s]*vers[ií]culo/i.test(l));
   return {
@@ -2160,7 +2276,7 @@ const leerClaseDelWord = async (archivo) => {
     titulo,
     textoBase,
     totalFotos: listas.reduce((n, s) => n + s.fotos.length, 0),
-    secciones: listas.map(({ titulo: t, tiempo, texto, fotos }) => ({ titulo: t, tiempo, texto, fotos })),
+    secciones: listas.map(({ titulo: t, tiempo, texto, fotos, tablas }) => ({ titulo: t, tiempo, texto, fotos, ...(tablas.length ? { tablas } : {}) })),
     campos: {
       objetivo: de('objetivo'),
       puntos_clave: de('puntos'),
@@ -2306,7 +2422,7 @@ const SubirContenidoClases = ({ isDark }) => {
           if (error) throw error;
           imagenes.push({ url: `${supabase.storage.from('clases').getPublicUrl(ruta).data.publicUrl}?v=${Date.now()}`, ancho: lista.ancho, alto: lista.alto });
         }
-        secciones.push({ titulo: s.titulo, tiempo: s.tiempo, texto: s.texto, ...(imagenes.length ? { imagenes } : {}) });
+        secciones.push({ titulo: s.titulo, tiempo: s.tiempo, texto: s.texto, ...(s.tablas ? { tablas: s.tablas } : {}), ...(imagenes.length ? { imagenes } : {}) });
       }
       Object.assign(datos, it.contenido.campos, { titulo_clase: it.contenido.titulo, texto_base: it.contenido.textoBase || null, secciones });
     }
@@ -4246,7 +4362,7 @@ function ClaseDetalleScreen({ route, navigation }) {
           </View>
         ) : null}
       </View>
-      {seccion.texto ? <Text style={[styles.seccionTexto, { color: colors.textMain }]}>{seccion.texto}</Text> : null}
+      {seccion.texto ? <TextoConTablas texto={seccion.texto} tablas={seccion.tablas} paleta={paletaGrupo} isDark={isDark} estiloTexto={[styles.seccionTexto, { color: colors.textMain }]} /> : null}
       {Array.isArray(seccion.imagenes) && seccion.imagenes.length > 0 ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 10, marginTop: 12 }}>
           {seccion.imagenes.map((f, i) => (
