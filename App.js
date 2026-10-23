@@ -495,8 +495,32 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
   const colors = getColors(isDark);
   const anim = useRef(new Animated.Value(0)).current;
   const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
-    const [avisos, setAvisos] = useState(estadoAvisos());
+  const [avisos, setAvisos] = useState(estadoAvisos());
   const [prueba, setPrueba] = useState(null); // null, 'enviando', 'enviada' o 'error'
+  const [telegram, setTelegram] = useState(null); // null (cargando), 'no', 'abriendo', 'esperando' o 'vinculado'
+  const revisarTelegram = async () => {
+    const { data } = await supabase.from('telegram_vinculos').select('chat_id').maybeSingle();
+    setTelegram(data && data.chat_id ? 'vinculado' : 'no');
+  };
+  // Abre el bot de Telegram con un código para que la app sepa quién es
+  const vincularTelegram = async () => {
+    // La ventana se abre en el mismo toque (si se abre después, el navegador la bloquea)
+    const ventana = Platform.OS === 'web' ? window.open('', '_blank') : null;
+    setTelegram('abriendo');
+    const { data, error } = await supabase.functions.invoke('telegram', { body: { accion: 'codigo' } });
+    if (error || !data || !data.enlace) {
+      if (ventana) ventana.close();
+      setTelegram('no');
+      return;
+    }
+    if (ventana) ventana.location.href = data.enlace;
+    else Linking.openURL(data.enlace);
+    setTelegram('esperando');
+  };
+  const quitarTelegram = async () => {
+    await supabase.from('telegram_vinculos').delete().not('user_id', 'is', null);
+    setTelegram('no');
+  };
   // Manda un aviso de prueba solo a quien lo pide
   const probarAvisos = async () => {
     if (prueba === 'enviando') return;
@@ -514,6 +538,7 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
     if (visible) {
       setAvisos(estadoAvisos());
       setPrueba(null);
+      revisarTelegram();
     }
     if (!visible) return;
     if (usuarioActivoGlobal) {
@@ -574,7 +599,7 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
             <View style={{ marginLeft: 14, flex: 1 }}>
               <Text style={{ fontSize: 15, color: colors.textMain }}>{avisos === 'activo' ? 'Avisos activados' : avisos === 'pendiente' ? 'Activar avisos' : avisos === 'bloqueado' ? 'Avisos bloqueados' : 'Instala la app para recibir avisos'}</Text>
               {avisos === 'bloqueado' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Actívalos en los ajustes de tu teléfono o navegador</Text>}
-                            {avisos === 'instalar' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Agrégala a tu pantalla de inicio</Text>}
+              {avisos === 'instalar' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Agrégala a tu pantalla de inicio</Text>}
               {avisos === 'activo' && prueba === 'enviada' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4 }}>Enviada. ¿No te llegó? Revisa Ayuda.</Text>}
               {avisos === 'activo' && prueba === 'error' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4 }}>No se pudo enviar. Revisa tu conexión e intenta de nuevo.</Text>}
             </View>
@@ -582,6 +607,23 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
               <TouchableOpacity onPress={probarAvisos} accessibilityLabel="Probar avisos" style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginLeft: 8, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: prueba === 'enviada' ? colors.cardBg : 'transparent' }}>
                 {prueba === 'enviando' ? <ActivityIndicator size="small" color={colors.textSub} /> : prueba === 'enviada' ? <Feather name="check" size={13} color={colors.textMain} /> : null}
                 {prueba === 'enviada' ? null : <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMain }}>Probar</Text>}
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+        )}
+        {Platform.OS === 'web' && telegram !== null && (
+          <TouchableOpacity activeOpacity={telegram === 'vinculado' ? 1 : 0.6} onPress={() => (telegram === 'no' || telegram === 'esperando' ? vincularTelegram() : null)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+            <Feather name="send" size={20} color={telegram === 'vinculado' ? colors.textSub : colors.textMain} />
+            <View style={{ marginLeft: 14, flex: 1 }}>
+              <Text style={{ fontSize: 15, color: colors.textMain }}>{telegram === 'vinculado' ? 'Telegram vinculado' : 'Avisos por Telegram'}</Text>
+              {telegram === 'no' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Si no te llegan las notificaciones</Text>}
+              {telegram === 'abriendo' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Abriendo Telegram…</Text>}
+              {telegram === 'esperando' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>En Telegram toca «Iniciar». ¿No se abrió? Toca aquí otra vez.</Text>}
+              {telegram === 'vinculado' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Los avisos también te llegan por Telegram</Text>}
+            </View>
+            {telegram === 'vinculado' && (
+              <TouchableOpacity onPress={quitarTelegram} accessibilityLabel="Quitar Telegram" style={{ marginLeft: 8, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textMain }}>Quitar</Text>
               </TouchableOpacity>
             )}
           </TouchableOpacity>
@@ -713,7 +755,7 @@ const PREGUNTAS_AYUDA = [
   {
     id: 'avisos',
     pregunta: 'No me llegan los avisos',
-    respuesta: 'Abre los ajustes (el engrane de arriba a la izquierda) y revisa que diga «Avisos activados».\n\n• Si dice «Avisos activados», toca «Probar»: en unos segundos te debe llegar un aviso de prueba. Si no llega, revisa que tu teléfono permita las notificaciones de la app (o del navegador) y que no esté en modo «No molestar».\n• Si dice «Activar avisos», tócalo y acepta el permiso.\n• Si dice «Avisos bloqueados», actívalos en los ajustes de tu teléfono o navegador.\n• En iPhone los avisos solo llegan si la app está instalada en tu pantalla de inicio.',
+    respuesta: 'Abre los ajustes (el engrane de arriba a la izquierda) y revisa que diga «Avisos activados».\n\n• Si dice «Avisos activados», toca «Probar»: en unos segundos te debe llegar un aviso de prueba. Si no llega, revisa que tu teléfono permita las notificaciones de la app (o del navegador) y que no esté en modo «No molestar».\n• Si dice «Activar avisos», tócalo y acepta el permiso.\n• Si dice «Avisos bloqueados», actívalos en los ajustes de tu teléfono o navegador.\n• En iPhone los avisos solo llegan si la app está instalada en tu pantalla de inicio.\n• Si tu celular no recibe notificaciones (por ejemplo, algunos Huawei), toca «Avisos por Telegram» en los ajustes: abre Telegram, toca «Iniciar» y los avisos te llegarán ahí.',
     claves: 'notificaciones alertas mensajes push suena llega celular permiso',
   },
   {
@@ -3071,6 +3113,21 @@ function MiRolScreen({ navigation, route }) {
     await supabase.from('programa_servicios').update({ estado_confirmacion: 'confirmado' }).eq('id', item.id);
     setFechas((prev) => prev.map((f) => (f.id === item.id ? { ...f, estado_confirmacion: 'confirmado' } : f)));
   };
+  // El administrador confirma por alguien que todavía no tiene la app
+  const confirmarPorOtro = (item, esClase) =>
+    setAlerta({
+      visible: true,
+      titulo: 'Confirmar por otro',
+      mensaje: `¿Confirmar ${esClase ? 'la clase' : 'la predicación'} de ${ponerMayusculas(mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario)} del ${formatearFecha(item.fecha).replace(',', '')}?`,
+      textoConfirmar: 'Confirmar',
+      onCancelar: cerrarAlerta,
+      isDark: isDark,
+      themeColor: '#2C4A73',
+      onConfirmar: () => {
+        cerrarAlerta();
+        confirmarAsistencia(item);
+      },
+    });
 
   const formatearFecha = (fechaTexto) => {
     const fecha = new Date(fechaTexto + 'T00:00:00');
@@ -3185,7 +3242,12 @@ function MiRolScreen({ navigation, route }) {
                               </Animated.View>
                             </TouchableOpacity>
                           )
-                        : rolUsuarioActivoGlobal === 'administrador' && item.estado_confirmacion !== 'confirmado' && <Feather name="clock" size={16} color="#C9A227" />}
+                        : rolUsuarioActivoGlobal === 'administrador' &&
+                          item.estado_confirmacion !== 'confirmado' && (
+                            <TouchableOpacity onPress={() => confirmarPorOtro(item, esClase)} accessibilityLabel="Confirmar por otro" style={{ padding: 6 }}>
+                              <Feather name="clock" size={16} color="#C9A227" />
+                            </TouchableOpacity>
+                          )}
                       {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
                         <TouchableOpacity
                           onPress={() => {
@@ -3614,6 +3676,7 @@ function CenaScreen({ navigation }) {
   const [mapaNombres, setMapaNombres] = useState({});
   const [alerta, setAlerta] = useState({ visible: false });
   const cerrarAlerta = () => setAlerta({ visible: false });
+  const [abierto, setAbierto] = useState(null); // invitado pendiente que el administrador tocó
   useEffect(() => {
     cargarMapaNombres().then(setMapaNombres);
   }, []);
@@ -3668,6 +3731,27 @@ function CenaScreen({ navigation }) {
         const { data, error } = await supabase.functions.invoke('cena', { body: { accion: 'cancelar', turno_id: miTurno.id } });
         if (error || (data && data.error)) return setTimeout(() => setAlerta({ visible: true, titulo: 'No se pudo', mensaje: (data && data.error) || error.message, onConfirmar: cerrarAlerta, isDark }), 300);
         cargar();
+      },
+    });
+  // El administrador responde por un invitado que todavía no tiene la app
+  const responderPorOtro = async (t, respuesta) => {
+    const { data, error } = await supabase.functions.invoke('cena', { body: { accion: 'responder', turno_id: t.id, respuesta } });
+    setAbierto(null);
+    if (error || (data && data.error)) return setAlerta({ visible: true, titulo: 'No se pudo', mensaje: (data && data.error) || error.message, onConfirmar: cerrarAlerta, isDark });
+    cargar();
+  };
+  const noPuede = (t) =>
+    setAlerta({
+      visible: true,
+      titulo: '¿No puede apoyar?',
+      mensaje: `Se marcará que ${nombreDe(t.nombre_usuario)} no puede y la app invitará a otro hermano.`,
+      textoConfirmar: 'Sí, no puede',
+      onCancelar: cerrarAlerta,
+      isDark,
+      themeColor: '#C97A7A',
+      onConfirmar: () => {
+        cerrarAlerta();
+        responderPorOtro(t, 'declinar');
       },
     });
   const tarjeta = { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, padding: 20, marginBottom: 14 };
@@ -3743,22 +3827,37 @@ function CenaScreen({ navigation }) {
                     const pendiente = !listo && esAdmin && !!t;
                     const texto = listo || pendiente ? nombreDe(t.nombre_usuario) : 'Por confirmar';
                     return (
-                      <View key={p} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: p === 0 ? 0 : 1, borderTopColor: colors.cardBorder }}>
-                        <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: listo ? paleta.fondo : 'transparent', borderWidth: 1.5, borderColor: listo ? paleta.fondo : colors.cardBorder, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>{p === 0 ? <Feather name="book-open" size={15} color={listo ? paleta.texto : colors.textSub} /> : <Text style={{ fontWeight: '700', color: listo ? paleta.texto : colors.textSub }}>{p}</Text>}</View>
-                        <View style={{ flex: 1 }}>
-                          {p === 0 ? <Text style={{ fontSize: 12, color: colors.textSub }}>Preside</Text> : null}
-                          <Text style={{ fontSize: 15, fontWeight: listo || pendiente ? '700' : '500', color: listo || pendiente ? colors.textMain : colors.textSub, fontStyle: listo || pendiente ? 'normal' : 'italic', opacity: pendiente ? 0.4 : 1 }}>{texto}</Text>
+                      <View key={p} style={{ borderTopWidth: p === 0 ? 0 : 1, borderTopColor: colors.cardBorder }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
+                          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: listo ? paleta.fondo : 'transparent', borderWidth: 1.5, borderColor: listo ? paleta.fondo : colors.cardBorder, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>{p === 0 ? <Feather name="book-open" size={15} color={listo ? paleta.texto : colors.textSub} /> : <Text style={{ fontWeight: '700', color: listo ? paleta.texto : colors.textSub }}>{p}</Text>}</View>
+                          <TouchableOpacity disabled={!pendiente} activeOpacity={0.7} onPress={() => setAbierto(abierto === t.id ? null : t.id)} accessibilityLabel={pendiente ? `Responder por ${texto}` : undefined} style={{ flex: 1 }}>
+                            {p === 0 ? <Text style={{ fontSize: 12, color: colors.textSub }}>Preside</Text> : null}
+                            <Text style={{ fontSize: 15, fontWeight: listo || pendiente ? '700' : '500', color: listo || pendiente ? colors.textMain : colors.textSub, fontStyle: listo || pendiente ? 'normal' : 'italic', opacity: pendiente ? 0.4 : 1 }}>{texto}</Text>
+                          </TouchableOpacity>
+                          {pendiente ? <Feather name={abierto === t.id ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSub} style={{ marginRight: puedeAsignar ? 8 : 0 }} /> : null}
+                          {listo ? <IconoCheck size={22} color={isDark ? '#8FC79F' : '#6FA884'} /> : null}
+                          {listo && miTurno && t.id === miTurno.id ? (
+                            <TouchableOpacity onPress={cancelarMiLugar} accessibilityLabel="Ya no puedo" style={{ padding: 6, marginLeft: 6 }}>
+                              <Feather name="x-circle" size={22} color="#C97A7A" />
+                            </TouchableOpacity>
+                          ) : null}
+                          {puedeAsignar && !listo ? (
+                            <TouchableOpacity onPress={() => abrirAsignar(p)} accessibilityLabel="Asignar" style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center' }}>
+                              <Feather name="plus" size={20} color={paleta.texto} />
+                            </TouchableOpacity>
+                          ) : null}
                         </View>
-                        {listo ? <IconoCheck size={22} color={isDark ? '#8FC79F' : '#6FA884'} /> : null}
-                        {listo && miTurno && t.id === miTurno.id ? (
-                          <TouchableOpacity onPress={cancelarMiLugar} accessibilityLabel="Ya no puedo" style={{ padding: 6, marginLeft: 6 }}>
-                            <Feather name="x-circle" size={22} color="#C97A7A" />
-                          </TouchableOpacity>
-                        ) : null}
-                        {puedeAsignar && !listo ? (
-                          <TouchableOpacity onPress={() => abrirAsignar(p)} accessibilityLabel="Asignar" style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center' }}>
-                            <Feather name="plus" size={20} color={paleta.texto} />
-                          </TouchableOpacity>
+                        {pendiente && abierto === t.id ? (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingLeft: 46, paddingBottom: 12 }}>
+                            <TouchableOpacity onPress={() => responderPorOtro(t, 'confirmar')} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: paleta.fondo }}>
+                              <Feather name="check" size={15} color={paleta.texto} />
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: paleta.texto }}>Confirmar por él</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => noPuede(t)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: '#C97A7A' }}>
+                              <Feather name="x" size={15} color="#C97A7A" />
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#C97A7A' }}>No puede</Text>
+                            </TouchableOpacity>
+                          </View>
                         ) : null}
                       </View>
                     );
