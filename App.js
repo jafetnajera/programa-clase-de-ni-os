@@ -306,6 +306,8 @@ const linking = {
       DetalleUsuario: 'detalle-usuario',
       ResumenAsistencia: 'resumen-asistencia',
       ResumenCena: 'resumen-cena',
+      ResumenClases: 'resumen-clases',
+      ResumenPredicaciones: 'resumen-predicaciones',
       Calendario: 'calendario',
     },
   },
@@ -726,6 +728,7 @@ const PanelNotificaciones = ({ visible, onCerrar, onNavegar, onRevisadas, isDark
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 14 }}>{s.mensaje}</Text>
                   <Text style={{ color: colors.textSub, fontSize: 12.5, marginTop: 2 }}>{s.detalle}</Text>
+                  {s.fecha ? <Text style={{ color: colors.textSub, fontSize: 11.5, marginTop: 5, opacity: 0.85 }}>{cuandoAviso(s.fecha)}</Text> : null}
                   {s.cenaTurno ? (
                     <AccionesCena
                       turno={s.cenaTurno}
@@ -1033,6 +1036,53 @@ const ponerMayusculas = (t) =>
     .map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : p))
     .join(' ');
 
+// Descarga una tabla como archivo CSV (se abre directo en Excel, con acentos)
+const descargarTablaCSV = (nombreArchivo, encabezados, filas) => {
+  const escapar = (valor) => `"${String(valor ?? '').replace(/"/g, '""')}"`;
+  const csv = [encabezados, ...filas].map((fila) => fila.map(escapar).join(',')).join('\r\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = nombreArchivo;
+  document.body.appendChild(enlace);
+  enlace.click();
+  document.body.removeChild(enlace);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+// Tarjeta de un usuario en Administración: nombre arriba y, abajo, usuario, PIN y botones chicos
+const FilaUsuarioAdmin = ({ maestro, isDark, onAbrir, onCompartir, onCopiar, onEditar, onEliminar }) => {
+  const colors = getColors(isDark);
+  const boton = (icono, onPress, etiqueta, peligro) => (
+    <TouchableOpacity onPress={onPress} accessibilityLabel={etiqueta} style={{ width: 36, height: 36, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: peligro ? 'rgba(255, 183, 161, 0.2)' : 'rgba(74, 85, 104, 0.2)' }}>
+      <Feather name={icono} size={15} color={peligro ? '#E89A84' : colors.textSub} />
+    </TouchableOpacity>
+  );
+  return (
+    <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, paddingVertical: 14, paddingHorizontal: 20, marginBottom: 10 }}>
+      <TouchableOpacity onPress={onAbrir} disabled={!onAbrir} activeOpacity={0.7}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain }}>
+          {ponerMayusculas(maestro.nombre_completo || maestro.nombre_usuario)}
+          {maestro.nombre_usuario === usuarioActivoGlobal ? ' (Tú)' : ''}
+        </Text>
+      </TouchableOpacity>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSub }}>PIN {maestro.pin_acceso}</Text>
+          <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 1 }} numberOfLines={1}>
+            {maestro.nombre_usuario}
+          </Text>
+        </View>
+        {boton('share-2', onCompartir, 'Compartir accesos')}
+        {boton('copy', onCopiar, 'Copiar accesos')}
+        {boton('edit-2', onEditar, 'Editar usuario')}
+        {boton('trash-2', onEliminar, 'Eliminar usuario', true)}
+      </View>
+    </View>
+  );
+};
+
 // Devuelve un mapa { usuario en minúsculas: nombre completo } con la lista pública de usuarios
 const cargarMapaNombres = async () => {
   const { data } = await supabase.rpc('nombres_publicos');
@@ -1058,6 +1108,19 @@ const buscarConflictoDia = async (usuario, fecha, ignorar = {}) => {
 
 // ---- NOTIFICACIONES: avisos de apoyo para el usuario activo ----
 const claveVistas = () => `notificaciones_vistas_${(usuarioActivoGlobal || '').toLowerCase()}`;
+const claveHoras = () => `notificaciones_horas_${(usuarioActivoGlobal || '').toLowerCase()}`;
+
+// Fecha y hora de un aviso: "Hoy 9:00 am", "Ayer 3:15 pm" o "Lun 19 oct, 9:00 am"
+const cuandoAviso = (iso) => {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d.getTime())) return '';
+  const hoy = new Date();
+  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+  const hora = horaBonita(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`);
+  if (d.toDateString() === hoy.toDateString()) return `Hoy ${hora}`;
+  if (d.toDateString() === ayer.toDateString()) return `Ayer ${hora}`;
+  return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()}${d.getFullYear() !== hoy.getFullYear() ? ' ' + d.getFullYear() : ''}, ${hora}`;
+};
 
 const marcarNotificacionesVistas = async (items) => {
   try {
@@ -1105,25 +1168,25 @@ const obtenerNotificaciones = async () => {
       const esClase = !!s.clase_asignada_id;
       const antes = items.length;
       if (s.estado === 'Pendiente' && (s.maestro_destino || '').toLowerCase() === yo) {
-        items.push({ clave: `dir:${s.id}`, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} te pide apoyo`, detalle: cuando(s) });
+        items.push({ clave: `dir:${s.id}`, fecha: s.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} te pide apoyo`, detalle: cuando(s) });
       } else if (s.estado === 'Pendiente' && esClase && !s.maestro_destino && solicitante !== yo && soyElegibleClases && s.fecha_referencia) {
         const conflicto = await buscarConflictoDia(usuarioActivoGlobal, s.fecha_referencia);
-        if (!conflicto) items.push({ clave: `gen:${s.id}`, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo y tú estás libre`, detalle: cuando(s) });
+        if (!conflicto) items.push({ clave: `gen:${s.id}`, fecha: s.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo y tú estás libre`, detalle: cuando(s) });
       }
       if (s.estado === 'Pendiente' && !esClase && s.grupo_clase === 'Predicaciones' && !s.maestro_destino && solicitante !== yo && soyElegiblePred && s.fecha_referencia) {
         const conflictoPred = await buscarConflictoDia(usuarioActivoGlobal, s.fecha_referencia);
-        if (!conflictoPred) items.push({ clave: `gen-rol:${s.id}`, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo en una predicación y tú estás libre`, detalle: cuando(s) });
+        if (!conflictoPred) items.push({ clave: `gen-rol:${s.id}`, fecha: s.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo en una predicación y tú estás libre`, detalle: cuando(s) });
       }
       if (s.estado === 'Cubierta' && solicitante === yo && s.maestro_suplente) {
-        items.push({ clave: `acepto:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
+        items.push({ clave: `acepto:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
       }
       if (rolUsuarioActivoGlobal === 'administrador' && items.length === antes && solicitante !== yo && !(esClase && coordPorClase[s.clase_asignada_id] === yo)) {
-        if (s.estado === 'Pendiente') items.push({ clave: `admin-pide:${s.id}`, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo`, detalle: cuando(s) });
-        else if (s.estado === 'Cubierta' && s.maestro_suplente && (s.maestro_suplente || '').toLowerCase() !== yo) items.push({ clave: `admin-acepta:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
+        if (s.estado === 'Pendiente') items.push({ clave: `admin-pide:${s.id}`, fecha: s.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo`, detalle: cuando(s) });
+        else if (s.estado === 'Cubierta' && s.maestro_suplente && (s.maestro_suplente || '').toLowerCase() !== yo) items.push({ clave: `admin-acepta:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
       }
       if (esClase && coordPorClase[s.clase_asignada_id] === yo && solicitante !== yo) {
-        if (s.estado === 'Pendiente' && items.length === antes) items.push({ clave: `coord-pide:${s.id}`, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
-        else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
+        if (s.estado === 'Pendiente' && items.length === antes) items.push({ clave: `coord-pide:${s.id}`, fecha: s.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
+        else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
       }
     }
     // ---- RECORDATORIOS: clases, equipo y rol (desaparecen solos cuando pasa la fecha) ----
@@ -1175,12 +1238,12 @@ const obtenerNotificaciones = async () => {
     if (porConfirmarLejos) recordatorios.push({ clave: 'rec-rol-pend', accion: true, destino: { pantalla: 'MiRol', params: { servicioId: porConfirmarLejos.id } }, mensaje: 'Tienes fechas por confirmar en tu rol', detalle: 'Toca para revisarlas en Mi rol' });
     items.unshift(...recordatorios);
     // ---- CENA DEL SEÑOR: invitación por responder (con botones), asignación y lugares que faltan ----
-    const { data: turnosCena } = await supabase.from('cena_turnos').select('id, fecha, posicion, nombre_usuario, estado, asignado_por').gte('fecha', hoy).in('estado', ['invitado', 'confirmado']);
+    const { data: turnosCena } = await supabase.from('cena_turnos').select('id, fecha, posicion, nombre_usuario, estado, asignado_por, invitado_en, respondido_en').gte('fecha', hoy).in('estado', ['invitado', 'confirmado']);
     (turnosCena || [])
       .filter((t) => (t.nombre_usuario || '').toLowerCase() === yo)
       .forEach((t) => {
-        if (t.estado === 'invitado') items.unshift({ clave: `cena-inv:${t.id}`, accion: true, cenaTurno: t.id, destino: { pantalla: 'Cena' }, mensaje: 'Confirma tu apoyo para la Cena del Señor', detalle: `${fechaLargaCena(t.fecha)} • ${t.posicion === 0 ? 'Presidir' : 'Servir la mesa'}` });
-        else if (t.asignado_por) items.unshift({ clave: `cena-asig:${t.id}`, accion: false, destino: { pantalla: 'Cena' }, mensaje: 'Fuiste asignado para la Cena del Señor', detalle: `${fechaLargaCena(t.fecha)} • ${t.posicion === 0 ? 'Presides' : `Posición ${t.posicion}`}` });
+        if (t.estado === 'invitado') items.unshift({ clave: `cena-inv:${t.id}`, fecha: t.invitado_en, accion: true, cenaTurno: t.id, destino: { pantalla: 'Cena' }, mensaje: 'Confirma tu apoyo para la Cena del Señor', detalle: `${fechaLargaCena(t.fecha)} • ${t.posicion === 0 ? 'Presidir' : 'Servir la mesa'}` });
+        else if (t.asignado_por) items.unshift({ clave: `cena-asig:${t.id}`, fecha: t.respondido_en, accion: false, destino: { pantalla: 'Cena' }, mensaje: 'Fuiste asignado para la Cena del Señor', detalle: `${fechaLargaCena(t.fecha)} • ${t.posicion === 0 ? 'Presides' : `Posición ${t.posicion}`}` });
       });
     const ahoraCena = new Date();
     if (rolUsuarioActivoGlobal === 'administrador' && ((ahoraCena.getDay() === 6 && ahoraCena.getHours() >= 12) || ahoraCena.getDay() === 0)) {
@@ -1191,6 +1254,18 @@ const obtenerNotificaciones = async () => {
   } catch (e) {
     console.error('Error leyendo notificaciones:', e);
   }
+  // Los recordatorios no tienen fecha en la base: se usa la primera vez que aparecieron
+  try {
+    const horas = JSON.parse((await AsyncStorage.getItem(claveHoras())) || '{}');
+    const ahora = new Date().toISOString();
+    const guardar = {};
+    items.forEach((n) => {
+      if (n.fecha) return;
+      n.fecha = horas[n.clave] || ahora;
+      guardar[n.clave] = n.fecha;
+    });
+    await AsyncStorage.setItem(claveHoras(), JSON.stringify(guardar));
+  } catch (e) {}
   let vistas = [];
   try {
     vistas = JSON.parse((await AsyncStorage.getItem(claveVistas())) || '[]');
@@ -3953,6 +4028,7 @@ function NotificacionesScreen({ navigation }) {
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 15 }}>{s.mensaje}</Text>
                     <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 2 }}>{s.detalle}</Text>
+                    {s.fecha ? <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 5, opacity: 0.85 }}>{cuandoAviso(s.fecha)}</Text> : null}
                     {s.cenaTurno ? (
                       <AccionesCena
                         turno={s.cenaTurno}
@@ -3999,17 +4075,7 @@ function TodosUsuariosScreen({ navigation }) {
   const descargarCSV = () => {
     const encabezados = ['Usuario', 'Nombre completo', 'PIN', 'Celular', 'Rol', 'Elegible Clases de niños', 'Elegible Predicaciones y Clases'];
     const filas = maestros.map((m) => [m.nombre_usuario, m.nombre_completo || '', m.pin_acceso, m.telefono || '', m.rol, m.elegible_clases_ninos ? 'Sí' : 'No', m.elegible_predicaciones ? 'Sí' : 'No']);
-    const escapar = (valor) => `"${String(valor ?? '').replace(/"/g, '""')}"`;
-    const csv = [encabezados, ...filas].map((fila) => fila.map(escapar).join(',')).join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const enlace = document.createElement('a');
-    enlace.href = url;
-    enlace.download = `usuarios_indus_${fechaISO(new Date())}.csv`;
-    document.body.appendChild(enlace);
-    enlace.click();
-    document.body.removeChild(enlace);
-    URL.revokeObjectURL(url);
+    descargarTablaCSV(`usuarios_indus_${fechaISO(new Date())}.csv`, encabezados, filas);
   };
 
   return (
@@ -5960,28 +6026,9 @@ function AdminScreen({ navigation, route }) {
               {busquedaUsuario.trim() !== '' ? (
                 <View>
                   {maestros
-                    .filter((m) => m.nombre_usuario.toLowerCase().includes(busquedaUsuario.trim().toLowerCase()))
+                    .filter((m) => sinAcentos(`${m.nombre_usuario} ${m.nombre_completo || ''}`).includes(sinAcentos(busquedaUsuario.trim())))
                     .map((maestro) => (
-                      <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-                        <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('DetalleUsuario', { maestro })}>
-                          <Text style={[styles.userTextName, { color: colors.textMain }]}>
-                            {maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && '(Tú)'}
-                          </Text>
-                          <Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}>
-                          <Feather name="share-2" size={18} color={colors.textSub} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtnGray} onPress={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)}>
-                          <Feather name="copy" size={18} color={colors.textSub} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}>
-                          <Feather name="edit-2" size={18} color={colors.textSub} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}>
-                          <Feather name="trash-2" size={18} color="#FFB7A1" />
-                        </TouchableOpacity>
-                      </View>
+                      <FilaUsuarioAdmin key={maestro.id} maestro={maestro} isDark={isDark} onAbrir={() => navigation.navigate('DetalleUsuario', { maestro })} onCompartir={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)} onCopiar={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)} onEditar={() => setMaestroEditando(maestro)} onEliminar={() => confirmarEliminacion(maestro)} />
                     ))}
                   <TouchableOpacity style={[styles.equipoFolder, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginTop: 5, marginBottom: 15 }]} onPress={() => navigation.navigate('TodosUsuarios')}>
                     <Feather name="users" size={24} color={colors.textSub} />
@@ -6014,26 +6061,7 @@ function AdminScreen({ navigation, route }) {
                   </TouchableOpacity>
                   <Text style={[styles.topicTitle, { color: '#EFBC68', marginTop: 10 }]}>{equipoSeleccionadoAdmin}</Text>
                   {(maestrosPorEquipo[equipoSeleccionadoAdmin] || []).map((maestro) => (
-                    <View key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.userTextName, { color: colors.textMain }]}>
-                          {maestro.nombre_completo || maestro.nombre_usuario} {maestro.nombre_usuario === usuarioActivoGlobal && '(Tú)'}
-                        </Text>
-                        <Text style={[styles.userTextPin, { color: colors.textSub }]}>PIN: {maestro.pin_acceso}</Text>
-                      </View>
-                      <TouchableOpacity style={styles.actionBtnBlue} onPress={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)}>
-                        <Feather name="share-2" size={18} color={colors.textSub} />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.actionBtnGray} onPress={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)}>
-                        <Feather name="copy" size={18} color={colors.textSub} />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.actionBtnGray} onPress={() => setMaestroEditando(maestro)}>
-                        <Feather name="edit-2" size={18} color={colors.textSub} />
-                      </TouchableOpacity>{' '}
-                      <TouchableOpacity style={styles.actionBtnRed} onPress={() => confirmarEliminacion(maestro)}>
-                        <Feather name="trash-2" size={18} color="#FFB7A1" />
-                      </TouchableOpacity>
-                    </View>
+                    <FilaUsuarioAdmin key={maestro.id} maestro={maestro} isDark={isDark} onAbrir={() => navigation.navigate('DetalleUsuario', { maestro })} onCompartir={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)} onCopiar={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)} onEditar={() => setMaestroEditando(maestro)} onEliminar={() => confirmarEliminacion(maestro)} />
                   ))}
                 </View>
               )}
@@ -6123,6 +6151,7 @@ function AdminScreen({ navigation, route }) {
                 </View>
               )}
             </OpcionAdmin>
+            <OpcionAdmin {...opc('resumenPredicaciones')} icono="bar-chart-2" titulo="Resumen de predicaciones" subtitulo="Fechas por hermano, confirmaciones y apoyos" onPress={() => navigation.navigate('ResumenPredicaciones')} />
             <OpcionAdmin {...opc('resumenCena')} icono="bar-chart-2" titulo="Resumen de la Cena del Señor" subtitulo="Participación y respuestas a las invitaciones" onPress={() => navigation.navigate('ResumenCena')} />
           </>
         )}
@@ -6239,6 +6268,7 @@ function AdminScreen({ navigation, route }) {
                 </View>
               )}
             </OpcionAdmin>
+            <OpcionAdmin {...opc('resumenClases')} icono="bar-chart-2" titulo="Resumen de clases" subtitulo="Clases por maestro, apoyos y lo que falta cubrir" onPress={() => navigation.navigate('ResumenClases')} />
             <OpcionAdmin {...opc('resumenAsistencia')} icono="bar-chart-2" titulo="Resumen de asistencia" subtitulo="Gráficas por mes y por grupo" onPress={() => navigation.navigate('ResumenAsistencia')} />
             <OpcionAdmin {...opc('asistencia')} icono="download" titulo="Descargar asistencia" subtitulo="En CSV, de un grupo o de todos juntos">
               <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Descarga la asistencia en CSV: de un grupo o de todos juntos.</Text>
@@ -6295,11 +6325,127 @@ const horaBonita = (h) => {
 };
 const diasEntre = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
 
+// Campo de fecha u hora del navegador: en el celular abre su selector propio
+const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta }) => {
+  const colors = getColors(isDark);
+  return React.createElement('input', {
+    type: tipo,
+    value: valor || '',
+    'aria-label': etiqueta,
+    onChange: (e) => onCambiar(e.target.value),
+    style: { width: '100%', boxSizing: 'border-box', height: 48, borderRadius: 16, border: `1px solid ${colors.inputBorder}`, background: colors.inputBg, color: colors.inputText, padding: '0 14px', fontSize: 16, fontFamily: 'inherit', colorScheme: isDark ? 'dark' : 'light', outline: 'none' },
+  });
+};
+
+// Ventana para agregar, editar o borrar una actividad del calendario (solo administradores)
+const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado }) => {
+  const colors = getColors(isDark);
+  const nueva = !actividad;
+  const [nombre, setNombre] = useState(actividad ? actividad.actividad : '');
+  const [lugar, setLugar] = useState(actividad ? actividad.lugar || '' : '');
+  const [descripcion, setDescripcion] = useState(actividad ? actividad.descripcion || '' : '');
+  const [inicio, setInicio] = useState(actividad ? actividad.fecha_inicio : fechaInicial);
+  const [varios, setVarios] = useState(actividad ? actividad.fecha_inicio !== actividad.fecha_fin : false);
+  const [fin, setFin] = useState(actividad ? actividad.fecha_fin : fechaInicial);
+  const [todoElDia, setTodoElDia] = useState(actividad ? !actividad.hora : false);
+  const [hora, setHora] = useState(actividad && actividad.hora ? String(actividad.hora).slice(0, 5) : '');
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [borrar, setBorrar] = useState(false);
+  const campo = [styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 0 }];
+  const etiqueta = { fontSize: 13, fontWeight: '700', color: colors.textSub, marginTop: 14, marginBottom: 6 };
+
+  const guardar = async () => {
+    if (!nombre.trim()) return setError('Escribe el nombre de la actividad.');
+    if (!inicio) return setError('Elige la fecha.');
+    if (varios && (!fin || fin < inicio)) return setError('La fecha en que termina debe ser igual o después de la fecha en que empieza.');
+    if (!varios && !todoElDia && !hora) return setError('Elige la hora o marca «Todo el día».');
+    setError('');
+    setGuardando(true);
+    const fila = { actividad: nombre.trim(), lugar: lugar.trim() || null, descripcion: descripcion.trim() || null, fecha_inicio: inicio, fecha_fin: varios ? fin : inicio, hora: varios || todoElDia ? null : hora };
+    const { error: e } = nueva ? await supabase.from('actividades').insert([fila]) : await supabase.from('actividades').update(fila).eq('id', actividad.id);
+    setGuardando(false);
+    if (e) return setError('No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
+    onGuardado(inicio);
+  };
+  const eliminar = async () => {
+    if (!borrar) return setBorrar(true);
+    setGuardando(true);
+    const { error: e } = await supabase.from('actividades').delete().eq('id', actividad.id);
+    setGuardando(false);
+    if (e) return setError('No se pudo borrar. Revisa tu conexión e intenta de nuevo.');
+    onGuardado(null);
+  };
+  const interruptor = (texto, valor, onCambiar) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}>
+      <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: colors.textMain }}>{texto}</Text>
+      <Switch value={valor} onValueChange={onCambiar} trackColor={{ false: colors.cardBorder, true: VERDE_CALENDARIO }} thumbColor="#FFFFFF" activeThumbColor="#FFFFFF" />
+    </View>
+  );
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onCerrar}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 14 }}>
+        <View style={{ width: '100%', maxWidth: 520, maxHeight: '92%', backgroundColor: colors.cardBg, borderRadius: 32, borderWidth: 1, borderColor: colors.cardBorder, overflow: 'hidden' }}>
+          <ScrollView contentContainerStyle={{ padding: 22 }} keyboardShouldPersistTaps="handled">
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ flex: 1, fontSize: 19, fontWeight: '800', color: colors.textMain }}>{nueva ? 'Nueva actividad' : 'Editar actividad'}</Text>
+              <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ padding: 6 }}>
+                <Feather name="x" size={20} color={colors.textSub} />
+              </TouchableOpacity>
+            </View>
+            <Text style={etiqueta}>Actividad</Text>
+            <TextInput style={campo} value={nombre} onChangeText={setNombre} placeholder="Ej. Reunión de jóvenes" placeholderTextColor={colors.textSub} />
+            <Text style={etiqueta}>Lugar</Text>
+            <TextInput style={campo} value={lugar} onChangeText={setLugar} placeholder="Opcional" placeholderTextColor={colors.textSub} />
+            {interruptor('Dura varios días', varios, setVarios)}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={etiqueta}>{varios ? 'Empieza' : 'Fecha'}</Text>
+                <CampoFechaHora tipo="date" valor={inicio} onCambiar={setInicio} isDark={isDark} etiqueta={varios ? 'Empieza' : 'Fecha'} />
+              </View>
+              {varios ? (
+                <View style={{ flex: 1 }}>
+                  <Text style={etiqueta}>Termina</Text>
+                  <CampoFechaHora tipo="date" valor={fin} onCambiar={setFin} isDark={isDark} etiqueta="Termina" />
+                </View>
+              ) : null}
+            </View>
+            {!varios ? (
+              <>
+                {interruptor('Todo el día', todoElDia, setTodoElDia)}
+                {!todoElDia ? (
+                  <>
+                    <Text style={etiqueta}>Hora</Text>
+                    <CampoFechaHora tipo="time" valor={hora} onCambiar={setHora} isDark={isDark} etiqueta="Hora" />
+                  </>
+                ) : null}
+              </>
+            ) : null}
+            <Text style={etiqueta}>Descripción</Text>
+            <TextInput style={[campo, { minHeight: 80, paddingTop: 12, textAlignVertical: 'top' }]} value={descripcion} onChangeText={setDescripcion} placeholder="Opcional" placeholderTextColor={colors.textSub} multiline />
+            {error ? <Text style={{ fontSize: 13, color: '#E0806A', marginTop: 12 }}>{error}</Text> : null}
+            <TouchableOpacity onPress={guardar} disabled={guardando} style={{ marginTop: 18, height: 50, borderRadius: 999, backgroundColor: VERDE_CALENDARIO, alignItems: 'center', justifyContent: 'center' }}>
+              {guardando ? <ActivityIndicator color="#1E1D1B" /> : <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E1D1B' }}>Guardar</Text>}
+            </TouchableOpacity>
+            {!nueva ? (
+              <TouchableOpacity onPress={eliminar} disabled={guardando} style={{ marginTop: 10, height: 46, borderRadius: 999, borderWidth: 1, borderColor: borrar ? '#E0806A' : colors.cardBorder, backgroundColor: borrar ? 'rgba(224, 128, 106, 0.15)' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#E0806A' }}>{borrar ? 'Toca otra vez para borrarla' : 'Borrar actividad'}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 function CalendarioScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const { width, height } = useWindowDimensions();
   const horizontal = width >= 760 && width > height;
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
   const hoy = fechaISO(new Date());
   const [mes, setMes] = useState(() => {
     const d = new Date();
@@ -6309,17 +6455,20 @@ function CalendarioScreen({ navigation }) {
   const [abierta, setAbierta] = useState(false);
   const [actividades, setActividades] = useState([]);
   const [mios, setMios] = useState([]);
-  const [anchoCuadricula, setAnchoCuadricula] = useState(0);
+  const [zona, setZona] = useState({ w: 0, h: 0 });
   const [arribaCuadricula, setArribaCuadricula] = useState(0);
-  const [altoPantalla, setAltoPantalla] = useState(0);
+  const [altoZona, setAltoZona] = useState(0);
+  const [editando, setEditando] = useState(null); // null = cerrado, 'nueva' o la actividad a editar
   const subir = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
+  const cargar = () =>
     supabase
       .from('actividades')
       .select('id, fecha_inicio, fecha_fin, hora, actividad, lugar, descripcion')
       .order('fecha_inicio', { ascending: true })
       .then(({ data }) => setActividades(data || []));
+  useEffect(() => {
+    cargar();
     supabase
       .from('actividades_recordatorios')
       .select('actividad_id')
@@ -6362,10 +6511,27 @@ function CalendarioScreen({ navigation }) {
     const { error } = tengo ? await supabase.from('actividades_recordatorios').delete().eq('actividad_id', id) : await supabase.from('actividades_recordatorios').insert([{ actividad_id: id }]);
     if (error) setMios(mios);
   };
+  const alGuardar = (fecha) => {
+    setEditando(null);
+    cargar();
+    if (fecha) {
+      const d = new Date(fecha + 'T00:00:00');
+      setMes(new Date(d.getFullYear(), d.getMonth(), 1));
+      setSel(fecha);
+      if (!horizontal) setAbierta(true);
+    }
+  };
 
-  // Cuadrícula: tamaño de cada día según el ancho disponible
-  const separacion = horizontal ? 10 : 6;
-  const tam = anchoCuadricula ? Math.min(92, Math.floor((anchoCuadricula - separacion * 6 - 1) / 7)) : 0;
+  // Cuadrícula: cada día es un círculo. En horizontal se ajusta al ancho y al alto disponibles
+  const filas = Math.ceil((primero + totalDias) / 7);
+  const separacion = horizontal ? 12 : 6;
+  let tam = 0;
+  if (zona.w) {
+    const porAncho = Math.floor((zona.w - separacion * 6 - 1) / 7);
+    const porAlto = horizontal && zona.h ? Math.floor((zona.h - 34 - separacion * (filas - 1)) / filas) : porAncho;
+    tam = Math.max(28, Math.min(horizontal ? 132 : 92, porAncho, porAlto));
+  }
+  const anchoRejilla = tam * 7 + separacion * 6;
   const celdas = [...Array(primero).fill(null), ...Array.from({ length: totalDias }, (_, i) => i + 1)];
   // Cápsula verde para las actividades de varios días (un tramo por cada semana que cruzan)
   const capsulas = [];
@@ -6393,6 +6559,12 @@ function CalendarioScreen({ navigation }) {
   const listaSel = delDia(sel);
   const tituloDia = `${DIAS_SEMANA_LARGOS[fechaSel.getDay()]} ${fechaSel.getDate()} de ${NOMBRES_MESES[fechaSel.getMonth()].toLowerCase()}`;
   const flecha = { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.cardBg, alignItems: 'center', justifyContent: 'center' };
+  const botonAgregar = esAdmin ? (
+    <TouchableOpacity onPress={() => setEditando('nueva')} accessibilityLabel="Agregar actividad" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, borderRadius: 999, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.cardBorder, marginTop: 6, marginBottom: 8 }}>
+      <Feather name="plus" size={16} color={colors.textSub} />
+      <Text style={{ fontSize: 13.5, fontWeight: '700', color: colors.textSub }}>Agregar actividad</Text>
+    </TouchableOpacity>
+  ) : null;
 
   const listaActividades = (
     <>
@@ -6424,6 +6596,11 @@ function CalendarioScreen({ navigation }) {
                 ) : null}
               </View>
             </View>
+            {esAdmin ? (
+              <TouchableOpacity onPress={() => setEditando(a)} accessibilityLabel={`Editar ${a.actividad}`} style={{ width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+                <Feather name="edit-2" size={14} color={colors.textSub} />
+              </TouchableOpacity>
+            ) : null}
           </View>
         );
       })}
@@ -6438,7 +6615,7 @@ function CalendarioScreen({ navigation }) {
           <Text style={{ fontSize: 28, fontWeight: '800', letterSpacing: -0.5, color: colors.textMain }}>{NOMBRES_MESES[numMes].toUpperCase()}</Text>
           <Text style={{ fontSize: 24, fontWeight: '500', color: colors.textSub }}>{anio}</Text>
         </View>
-        <Text style={{ fontSize: 28, fontWeight: '700', color: colors.textSub }}>{DIAS_SEMANA_CORTOS[fechaSel.getDay()]}</Text>
+        {!horizontal ? <Text style={{ fontSize: 28, fontWeight: '700', color: colors.textSub }}>{DIAS_SEMANA_CORTOS[fechaSel.getDay()]}</Text> : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
         <TouchableOpacity onPress={() => cambiarMes(-1)} style={flecha} accessibilityLabel="Mes anterior">
@@ -6452,20 +6629,28 @@ function CalendarioScreen({ navigation }) {
   );
 
   const cuadricula = (
-    <View style={{ flex: horizontal ? 1 : undefined, marginTop: horizontal ? 24 : 18, opacity: abierta && !horizontal ? 0 : 1 }} onLayout={(e) => setArribaCuadricula(e.nativeEvent.layout.y)}>
-      <View style={{ flexDirection: 'row', gap: separacion, marginBottom: 8 }}>
-        {DIAS_SEMANA_CORTOS.map((d) => (
-          <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 11, color: colors.textSub }}>
-            {d}
-          </Text>
-        ))}
-      </View>
-      <View onLayout={(e) => setAnchoCuadricula(e.nativeEvent.layout.width)} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: separacion, position: 'relative' }}>
-        {capsulas.map((c) => (
-          <View key={c.clave} style={{ position: 'absolute', left: c.left, top: c.top, width: c.width, height: tam, borderRadius: tam / 2, backgroundColor: VERDE_CALENDARIO }} />
-        ))}
-        {tam
-          ? celdas.map((d, i) => {
+    <View
+      style={{ flex: horizontal ? 1 : undefined, marginTop: horizontal ? 10 : 18, alignItems: 'center', justifyContent: horizontal ? 'center' : 'flex-start' }}
+      onLayout={(e) => {
+        const { width: w, height: h, y } = e.nativeEvent.layout;
+        setZona((z) => (z.w === w && z.h === h ? z : { w, h }));
+        setArribaCuadricula(y);
+      }}
+    >
+      {tam ? (
+        <View style={{ width: anchoRejilla }}>
+          <View style={{ flexDirection: 'row', gap: separacion, marginBottom: 8 }}>
+            {DIAS_SEMANA_CORTOS.map((d) => (
+              <Text key={d} style={{ width: tam, textAlign: 'center', fontSize: horizontal ? 12.5 : 11, color: colors.textSub }}>
+                {d}
+              </Text>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: separacion, position: 'relative', width: anchoRejilla }}>
+            {capsulas.map((c) => (
+              <View key={c.clave} style={{ position: 'absolute', left: c.left, top: c.top, width: c.width, height: tam, borderRadius: tam / 2, backgroundColor: VERDE_CALENDARIO }} />
+            ))}
+            {celdas.map((d, i) => {
               if (!d) return <View key={'v' + i} style={{ width: tam, height: tam }} />;
               const f = fechaDe(d);
               const esHoy = f === hoy;
@@ -6473,24 +6658,26 @@ function CalendarioScreen({ navigation }) {
               const colorPunto = esHoy ? '#1E1D1B' : f < hoy ? '#FFFFFF' : isDark ? '#F2F0EA' : '#1E1D1B';
               const n = puntosDe(f);
               const elegido = f === sel && !esHoy;
+              const punto = tam >= 90 ? 8 : 6;
               return (
                 <TouchableOpacity key={f} activeOpacity={0.8} onPress={() => tocarDia(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: tam, height: tam, borderRadius: tam / 2, padding: 4, borderWidth: elegido ? 2.5 : 0, borderColor: colors.textMain, alignItems: 'center', justifyContent: 'center' }}>
                   <View style={{ width: '100%', height: '100%', borderRadius: tam, backgroundColor: fondo, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 3 }}>
                     {Array.from({ length: n }).map((_, k) => (
-                      <View key={k} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colorPunto }} />
+                      <View key={k} style={{ width: punto, height: punto, borderRadius: punto / 2, backgroundColor: colorPunto }} />
                     ))}
                   </View>
                 </TouchableOpacity>
               );
-            })
-          : null}
-      </View>
+            })}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]} onLayout={(e) => setAltoPantalla(e.nativeEvent.layout.height)}>
-      <View style={{ width: '95%', maxWidth: horizontal ? 1100 : 600, flex: 1 }}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <View style={{ width: '95%', maxWidth: horizontal ? 1400 : 600, flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal'))} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -6498,25 +6685,29 @@ function CalendarioScreen({ navigation }) {
           <View style={[styles.headerSoloText, { flex: 1 }]}>
             <Text style={[styles.titleMini, { color: colors.textMain }]}>CALENDARIO</Text>
           </View>
-          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
-            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
-          </TouchableOpacity>
+          {!horizontal ? (
+            <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+              <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+            </TouchableOpacity>
+          ) : null}
         </View>
         {horizontal ? (
-          <View style={{ flex: 1, flexDirection: 'row', gap: 36 }}>
-            <ScrollView style={{ width: '42%', flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 30 }}>
+          <View style={{ flex: 1, flexDirection: 'row', gap: 40, paddingBottom: 16 }}>
+            <ScrollView style={{ width: '38%', maxWidth: 460, flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 30 }}>
               {fecha}
               <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textSub, marginTop: 22, marginBottom: 10 }}>{tituloDia}</Text>
               <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingVertical: 6 }}>{listaActividades}</View>
+              {botonAgregar ? <View style={{ marginTop: 10 }}>{botonAgregar}</View> : null}
             </ScrollView>
             {cuadricula}
           </View>
         ) : (
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1 }} onLayout={(e) => setAltoZona(e.nativeEvent.layout.height)}>
             {fecha}
             {cuadricula}
             {abierta ? (
-              <Animated.View style={{ position: 'absolute', left: -4, right: -4, top: arribaCuadricula, maxHeight: Math.max(200, altoPantalla - arribaCuadricula - 110), backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, opacity: subir, transform: [{ translateY: subir.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) }], shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 18 }}>
+              // Sube desde abajo y solo tapa la cuadrícula si las actividades no caben en el espacio libre
+              <Animated.View style={{ position: 'absolute', left: -4, right: -4, bottom: 10, maxHeight: Math.max(220, altoZona - arribaCuadricula - 4), backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, opacity: subir, transform: [{ translateY: subir.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) }], shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 18 }}>
                 <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: colors.cardBorder, alignSelf: 'center', marginBottom: 10 }} />
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
                   <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: colors.textMain }}>{tituloDia}</Text>
@@ -6524,12 +6715,16 @@ function CalendarioScreen({ navigation }) {
                     <Feather name="x" size={20} color={colors.textSub} />
                   </TouchableOpacity>
                 </View>
-                <ScrollView style={{ flexGrow: 0 }}>{listaActividades}</ScrollView>
+                <ScrollView style={{ flexGrow: 0, flexShrink: 1 }}>
+                  {listaActividades}
+                  {botonAgregar}
+                </ScrollView>
               </Animated.View>
             ) : null}
           </View>
         )}
       </View>
+      {editando ? <ModalActividad actividad={editando === 'nueva' ? null : editando} fechaInicial={sel} isDark={isDark} onCerrar={() => setEditando(null)} onGuardado={alGuardar} /> : null}
     </SafeAreaView>
   );
 }
@@ -6557,8 +6752,9 @@ const claveMes = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
 // Ancho de cada tarjeta: 1 columna en celular, 2 en tablet y 3 en PC (las anchas ocupan 2)
 const anchoTarjeta = (columnas, ancha) => (columnas === 1 ? '100%' : columnas === 2 ? (ancha ? '100%' : '49.3%') : ancha ? '66.2%' : '32.4%');
 
-const EncabezadoResumen = ({ titulo, subtitulo, categoria, navigation, isDark, columnas }) => {
+const EncabezadoResumen = ({ titulo, subtitulo, categoria, navigation, isDark, columnas, onDescargar }) => {
   const colors = getColors(isDark);
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] || PALETA_MENU[isDark ? 'oscuro' : 'claro']['Clases de niños'];
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, width: '95%', maxWidth: columnas >= 2 ? 1100 : 850 }}>
       <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Admin'))} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
@@ -6568,6 +6764,12 @@ const EncabezadoResumen = ({ titulo, subtitulo, categoria, navigation, isDark, c
         <Text style={[styles.titleMini, { color: colors.textMain }]}>{titulo.toUpperCase()}</Text>
         <Text style={[styles.subtitle, { color: getThemeColors(categoria, isDark).textDark }]}>{subtitulo}</Text>
       </View>
+      {onDescargar ? (
+        <TouchableOpacity onPress={onDescargar} accessibilityLabel="Descargar en Excel" style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 13, borderRadius: 999, backgroundColor: p.fondo, marginRight: 10 }}>
+          <Feather name="download" size={15} color={p.texto} />
+          <Text style={{ fontSize: 12.5, fontWeight: '700', color: p.texto }}>Excel</Text>
+        </TouchableOpacity>
+      ) : null}
       <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
         <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
       </TouchableOpacity>
@@ -6789,6 +6991,15 @@ function ResumenAsistenciaScreen({ navigation }) {
   const cambiarMes = (n) => setMes(new Date(mes.getFullYear(), mes.getMonth() + n, 1));
   const esAdmin = rolUsuarioActivoGlobal === 'administrador';
   const d = filas ? calcularAsistencia(filas, mes, grupo) : null;
+  const descargar = () => {
+    if (!filas) return;
+    const lista = filas.filter((f) => f.fecha.slice(0, 7) === claveMes(mes) && (grupo === 'Todos' || f.grupo === grupo));
+    descargarTablaCSV(
+      `asistencia_${claveMes(mes)}${grupo === 'Todos' ? '' : '_' + grupo.replace(/\s+/g, '-')}.csv`,
+      ['Fecha', 'Grupo', 'Niño'],
+      lista.map((f) => [f.fecha, f.grupo, ponerMayusculas((f.ninos && f.ninos.nombre_completo) || 'Sin nombre')]),
+    );
+  };
   let comparacion = 'por domingo con lista';
   if (d && d.promedioAnterior > 0) {
     const cambio = Math.round(((d.promedio - d.promedioAnterior) / d.promedioAnterior) * 100);
@@ -6805,7 +7016,7 @@ function ResumenAsistenciaScreen({ navigation }) {
   );
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
-      <EncabezadoResumen titulo="Asistencia" subtitulo="Clases de niños" categoria="Clases de niños" navigation={navigation} isDark={isDark} columnas={columnas} />
+      <EncabezadoResumen titulo="Asistencia" subtitulo="Clases de niños" categoria="Clases de niños" navigation={navigation} isDark={isDark} columnas={columnas} onDescargar={esAdmin && filas ? descargar : null} />
       <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
         <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850 }}>
           {!esAdmin ? (
@@ -6987,6 +7198,17 @@ function ResumenCenaScreen({ navigation }) {
   const ahora = new Date();
   const desde = fechaISO(periodo === 'mes' ? new Date(ahora.getFullYear(), ahora.getMonth(), 1) : periodo === 'tres' ? new Date(ahora.getFullYear(), ahora.getMonth() - 2, 1) : new Date(ahora.getFullYear(), 0, 1));
   const d = datos ? calcularCena(datos.turnos, datos.maestros, desde, proximoDomingo()) : null;
+  const descargar = () => {
+    if (!datos) return;
+    const nombreDe = mapaNombresDe(datos.maestros);
+    const estados = { confirmado: 'Confirmó', declinado: 'No pudo', sin_respuesta: 'Sin respuesta', reemplazado: 'Reemplazado', invitado: 'Invitado' };
+    const lista = datos.turnos.filter((t) => t.fecha >= desde && t.fecha <= proximoDomingo());
+    descargarTablaCSV(
+      `cena-del-senor_${nombreArchivoPeriodo(periodo)}_${fechaISO(new Date())}.csv`,
+      ['Fecha', 'Lugar', 'Hermano', 'Estado', 'Asignado por'],
+      lista.map((t) => [t.fecha, t.posicion === 0 ? 'Preside' : `Mesa ${t.posicion}`, nombreDe(t.nombre_usuario), estados[t.estado] || t.estado, t.asignado_por ? nombreDe(t.asignado_por) : '']),
+    );
+  };
   const colorAcepto = paleta['Clases de niños'].fondo;
   const colorDeclino = paleta['Petición'].fondo;
   const colorSin = isDark ? '#6B6862' : '#C9C6BF';
@@ -7031,24 +7253,14 @@ function ResumenCenaScreen({ navigation }) {
   );
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
-      <EncabezadoResumen titulo="Cena del Señor" subtitulo="Resumen" categoria="Predicaciones" navigation={navigation} isDark={isDark} columnas={columnas} />
+      <EncabezadoResumen titulo="Cena del Señor" subtitulo="Resumen" categoria="Predicaciones" navigation={navigation} isDark={isDark} columnas={columnas} onDescargar={esAdmin && datos ? descargar : null} />
       <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
         <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, marginTop: 8 }}>
           {!esAdmin ? (
             <SinDatosResumen texto="Esta sección es solo para administradores." isDark={isDark} />
           ) : (
             <>
-              <PildorasResumen
-                opciones={[
-                  { valor: 'mes', texto: 'Este mes' },
-                  { valor: 'tres', texto: 'Últimos 3 meses' },
-                  { valor: 'anio', texto: 'Este año' },
-                ]}
-                valor={periodo}
-                onCambiar={setPeriodo}
-                categoria="Cena"
-                isDark={isDark}
-              />
+              <PildorasResumen opciones={PERIODOS_RESUMEN} valor={periodo} onCambiar={setPeriodo} categoria="Cena" isDark={isDark} />
               {error ? (
                 <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
               ) : !d ? (
@@ -7101,6 +7313,374 @@ function ResumenCenaScreen({ navigation }) {
                     </TarjetaResumen>
                     <TarjetaResumen titulo="Domingos difíciles" subtitulo="Hubo que asignar lugares a mano" ancho={anchoTarjeta(columnas)} isDark={isDark}>
                       {d.dificiles.length === 0 ? <SinDatosResumen texto="Ninguno en este periodo." isDark={isDark} /> : d.dificiles.map((x, i) => <FilaResumen key={x.fecha} primera={i === 0} avatar={String(new Date(x.fecha + 'T00:00:00').getDate())} nombre={fechaLarga(x.fecha)} detalle={x.cuantos === 1 ? '1 lugar' : `${x.cuantos} lugares`} etiqueta={x.lugares} categoria="Cena" isDark={isDark} />)}
+                    </TarjetaResumen>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// Barras por persona: nombre arriba (sin amontonarse), barra abajo y el total a la derecha
+const BarrasPorPersona = ({ filas, leyenda, limite = 12, isDark }) => {
+  const colors = getColors(isDark);
+  const [todas, setTodas] = useState(false);
+  const mayor = Math.max(1, ...filas.map((f) => f.total));
+  const visibles = todas ? filas : filas.slice(0, limite);
+  return (
+    <>
+      {visibles.map((f, i) => (
+        <View key={f.nombre + i} style={{ paddingVertical: 8, borderTopWidth: i ? 1 : 0, borderTopColor: colors.cardBorder }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+            <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '600', color: colors.textMain }}>{f.nombre}</Text>
+            <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textMain }}>{f.total}</Text>
+          </View>
+          <View style={{ height: 10, marginTop: 6, borderRadius: 99, backgroundColor: colors.background, overflow: 'hidden' }}>
+            <View style={{ width: `${(f.total / mayor) * 100}%`, height: '100%', flexDirection: 'row', gap: 2 }}>
+              {f.partes
+                .filter((p) => p.valor > 0)
+                .map((p, k) => (
+                  <View key={k} style={{ flex: p.valor, borderRadius: 99, backgroundColor: p.color }} />
+                ))}
+            </View>
+          </View>
+          {f.nota ? <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 4 }}>{f.nota}</Text> : null}
+        </View>
+      ))}
+      {filas.length > limite ? (
+        <TouchableOpacity onPress={() => setTodas(!todas)} style={{ alignSelf: 'flex-start', marginTop: 8, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder }}>
+          <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textSub }}>{todas ? 'Ver menos' : `Ver los ${filas.length}`}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {leyenda ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10 }}>
+          {leyenda.map(([t, c]) => (
+            <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: c }} />
+              <Text style={{ fontSize: 11.5, color: colors.textSub }}>{t}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </>
+  );
+};
+
+// Periodo de los resúmenes de clases, predicaciones y Cena
+const PERIODOS_RESUMEN = [
+  { valor: 'mes', texto: 'Este mes' },
+  { valor: 'tres', texto: 'Últimos 3 meses' },
+  { valor: 'anio', texto: 'Este año' },
+];
+const inicioPeriodo = (periodo) => {
+  const ahora = new Date();
+  return fechaISO(periodo === 'mes' ? new Date(ahora.getFullYear(), ahora.getMonth(), 1) : periodo === 'tres' ? new Date(ahora.getFullYear(), ahora.getMonth() - 2, 1) : new Date(ahora.getFullYear(), 0, 1));
+};
+const nombreArchivoPeriodo = (periodo) => ({ mes: 'este-mes', tres: 'ultimos-3-meses', anio: 'este-anio' })[periodo] || periodo;
+const sumarDiasISO = (f, n) => {
+  const d = new Date(f + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return fechaISO(d);
+};
+
+// Cuenta pedidos y coberturas de apoyo por persona (solo las solicitudes del tipo indicado)
+const contarApoyos = (solicitudes, desde, hasta, esDelTipo) => {
+  const lista = solicitudes.filter((s) => esDelTipo(s) && (s.fecha_referencia || String(s.creado_en || '').slice(0, 10)) >= desde && (s.fecha_referencia || String(s.creado_en || '').slice(0, 10)) <= hasta);
+  const pidio = {};
+  const cubrio = {};
+  lista.forEach((s) => {
+    const u = (s.maestro_solicitante || '').toLowerCase();
+    if (u) pidio[u] = (pidio[u] || 0) + 1;
+    const c = (s.maestro_suplente || '').toLowerCase();
+    if (s.estado === 'Cubierta' && c) cubrio[c] = (cubrio[c] || 0) + 1;
+  });
+  return { lista, pidio, cubrio, cubiertas: lista.filter((s) => s.estado === 'Cubierta').length };
+};
+const mapaNombresDe = (maestros) => {
+  const nombres = {};
+  maestros.forEach((m) => {
+    nombres[(m.nombre_usuario || '').toLowerCase()] = ponerMayusculas(m.nombre_completo || m.nombre_usuario);
+  });
+  return (u) => nombres[(u || '').toLowerCase()] || ponerMayusculas(u || '');
+};
+const rankingApoyos = (conteo, nombreDe) =>
+  Object.entries(conteo)
+    .map(([u, n]) => ({ usuario: u, nombre: nombreDe(u), n }))
+    .sort((a, b) => b.n - a.n || a.nombre.localeCompare(b.nombre));
+
+// Cálculos del resumen de clases de niños entre dos fechas
+const calcularClases = (clases, solicitudes, maestros, desde, hasta) => {
+  const nombreDe = mapaNombresDe(maestros);
+  const enRango = clases.filter((c) => c.fecha >= desde && c.fecha <= hasta);
+  const conMaestro = enRango.filter((c) => (c.nombre_usuario || '').trim());
+  const sinMaestro = enRango.length - conMaestro.length;
+  const apoyos = contarApoyos(solicitudes, desde, hasta, (s) => !!s.clase_asignada_id && s.grupo_clase !== 'Predicaciones');
+  const porPersona = {};
+  conMaestro.forEach((c) => {
+    const u = c.nombre_usuario.toLowerCase();
+    porPersona[u] = porPersona[u] || { usuario: u, nombre: nombreDe(u), clases: 0, grupos: {} };
+    porPersona[u].clases++;
+    porPersona[u].grupos[c.grupo] = (porPersona[u].grupos[c.grupo] || 0) + 1;
+  });
+  [...Object.keys(apoyos.pidio), ...Object.keys(apoyos.cubrio)].forEach((u) => {
+    porPersona[u] = porPersona[u] || { usuario: u, nombre: nombreDe(u), clases: 0, grupos: {} };
+  });
+  const personas = Object.values(porPersona)
+    .map((p) => ({ ...p, pidio: apoyos.pidio[p.usuario] || 0, cubrio: apoyos.cubrio[p.usuario] || 0 }))
+    .sort((a, b) => b.clases - a.clases || a.nombre.localeCompare(b.nombre));
+  const porGrupo = ORDEN_GRUPOS.map((g) => ({ grupo: g, valor: enRango.filter((c) => c.grupo === g).length })).filter((x) => x.valor > 0);
+  // Próximas por cubrir: sin maestro o con una solicitud de apoyo pendiente (siguientes 8 semanas)
+  const hoy = fechaISO(new Date());
+  const limite = sumarDiasISO(hoy, 56);
+  const pendientes = new Set(solicitudes.filter((s) => s.estado === 'Pendiente' && s.clase_asignada_id).map((s) => s.clase_asignada_id));
+  const porCubrir = clases
+    .filter((c) => c.fecha >= hoy && c.fecha <= limite && (!(c.nombre_usuario || '').trim() || pendientes.has(c.id)))
+    .sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : ORDEN_GRUPOS.indexOf(a.grupo) - ORDEN_GRUPOS.indexOf(b.grupo)))
+    .map((c) => ({ fecha: c.fecha, grupo: c.grupo, motivo: (c.nombre_usuario || '').trim() ? `${nombreDe(c.nombre_usuario)} pidió apoyo` : 'Sin maestro asignado' }));
+  return { total: enRango.length, maestros: personas.filter((p) => p.clases > 0).length, sinMaestro, pedidos: apoyos.lista.length, cubiertas: apoyos.cubiertas, personas, porGrupo, porCubrir, masPiden: rankingApoyos(apoyos.pidio, nombreDe), masCubren: rankingApoyos(apoyos.cubrio, nombreDe) };
+};
+
+// Cálculos del resumen de predicaciones entre dos fechas
+const calcularPredicaciones = (rol, solicitudes, maestros, desde, hasta) => {
+  const nombreDe = mapaNombresDe(maestros);
+  const enRango = rol.filter((r) => r.fecha >= desde && r.fecha <= hasta && (r.nombre_usuario || '').trim());
+  const apoyos = contarApoyos(solicitudes, desde, hasta, (s) => s.grupo_clase === 'Predicaciones');
+  const porPersona = {};
+  enRango.forEach((r) => {
+    const u = r.nombre_usuario.toLowerCase();
+    const p = (porPersona[u] = porPersona[u] || { usuario: u, nombre: nombreDe(u), total: 0, predicaciones: 0, clases: 0, confirmadas: 0 });
+    p.total++;
+    if (calcularTipo(r.fecha, r.horario) === 'Predicación') p.predicaciones++;
+    else p.clases++;
+    if (r.estado_confirmacion === 'confirmado') p.confirmadas++;
+  });
+  [...Object.keys(apoyos.pidio), ...Object.keys(apoyos.cubrio)].forEach((u) => {
+    porPersona[u] = porPersona[u] || { usuario: u, nombre: nombreDe(u), total: 0, predicaciones: 0, clases: 0, confirmadas: 0 };
+  });
+  const personas = Object.values(porPersona)
+    .map((p) => ({ ...p, sinConfirmar: p.total - p.confirmadas, pidio: apoyos.pidio[p.usuario] || 0, cubrio: apoyos.cubrio[p.usuario] || 0 }))
+    .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre));
+  const confirmadas = enRango.filter((r) => r.estado_confirmacion === 'confirmado').length;
+  // Próximas sin confirmar (siguientes 30 días)
+  const hoy = fechaISO(new Date());
+  const limite = sumarDiasISO(hoy, 30);
+  const proximas = rol
+    .filter((r) => r.fecha >= hoy && r.fecha <= limite && (r.nombre_usuario || '').trim() && r.estado_confirmacion !== 'confirmado')
+    .sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : parsearHorarioMinutos(a.horario) - parsearHorarioMinutos(b.horario)))
+    .map((r) => ({ fecha: r.fecha, nombre: nombreDe(r.nombre_usuario), detalle: `${calcularTipo(r.fecha, r.horario)} • ${r.horario || ''}` }));
+  return {
+    total: enRango.length,
+    predicaciones: enRango.filter((r) => calcularTipo(r.fecha, r.horario) === 'Predicación').length,
+    pctConfirmadas: enRango.length ? Math.round((confirmadas / enRango.length) * 100) : 0,
+    confirmadas,
+    pedidos: apoyos.lista.length,
+    cubiertas: apoyos.cubiertas,
+    personas,
+    proximas,
+    masPiden: rankingApoyos(apoyos.pidio, nombreDe),
+    masCubren: rankingApoyos(apoyos.cubrio, nombreDe),
+    menosConfirman: personas.filter((p) => p.sinConfirmar > 0).sort((a, b) => b.sinConfirmar - a.sinConfirmar || a.nombre.localeCompare(b.nombre)),
+  };
+};
+
+// Lista corta con "y N más"
+const ListaResumen = ({ lista, vacia, armar, isDark }) => {
+  const colors = getColors(isDark);
+  if (lista.length === 0) return <SinDatosResumen texto={vacia} isDark={isDark} />;
+  return (
+    <>
+      {lista.slice(0, 8).map(armar)}
+      {lista.length > 8 ? <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 6 }}>y {lista.length - 8} más</Text> : null}
+    </>
+  );
+};
+
+function ResumenClasesScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState(false);
+  const [periodo, setPeriodo] = useState('mes');
+  useEffect(() => {
+    const desdeAnio = fechaISO(new Date(new Date().getFullYear() - 1, 0, 1));
+    Promise.all([traerTodo(() => supabase.from('clases_asignadas').select('id, fecha, grupo, nombre_usuario').gte('fecha', desdeAnio).order('fecha', { ascending: true }).order('id', { ascending: true })), traerTodo(() => supabase.from('solicitudes_sustitucion').select('id, maestro_solicitante, maestro_suplente, estado, grupo_clase, fecha_referencia, clase_asignada_id, creado_en').order('id', { ascending: true })), supabase.from('maestros').select('nombre_usuario, nombre_completo')])
+      .then(([clases, solicitudes, { data }]) => setDatos({ clases, solicitudes, maestros: data || [] }))
+      .catch(() => setError(true));
+  }, []);
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const hoy = fechaISO(new Date());
+  const d = datos ? calcularClases(datos.clases, datos.solicitudes, datos.maestros, inicioPeriodo(periodo), hoy) : null;
+  const colorClase = paleta['Clases de niños'].fondo;
+  const descargar = () => {
+    if (!d) return;
+    descargarTablaCSV(
+      `resumen-clases_${nombreArchivoPeriodo(periodo)}_${hoy}.csv`,
+      ['Maestro', 'Usuario', 'Clases', 'Grupos', 'Pidió apoyo', 'Cubrió a otros'],
+      d.personas.map((p) => [
+        p.nombre,
+        p.usuario,
+        p.clases,
+        Object.entries(p.grupos)
+          .map(([g, n]) => `${g} (${n})`)
+          .join(', '),
+        p.pidio,
+        p.cubrio,
+      ]),
+    );
+  };
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <EncabezadoResumen titulo="Clases" subtitulo="Clases de niños" categoria="Clases de niños" navigation={navigation} isDark={isDark} columnas={columnas} onDescargar={esAdmin && d ? descargar : null} />
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
+        <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, marginTop: 8 }}>
+          {!esAdmin ? (
+            <SinDatosResumen texto="Esta sección es solo para administradores." isDark={isDark} />
+          ) : (
+            <>
+              <PildorasResumen opciones={PERIODOS_RESUMEN} valor={periodo} onCambiar={setPeriodo} categoria="Clases de niños" isDark={isDark} />
+              {error ? (
+                <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
+              ) : !d ? (
+                <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                    <DatoResumen valor={d.total} etiqueta="Clases" detalle={`${d.maestros} maestros las dieron`} categoria="Clases de niños" isDark={isDark} />
+                    <DatoResumen valor={d.pedidos} etiqueta="Pidieron apoyo" detalle={d.cubiertas === 1 ? '1 se cubrió' : `${d.cubiertas} se cubrieron`} categoria="Calendario" isDark={isDark} />
+                    <DatoResumen valor={d.sinMaestro} etiqueta="Sin maestro" detalle="clases sin asignar" categoria="Usuarios" isDark={isDark} />
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    <TarjetaResumen titulo="Clases por maestro" subtitulo="Cuántas clases dio cada quien en el periodo" ancho={anchoTarjeta(columnas, true)} isDark={isDark}>
+                      {d.personas.filter((p) => p.clases > 0).length === 0 ? <SinDatosResumen texto="Todavía no hay clases en este periodo." isDark={isDark} /> : <BarrasPorPersona isDark={isDark} filas={d.personas.filter((p) => p.clases > 0).map((p) => ({ nombre: p.nombre, total: p.clases, partes: [{ valor: p.clases, color: colorClase }], nota: [Object.keys(p.grupos).join(', '), p.pidio ? `pidió apoyo ${p.pidio}` : '', p.cubrio ? `cubrió ${p.cubrio}` : ''].filter(Boolean).join(' · ') }))} />}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Clases por grupo" subtitulo="En el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.porGrupo.length === 0 ? (
+                        <SinDatosResumen texto="Sin clases en este periodo." isDark={isDark} />
+                      ) : (
+                        d.porGrupo.map((g) => {
+                          const mayor = Math.max(...d.porGrupo.map((x) => x.valor), 1);
+                          return (
+                            <View key={g.grupo} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 6 }}>
+                              <Text style={{ width: 118, fontSize: 13, fontWeight: '600', color: colors.textMain }}>{g.grupo}</Text>
+                              <View style={{ flex: 1, height: 12, borderRadius: 99, backgroundColor: colors.background, overflow: 'hidden' }}>
+                                <View style={{ width: `${(g.valor / mayor) * 100}%`, height: '100%', borderRadius: 99, backgroundColor: (paleta[g.grupo] || paleta['Niños']).fondo }} />
+                              </View>
+                              <Text style={{ width: 30, textAlign: 'right', fontSize: 13, fontWeight: '700', color: colors.textMain }}>{g.valor}</Text>
+                            </View>
+                          );
+                        })
+                      )}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Próximas por cubrir" subtitulo="Sin maestro o con apoyo pendiente (8 semanas)" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.porCubrir} vacia="Todo está cubierto." isDark={isDark} armar={(x, i) => <FilaResumen key={x.fecha + x.grupo + i} primera={i === 0} avatar={String(new Date(x.fecha + 'T00:00:00').getDate())} nombre={x.grupo} detalle={x.motivo} etiqueta={fechaCorta(x.fecha)} categoria={x.grupo} isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Más piden apoyo" subtitulo="Solicitudes en el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.masPiden} vacia="Nadie pidió apoyo." isDark={isDark} armar={(x, i) => <FilaResumen key={x.usuario} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} etiqueta={x.n === 1 ? '1 vez' : `${x.n} veces`} categoria="Clases de niños" isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Más cubren a otros" subtitulo="Apoyos aceptados en el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.masCubren} vacia="Nadie ha cubierto en este periodo." isDark={isDark} armar={(x, i) => <FilaResumen key={x.usuario} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} etiqueta={x.n === 1 ? '1 vez' : `${x.n} veces`} categoria="Clases de niños" isDark={isDark} />} />
+                    </TarjetaResumen>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function ResumenPredicacionesScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState(false);
+  const [periodo, setPeriodo] = useState('mes');
+  useEffect(() => {
+    const desdeAnio = fechaISO(new Date(new Date().getFullYear() - 1, 0, 1));
+    Promise.all([traerTodo(() => supabase.from('programa_servicios').select('id, fecha, horario, nombre_usuario, estado_confirmacion').gte('fecha', desdeAnio).order('fecha', { ascending: true }).order('id', { ascending: true })), traerTodo(() => supabase.from('solicitudes_sustitucion').select('id, maestro_solicitante, maestro_suplente, estado, grupo_clase, fecha_referencia, clase_asignada_id, creado_en').eq('grupo_clase', 'Predicaciones').order('id', { ascending: true })), supabase.from('maestros').select('nombre_usuario, nombre_completo')])
+      .then(([rol, solicitudes, { data }]) => setDatos({ rol, solicitudes, maestros: data || [] }))
+      .catch(() => setError(true));
+  }, []);
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const hoy = fechaISO(new Date());
+  const d = datos ? calcularPredicaciones(datos.rol, datos.solicitudes, datos.maestros, inicioPeriodo(periodo), hoy) : null;
+  const colorConfirmada = paleta['Predicaciones'].fondo;
+  const colorSin = isDark ? '#6B6862' : '#C9C6BF';
+  const descargar = () => {
+    if (!d) return;
+    descargarTablaCSV(
+      `resumen-predicaciones_${nombreArchivoPeriodo(periodo)}_${hoy}.csv`,
+      ['Hermano', 'Usuario', 'Fechas en el rol', 'Predicaciones', 'Clases', 'Confirmadas', 'Sin confirmar', 'Pidió apoyo', 'Cubrió a otros'],
+      d.personas.map((p) => [p.nombre, p.usuario, p.total, p.predicaciones, p.clases, p.confirmadas, p.sinConfirmar, p.pidio, p.cubrio]),
+    );
+  };
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <EncabezadoResumen titulo="Predicaciones" subtitulo="Resumen del rol" categoria="Predicaciones" navigation={navigation} isDark={isDark} columnas={columnas} onDescargar={esAdmin && d ? descargar : null} />
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
+        <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, marginTop: 8 }}>
+          {!esAdmin ? (
+            <SinDatosResumen texto="Esta sección es solo para administradores." isDark={isDark} />
+          ) : (
+            <>
+              <PildorasResumen opciones={PERIODOS_RESUMEN} valor={periodo} onCambiar={setPeriodo} categoria="Predicaciones" isDark={isDark} />
+              {error ? (
+                <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
+              ) : !d ? (
+                <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                    <DatoResumen valor={d.total} etiqueta="Fechas en el rol" detalle={`${d.predicaciones} predicaciones`} categoria="Predicaciones" isDark={isDark} />
+                    <DatoResumen valor={`${d.pctConfirmadas}%`} etiqueta="Confirmadas" detalle={`${d.confirmadas} en la app`} categoria="Clases de niños" isDark={isDark} />
+                    <DatoResumen valor={d.pedidos} etiqueta="Pidieron apoyo" detalle={d.cubiertas === 1 ? '1 se cubrió' : `${d.cubiertas} se cubrieron`} categoria="Usuarios" isDark={isDark} />
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    <TarjetaResumen titulo="Fechas por hermano" subtitulo="Predicaciones y clases del rol en el periodo" ancho={anchoTarjeta(columnas, true)} isDark={isDark}>
+                      {d.personas.filter((p) => p.total > 0).length === 0 ? (
+                        <SinDatosResumen texto="Todavía no hay fechas en este periodo." isDark={isDark} />
+                      ) : (
+                        <BarrasPorPersona
+                          isDark={isDark}
+                          leyenda={[
+                            ['Confirmó', colorConfirmada],
+                            ['Sin confirmar', colorSin],
+                          ]}
+                          filas={d.personas
+                            .filter((p) => p.total > 0)
+                            .map((p) => ({
+                              nombre: p.nombre,
+                              total: p.total,
+                              partes: [
+                                { valor: p.confirmadas, color: colorConfirmada },
+                                { valor: p.sinConfirmar, color: colorSin },
+                              ],
+                              nota: [p.predicaciones ? `${p.predicaciones} ${p.predicaciones === 1 ? 'predicación' : 'predicaciones'}` : '', p.clases ? `${p.clases} clase${p.clases === 1 ? '' : 's'}` : '', p.pidio ? `pidió apoyo ${p.pidio}` : '', p.cubrio ? `cubrió ${p.cubrio}` : ''].filter(Boolean).join(' · '),
+                            }))}
+                        />
+                      )}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Próximas sin confirmar" subtitulo="Siguientes 30 días" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.proximas} vacia="Todas están confirmadas." isDark={isDark} armar={(x, i) => <FilaResumen key={x.fecha + x.nombre + i} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} detalle={x.detalle} etiqueta={fechaCorta(x.fecha)} categoria="Predicaciones" isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Confirman poco" subtitulo="Fechas que pasaron sin confirmar" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.menosConfirman} vacia="Todos confirmaron." isDark={isDark} armar={(x, i) => <FilaResumen key={x.usuario} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} detalle={`Confirmó ${x.confirmadas} de ${x.total}`} etiqueta={`${x.sinConfirmar} sin confirmar`} categoria="Predicaciones" isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Más piden apoyo" subtitulo="Solicitudes en el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.masPiden} vacia="Nadie pidió apoyo." isDark={isDark} armar={(x, i) => <FilaResumen key={x.usuario} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} etiqueta={x.n === 1 ? '1 vez' : `${x.n} veces`} categoria="Predicaciones" isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Más cubren a otros" subtitulo="Apoyos aceptados en el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.masCubren} vacia="Nadie ha cubierto en este periodo." isDark={isDark} armar={(x, i) => <FilaResumen key={x.usuario} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} etiqueta={x.n === 1 ? '1 vez' : `${x.n} veces`} categoria="Predicaciones" isDark={isDark} />} />
                     </TarjetaResumen>
                   </View>
                 </>
@@ -7265,6 +7845,8 @@ export default function App() {
             <Stack.Screen name="DetalleUsuario" component={PantallaDetalleUsuario} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenAsistencia" component={ResumenAsistenciaScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenCena" component={ResumenCenaScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ResumenClases" component={ResumenClasesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ResumenPredicaciones" component={ResumenPredicacionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Calendario" component={CalendarioScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
