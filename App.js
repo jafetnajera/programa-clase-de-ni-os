@@ -829,6 +829,13 @@ const PREGUNTAS_AYUDA = [
     ir: { pantalla: 'Grupos', texto: 'Ir a Clases de niños' },
   },
   {
+    id: 'clasePdf',
+    pregunta: '¿Cómo descargo o imprimo la clase?',
+    respuesta: 'Abre tu clase y, hasta abajo, toca «Clase en PDF». Se abre la ventana de imprimir de tu celular o computadora:\n\n• Para guardarla, elige «Guardar como PDF» (en iPhone, toca Compartir → Guardar en Archivos).\n• Para imprimirla, elige tu impresora.\n\nLa hoja de actividad y las ilustraciones se descargan con sus propios botones.',
+    claves: 'pdf descargar imprimir guardar clase word documento hoja',
+    ir: { pantalla: 'Grupos', texto: 'Ir a Clases de niños' },
+  },
+  {
     id: 'coritos',
     pregunta: '¿Cómo escucho los coritos?',
     respuesta: 'Entra a «Clases de niños» y toca el botón «Coritos». Toca el que quieras escuchar. Si tiene letra, toca «Letra» para verla.\n\nSolo suenan mientras tienes esa pantalla abierta.',
@@ -2258,6 +2265,106 @@ const parrafosDelWord = (xml) => {
   };
   recorrer(doc.documentElement);
   return parrafos;
+};
+
+// Arma la clase en una hoja limpia y abre "Imprimir" del navegador (ahí se elige "Guardar como PDF").
+// No se guarda ningún archivo: se usa el texto y las imágenes que ya están en la app.
+const imprimirClase = async ({ clase, grupo, subtitulo }) => {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  const esc = (t) =>
+    String(t ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  const p = PALETA_MENU.claro[grupo] || PALETA_MENU.claro['Niños'];
+  const tabla = (filas) => `<table>${filas.map((fila) => `<tr>${fila.map((c, j) => `<td colspan="${c.span || 1}"${j === 0 ? ' class="primera"' : ''}>${esc(c.texto)}</td>`).join('')}</tr>`).join('')}</table>`;
+  const textoConTablas = (texto, tablas) =>
+    String(texto || '')
+      .split(/\[\[tabla:(\d+)\]\]/)
+      .map((parte, i) => {
+        if (i % 2 === 1) {
+          const filas = (tablas || [])[parseInt(parte, 10)];
+          return filas ? tabla(filas) : '';
+        }
+        const limpio = parte.replace(/^\n+|\n+$/g, '');
+        return limpio ? `<p>${esc(limpio)}</p>` : '';
+      })
+      .join('');
+  const secciones = (Array.isArray(clase.secciones) ? clase.secciones : [])
+    .map(
+      (s) => `<section>
+        <h2>${esc(s.titulo)}${s.tiempo ? ` <span class="tiempo">${esc(s.tiempo)}</span>` : ''}</h2>
+        ${textoConTablas(s.texto, s.tablas)}
+        ${Array.isArray(s.imagenes) && s.imagenes.length ? `<div class="fotos">${s.imagenes.map((f) => `<img src="${esc(f.url)}" alt="">`).join('')}</div>` : ''}
+      </section>`,
+    )
+    .join('');
+  const html = `
+    <div class="marca">INDUS APP</div>
+    <h1>${esc(clase.titulo_clase)}</h1>
+    <div class="sub">${esc(subtitulo)}</div>
+    ${clase.texto_base ? `<div class="base">Base bíblica: ${esc(clase.texto_base)}</div>` : ''}
+    <hr>
+    ${secciones}`;
+  const estilos = `
+    @media screen { #impresion-clase { display: none; } }
+    @media print {
+      @page { margin: 16mm 14mm; }
+      html, body { position: static !important; overflow: visible !important; height: auto !important; background: #FFFFFF !important; }
+      body > *:not(#impresion-clase) { display: none !important; }
+      #impresion-clase { display: block; color: #2B2A27; font-family: Inter, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 11.5pt; line-height: 1.5; }
+      #impresion-clase .marca { font-size: 8.5pt; letter-spacing: 0.14em; color: #8A867E; font-weight: 700; }
+      #impresion-clase h1 { font-size: 21pt; margin: 4pt 0 2pt; }
+      #impresion-clase .sub { color: ${p.texto}; font-weight: 700; }
+      #impresion-clase .base { color: #6B6862; margin-top: 2pt; }
+      #impresion-clase hr { border: 0; border-top: 1px solid #DDD9D2; margin: 12pt 0; }
+      #impresion-clase section { margin-bottom: 12pt; }
+      #impresion-clase h2 { font-size: 12.5pt; text-transform: uppercase; letter-spacing: 0.04em; color: ${p.texto}; margin: 0 0 4pt; break-after: avoid; }
+      #impresion-clase .tiempo { display: inline-block; font-size: 9pt; text-transform: none; letter-spacing: 0; background: ${p.fondo}; color: ${p.texto}; border-radius: 99px; padding: 1pt 8pt; margin-left: 6pt; vertical-align: middle; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      #impresion-clase p { margin: 0 0 6pt; white-space: pre-wrap; }
+      #impresion-clase table { width: 100%; border-collapse: collapse; margin: 6pt 0 8pt; break-inside: auto; }
+      #impresion-clase tr { break-inside: avoid; }
+      #impresion-clase td { border: 1px solid #CFCBC3; padding: 5pt 7pt; vertical-align: top; white-space: pre-wrap; }
+      #impresion-clase td.primera { font-weight: 700; background: ${p.fondo}55; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      #impresion-clase .fotos { display: flex; flex-wrap: wrap; gap: 8pt; margin-top: 6pt; }
+      #impresion-clase .fotos img { width: calc(50% - 4pt); max-height: 9cm; object-fit: contain; break-inside: avoid; }
+    }`;
+  // Quita una hoja anterior si quedó de otra impresión
+  document.getElementById('impresion-clase')?.remove();
+  document.getElementById('impresion-clase-estilos')?.remove();
+  const estilo = document.createElement('style');
+  estilo.id = 'impresion-clase-estilos';
+  estilo.textContent = estilos;
+  const hoja = document.createElement('div');
+  hoja.id = 'impresion-clase';
+  hoja.innerHTML = html;
+  document.head.appendChild(estilo);
+  document.body.appendChild(hoja);
+  // Espera a que carguen las imágenes (máximo 6 segundos)
+  await Promise.race([
+    Promise.all(
+      [...hoja.querySelectorAll('img')].map((img) =>
+        img.complete
+          ? null
+          : new Promise((r) => {
+              img.addEventListener('load', r, { once: true });
+              img.addEventListener('error', r, { once: true });
+            }),
+      ),
+    ),
+    new Promise((r) => setTimeout(r, 6000)),
+  ]);
+  const tituloAntes = document.title;
+  document.title = `Clase ${clase.numero_clase || ''} - ${clase.titulo_clase || ''}`.replace(/[\\/:*?"<>|]/g, '');
+  const limpiar = () => {
+    document.title = tituloAntes;
+    hoja.remove();
+    estilo.remove();
+    window.removeEventListener('afterprint', limpiar);
+  };
+  window.addEventListener('afterprint', limpiar);
+  window.print();
 };
 
 // Texto de una sección de la clase con sus tablas del Word en el lugar donde iban
@@ -4592,6 +4699,12 @@ function ClaseDetalleScreen({ route, navigation }) {
     setVerPdf({ url: clase.url_pdf, titulo: 'Actividad' });
   }
 
+  // La clase completa como PDF (se arma al momento, no ocupa espacio)
+  const descargarClase = () => {
+    const t = fechaClase ? new Date(fechaClase + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : `Clase ${clase.numero_clase}`;
+    imprimirClase({ clase, grupo, subtitulo: `${t.charAt(0).toUpperCase() + t.slice(1)} • ${grupo}` });
+  };
+
   const [fotoAbierta, setFotoAbierta] = useState(null);
   const columnasFotos = useColumnas();
   const SeccionDeClase = ({ seccion }) => (
@@ -4682,6 +4795,7 @@ function ClaseDetalleScreen({ route, navigation }) {
           <BotonChico icono="life-buoy" texto="Solicitar apoyo" categoria={grupo} isDark={isDark} onPress={abrirApoyo} />
           {clase.url_pdf ? <BotonChico icono="download" texto="Actividad" categoria={grupo} isDark={isDark} onPress={descargarPDF} /> : null}
           {clase.url_ilustraciones ? <BotonChico icono="image" texto="Ilustraciones" categoria={grupo} isDark={isDark} onPress={() => setVerPdf({ url: clase.url_ilustraciones, titulo: 'Ilustraciones' })} /> : null}
+          {Platform.OS === 'web' && !clase.pendiente && Array.isArray(clase.secciones) && clase.secciones.length > 0 ? <BotonChico icono="printer" texto="Clase en PDF" categoria={grupo} isDark={isDark} onPress={descargarClase} /> : null}
         </View>
       </ScrollView>
       <AlertaPersonalizada {...alerta} />
