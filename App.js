@@ -227,10 +227,10 @@ const traerTodo = async (armarConsulta) => {
   }
 };
 // Avisa por notificación a quienes les cambió algo del rol (clases o predicaciones)
-const avisarRolActualizado = (usuarios, tipo) => {
+const avisarRolActualizado = (usuarios, tipo, subida = false) => {
   const lista = [...new Set((usuarios || []).filter(Boolean).map((u) => u.toLowerCase()))];
-  if (lista.length === 0) return;
-  supabase.functions.invoke('recordatorios', { body: { accion: 'rol-actualizado', tipo, usuarios: lista } }).catch((e) => console.error('No se pudo avisar del cambio de rol:', e));
+  if (lista.length === 0 && !subida) return;
+  supabase.functions.invoke('recordatorios', { body: { accion: 'rol-actualizado', tipo, usuarios: lista, subida } }).catch((e) => console.error('No se pudo avisar del cambio de rol:', e));
 };
 // Borra por partes (para no mandar listas enormes de una vez)
 const borrarPorIds = async (tabla, ids) => {
@@ -5653,7 +5653,7 @@ function AdminScreen({ navigation, route }) {
           const deMesesNuevos = (subidas || []).filter((r) => !cambiosRol.mesesConRol.includes(r.fecha.slice(0, 7))).map((r) => r.id);
           if (deMesesNuevos.length > 0) supabase.functions.invoke('recordatorios', { body: { accion: 'rol-nuevo', ids: deMesesNuevos } }).catch((e) => console.error('No se pudo avisar del rol nuevo:', e));
         }
-        avisarRolActualizado(cambiosRol.afectados, 'predicaciones');
+                avisarRolActualizado(cambiosRol.afectados, 'predicaciones', true);
         setAlerta({ visible: true, titulo: 'Rol actualizado', mensaje: `Se agregaron ${cambiosRol.agregar.length} y se quitaron ${cambiosRol.quitar.length} fechas. Se avisó a ${cambiosRol.afectados.length} persona(s).`, onConfirmar: cerrarAlerta, isDark: isDark });
       }
       setPreviaRol([]);
@@ -5816,7 +5816,7 @@ function AdminScreen({ navigation, route }) {
           const { error } = await supabase.from('clases_asignadas').insert(c.agregar);
           if (error) throw error;
         }
-        avisarRolActualizado(c.afectados, 'clases');
+           avisarRolActualizado(c.afectados, 'clases', true);
         setAlerta({ visible: true, titulo: 'Rol actualizado', mensaje: `Se agregaron ${c.agregar.length}, se quitaron ${c.quitar.length} y se actualizaron ${c.actualizar.length} clases. Se avisó a ${c.afectados.length} persona(s).`, onConfirmar: cerrarAlerta, isDark: isDark });
       }
       setPreviaClases(null);
