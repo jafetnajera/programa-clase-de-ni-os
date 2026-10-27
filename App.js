@@ -5453,31 +5453,62 @@ function AdminScreen({ navigation, route }) {
     setAlerta({ visible: true, titulo: 'Copiado', mensaje: 'La información se copió al portapapeles.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#7EA0D8' });
   };
 
-  // Lee el texto del CSV y lo convierte en una lista de filas
+  // Lee el CSV del rol. Formato: Día, Fecha, Hora, Nombre (la fecha solo va en la primera fila de cada día).
+  // También acepta el formato anterior (fecha, horario, nombre_usuario). Las demás columnas se ignoran.
   const parsearCSV = (texto) => {
-    // Acepta CSV de Excel o Google Sheets: con coma o punto y coma, y con o sin marca BOM al inicio
     const lineas = texto
-      .replace(/^\uFEFF/, '')
+      .replace(/^﻿/, '')
       .replace(/\r/g, '')
       .split('\n')
       .filter((l) => l.trim() !== '');
-    if (lineas.length < 2) return [];
+    if (lineas.length < 2) return { filas: [], errores: ['El archivo está vacío.'] };
     const separador = (lineas[0].match(/;/g) || []).length > (lineas[0].match(/,/g) || []).length ? ';' : ',';
-    const partir = (l) => l.split(separador).map((v) => v.trim().replace(/^"|"$/g, '').trim());
-    const encabezados = partir(lineas[0]).map((h) => h.toLowerCase());
-    // Excel a veces cambia la fecha a 03/01/2027: se convierte a 2027-01-03
-    const normalizarFecha = (f) => {
-      const m = (f || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : f || '';
+    const partir = (linea) => {
+      const celdas = [];
+      let actual = '';
+      let entreComillas = false;
+      for (const c of linea) {
+        if (c === '"') entreComillas = !entreComillas;
+        else if (c === separador && !entreComillas) {
+          celdas.push(actual.trim());
+          actual = '';
+        } else actual += c;
+      }
+      celdas.push(actual.trim());
+      return celdas;
     };
-    // Excel a veces cambia la hora a "18:00" o "6:00:00 p. m.": se deja como "6:00 pm"
+    const encabezados = partir(lineas[0]).map(normalizarEncabezado);
+    const columna = (...nombres) => encabezados.findIndex((h) => nombres.includes(h));
+    const iFecha = columna('fecha');
+    const iHora = columna('hora', 'horario');
+    const iNombre = columna('nombre', 'nombre_usuario', 'usuario');
+    if (iFecha < 0 || iHora < 0 || iNombre < 0) return { filas: [], errores: ['El archivo debe tener las columnas Fecha, Hora y Nombre.'] };
+    // Fechas como "01-nov-26", "01/11/2026" o "2026-11-01" se guardan como 2026-11-01
+    const MESES = { ene: 1, jan: 1, feb: 2, mar: 3, abr: 4, apr: 4, may: 5, jun: 6, jul: 7, ago: 8, aug: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12, dec: 12 };
+    const armar = (a, m, d) => {
+      const anio = String(a).length === 2 ? `20${a}` : String(a);
+      const f = `${anio}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const prueba = new Date(f + 'T00:00:00');
+      return !isNaN(prueba.getTime()) && fechaISO(prueba) === f ? f : '';
+    };
+    const normalizarFecha = (f) => {
+      const t = sinAcentos(f).replace(/\./g, '').trim();
+      let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (m) return armar(m[1], m[2], m[3]);
+      m = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/);
+      if (m) return armar(m[3], m[2], m[1]);
+      m = t.match(/^(\d{1,2})[\s/-]+(?:de\s+)?([a-z]{3,})[\s/-]+(?:de\s+)?(\d{2}|\d{4})$/);
+      if (m && MESES[m[2].slice(0, 3)]) return armar(m[3], MESES[m[2].slice(0, 3)], m[1]);
+      return '';
+    };
+    // Horas como "19:00", "10:00" o "6:00:00 p. m." se guardan como "7:00 pm"
     const normalizarHorario = (h) => {
       const m = (h || '')
         .toLowerCase()
         .replace(/\s+/g, ' ')
         .trim()
         .match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(?:([ap])\.?\s*m\.?)?$/);
-      if (!m) return h || '';
+      if (!m) return '';
       let hora = parseInt(m[1], 10);
       let ampm = m[3] ? `${m[3]}m` : null;
       if (!ampm) {
@@ -5487,17 +5518,51 @@ function AdminScreen({ navigation, route }) {
       }
       return `${hora}:${m[2]} ${ampm}`;
     };
-    return lineas
-      .slice(1)
-      .map((linea) => {
-        const valores = partir(linea);
-        const leido = {};
-        encabezados.forEach((encabezado, i) => {
-          leido[encabezado] = valores[i];
-        });
-        return { fecha: normalizarFecha(leido.fecha), horario: normalizarHorario(leido.horario), nombre_usuario: usuarioSeguro(leido.nombre_usuario) };
-      })
-      .filter((fila) => fila.fecha && fila.fecha.trim() !== '');
+    const filas = [];
+    const errores = [];
+    let fechaActual = '';
+    lineas.slice(1).forEach((linea, idx) => {
+      const numero = idx + 2;
+      const valores = partir(linea);
+      const textoFecha = valores[iFecha] || '';
+      const textoHora = valores[iHora] || '';
+      const nombre = valores[iNombre] || '';
+      if (textoFecha) {
+        fechaActual = normalizarFecha(textoFecha);
+        if (!fechaActual) errores.push(`Fila ${numero}: no se entiende la fecha "${textoFecha}".`);
+      }
+      if (!textoHora && !nombre) return; // fila vacía o sin datos útiles
+      if (!fechaActual) {
+        if (!textoFecha) errores.push(`Fila ${numero}: no tiene fecha arriba.`);
+        return;
+      }
+      const horario = normalizarHorario(textoHora);
+      if (!horario) return errores.push(`Fila ${numero}: no se entiende la hora "${textoHora}".`);
+      if (!nombre) return errores.push(`Fila ${numero}: falta el nombre.`);
+      filas.push({ fila: numero, fecha: fechaActual, horario, nombre });
+    });
+    return { filas, errores };
+  };
+
+  // Busca a la persona por su nombre completo (sin importar acentos ni mayúsculas) o por su usuario
+  const buscarPorNombre = (nombre) => {
+    const limpiar = (t) =>
+      sinAcentos(t)
+        .replace(/[^a-z0-9ñ]+/g, ' ')
+        .trim();
+    const buscado = limpiar(nombre);
+    const exactos = maestros.filter((m) => limpiar(m.nombre_completo || '') === buscado || usuarioSeguro(m.nombre_usuario) === usuarioSeguro(nombre));
+    if (exactos.length === 1) return { maestro: exactos[0] };
+    if (exactos.length > 1) return { varios: exactos };
+    // Si no es idéntico: todas las palabras del archivo deben estar en el nombre completo (ej. "Alejandro Fraga" → "Alejandro Fraga Jr")
+    const palabras = buscado.split(' ').filter(Boolean);
+    const parecidos = maestros.filter((m) => {
+      const suyas = limpiar(m.nombre_completo || '').split(' ');
+      return palabras.length > 0 && palabras.every((p) => suyas.includes(p));
+    });
+    if (parecidos.length === 1) return { maestro: parecidos[0] };
+    if (parecidos.length > 1) return { varios: parecidos };
+    return {};
   };
 
   // Se activa cuando el admin selecciona el archivo CSV
@@ -5508,12 +5573,30 @@ function AdminScreen({ navigation, route }) {
     lector.onload = async (e) => {
       setCambiosRol(null);
       try {
-        const filas = parsearCSV(e.target.result);
-        const conocidos = new Set(maestros.map((m) => usuarioSeguro(m.nombre_usuario)));
-        const faltan = [...new Set(filas.map((f) => f.nombre_usuario).filter((u) => !conocidos.has(u)))];
-        if (faltan.length > 0) {
+        // Excel guarda el CSV a veces en UTF-8 y a veces en el formato de Windows: se aceptan los dos (para que no se pierdan los acentos)
+        let texto;
+        try {
+          texto = new TextDecoder('utf-8', { fatal: true }).decode(e.target.result);
+        } catch (errorTexto) {
+          texto = new TextDecoder('windows-1252').decode(e.target.result);
+        }
+        const { filas: leidas, errores } = parsearCSV(texto);
+        const noEncontrados = new Set();
+        const dudosos = {};
+        const filas = [];
+        leidas.forEach((f) => {
+          const r = buscarPorNombre(f.nombre);
+          if (r.maestro) filas.push({ fecha: f.fecha, horario: f.horario, nombre_usuario: usuarioSeguro(r.maestro.nombre_usuario) });
+          else if (r.varios) dudosos[f.nombre] = r.varios.map((m) => ponerMayusculas(m.nombre_completo || m.nombre_usuario));
+          else noEncontrados.add(f.nombre);
+        });
+        const problemas = [];
+        if (noEncontrados.size > 0) problemas.push(`Estos nombres no coinciden con nadie en la app: ${[...noEncontrados].join(', ')}.`);
+        Object.entries(dudosos).forEach(([n, lista]) => problemas.push(`"${n}" se parece a varias personas: ${lista.join(', ')}. Escríbelo completo.`));
+        if (errores.length > 0) problemas.push(errores.slice(0, 5).join('\n') + (errores.length > 5 ? `\n…y ${errores.length - 5} más.` : ''));
+        if (problemas.length > 0 || filas.length === 0) {
           setPreviaRol([]);
-          setAlerta({ visible: true, titulo: 'Revisa los usuarios', mensaje: `Estos usuarios no existen en la app: ${faltan.join(', ')}.\n\nCorrígelos en el archivo (deben ser iguales a los de Administración → Usuarios) y vuelve a subirlo.`, onConfirmar: cerrarAlerta, isDark: isDark });
+          setAlerta({ visible: true, titulo: 'Revisa el archivo', mensaje: `${problemas.length > 0 ? problemas.join('\n\n') : 'No se encontraron fechas en el archivo.'}\n\nLos nombres deben coincidir con el nombre completo de cada persona en Administración → Usuarios. Corrige y vuelve a subirlo.`, onConfirmar: cerrarAlerta, isDark: isDark });
         } else {
           setPreviaRol(filas);
           setCambiosRol(await compararConRolActual(filas));
@@ -5522,7 +5605,7 @@ function AdminScreen({ navigation, route }) {
         setAlerta({ visible: true, titulo: 'Error', mensaje: 'No se pudo leer el archivo. Revisa que sea un CSV válido.', onConfirmar: cerrarAlerta, isDark: isDark });
       }
     };
-    lector.readAsText(archivo);
+    lector.readAsArrayBuffer(archivo);
   };
 
   // Si los meses del archivo ya tienen rol, calcula qué se agrega, qué se quita y a quién avisar
@@ -6072,7 +6155,7 @@ function AdminScreen({ navigation, route }) {
         {seccion === 'predicaciones' && (
           <>
             <OpcionAdmin {...opc('subirRol')} icono="upload" titulo="Subir o actualizar rol" subtitulo="Archivo CSV con las fechas del periodo">
-              <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las fechas del periodo. Si esos meses ya tienen rol, no se borra nada: solo se aplican los cambios y se avisa a quienes les cambió algo.</Text>
+              <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las columnas Día, Fecha, Hora y Nombre (la fecha solo en la primera fila de cada día; el nombre igual al nombre completo de cada persona). Si esos meses ya tienen rol, no se borra nada: solo se aplican los cambios y se avisa a quienes les cambió algo.</Text>
 
               {Platform.OS === 'web' && <SelectorArchivo isDark={isDark} onArchivo={manejarArchivoCSV} etiqueta="Elegir CSV del Rol" />}
 
