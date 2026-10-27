@@ -831,7 +831,7 @@ const PREGUNTAS_AYUDA = [
   {
     id: 'clasePdf',
     pregunta: '¿Cómo descargo o imprimo la clase?',
-    respuesta: 'Abre tu clase y, hasta abajo, toca «Clase en PDF». Se abre la ventana de imprimir de tu celular o computadora:\n\n• Para guardarla, elige «Guardar como PDF» (en iPhone, toca Compartir → Guardar en Archivos).\n• Para imprimirla, elige tu impresora.\n\nLa hoja de actividad y las ilustraciones se descargan con sus propios botones.',
+    respuesta: 'Abre tu clase y, hasta abajo, toca «Clase en PDF».\n\n• En Android o computadora se abre la ventana de imprimir: elige «Guardar como PDF» o tu impresora.\n• En iPhone, cuando diga «Tu PDF está listo», toca «Guardar» y elige «Guardar en Archivos», imprimir o mandarlo por WhatsApp.\n\nLa hoja de actividad y las ilustraciones se descargan con sus propios botones.',
     claves: 'pdf descargar imprimir guardar clase word documento hoja',
     ir: { pantalla: 'Grupos', texto: 'Ir a Clases de niños' },
   },
@@ -2367,6 +2367,124 @@ const imprimirClase = async ({ clase, grupo, subtitulo }) => {
   window.print();
 };
 
+// ---- PDF real de la clase (para iPhone, donde la app instalada no puede abrir «Imprimir») ----
+const RUTA_PDFMAKE = 'https://cdn.jsdelivr.net/npm/pdfmake@0.2.20/build/';
+const cargarScript = (src) =>
+  new Promise((ok, mal) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = ok;
+    s.onerror = () => mal(new Error('No se pudo cargar ' + src));
+    document.head.appendChild(s);
+  });
+const cargarPdfMake = async () => {
+  if (!window.pdfMake) await cargarScript(RUTA_PDFMAKE + 'pdfmake.min.js');
+  if (!window.pdfMake.vfs || !window.pdfMake.vfs['Roboto-Regular.ttf']) await cargarScript(RUTA_PDFMAKE + 'vfs_fonts.js');
+  return window.pdfMake;
+};
+const esIPhone = () => typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+// Mezcla un color con blanco (para el fondo suave de la primera columna de las tablas)
+const aclarar = (hex, cuanto) => {
+  const n = parseInt(String(hex).replace('#', ''), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (255 - v) * cuanto));
+  return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+};
+const aDataURL = async (url) => {
+  try {
+    const r = await fetch(url);
+    const blob = await r.blob();
+    return await new Promise((ok) => {
+      const lector = new FileReader();
+      lector.onload = () => ok(lector.result);
+      lector.onerror = () => ok(null);
+      lector.readAsDataURL(blob);
+    });
+  } catch (e) {
+    return null;
+  }
+};
+// Devuelve el archivo PDF de la clase
+const crearPdfClase = async ({ clase, grupo, subtitulo }) => {
+  const pdfMake = await cargarPdfMake();
+  const p = PALETA_MENU.claro[grupo] || PALETA_MENU.claro['Niños'];
+  const limpiar = (t) => String(t || '').replace(/[○◦●▪■□◘]/g, '•');
+  const ancho = 532; // carta con márgenes de 40
+  const tabla = (filas) => {
+    const columnas = Math.max(...filas.map((f) => f.reduce((n, c) => n + (c.span || 1), 0)));
+    const pesos = Array.from({ length: columnas }, () => 9);
+    filas.forEach((fila) => {
+      let col = 0;
+      fila.forEach((c) => {
+        if ((c.span || 1) === 1)
+          pesos[col] = Math.max(
+            pesos[col],
+            Math.min(
+              70,
+              Math.max(
+                0,
+                ...String(c.texto || '')
+                  .split('\n')
+                  .map((l) => l.length),
+              ),
+            ),
+          );
+        col += c.span || 1;
+      });
+    });
+    const total = pesos.reduce((a, b) => a + b, 0);
+    const body = filas.map((fila) => {
+      const celdas = [];
+      fila.forEach((c, j) => {
+        const span = c.span || 1;
+        celdas.push({ text: limpiar(c.texto), colSpan: span > 1 ? span : undefined, bold: j === 0, fillColor: j === 0 ? aclarar(p.fondo, 0.55) : null });
+        for (let k = 1; k < span; k++) celdas.push({});
+      });
+      while (celdas.length < columnas) celdas.push({});
+      return celdas;
+    });
+    return { table: { widths: pesos.map((w) => (w / total) * (ancho - columnas * 10)), body }, layout: { hLineColor: '#CFCBC3', vLineColor: '#CFCBC3', paddingTop: () => 4, paddingBottom: () => 4 }, margin: [0, 4, 0, 8] };
+  };
+  const contenido = [
+    { text: 'INDUS APP', fontSize: 8, bold: true, color: '#8A867E', characterSpacing: 1.5 },
+    { text: limpiar(clase.titulo_clase), fontSize: 20, bold: true, margin: [0, 4, 0, 2] },
+    { text: subtitulo, bold: true, color: p.texto },
+  ];
+  if (clase.texto_base) contenido.push({ text: `Base bíblica: ${limpiar(clase.texto_base)}`, color: '#6B6862', margin: [0, 2, 0, 0] });
+  contenido.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: ancho, y2: 0, lineWidth: 0.6, lineColor: '#DDD9D2' }], margin: [0, 10, 0, 10] });
+  for (const s of Array.isArray(clase.secciones) ? clase.secciones : []) {
+    contenido.push({ text: [{ text: limpiar(s.titulo).toUpperCase(), bold: true, color: p.texto, fontSize: 11.5 }, ...(s.tiempo ? [{ text: '  ' }, { text: ` ${s.tiempo} `, fontSize: 8.5, bold: true, color: p.texto, background: p.fondo }] : [])], margin: [0, 6, 0, 4] });
+    String(s.texto || '')
+      .split(/\[\[tabla:(\d+)\]\]/)
+      .forEach((parte, i) => {
+        if (i % 2 === 1) {
+          const filas = (s.tablas || [])[parseInt(parte, 10)];
+          if (filas && filas.length) contenido.push(tabla(filas));
+          return;
+        }
+        const texto = parte.replace(/^\n+|\n+$/g, '');
+        if (texto) contenido.push({ text: limpiar(texto), margin: [0, 0, 0, 6] });
+      });
+    if (Array.isArray(s.imagenes) && s.imagenes.length) {
+      const fotos = (await Promise.all(s.imagenes.map((f) => aDataURL(f.url)))).filter(Boolean);
+      for (let i = 0; i < fotos.length; i += 2) contenido.push({ columns: fotos.slice(i, i + 2).map((img) => ({ image: img, fit: [258, 230] })), columnGap: 16, margin: [0, 4, 0, 8] });
+    }
+  }
+  const definicion = { pageSize: 'LETTER', pageMargins: [40, 44, 40, 44], content: contenido, defaultStyle: { font: 'Roboto', fontSize: 10.5, lineHeight: 1.25, color: '#2B2A27' } };
+  const blob = await new Promise((ok) => pdfMake.createPdf(definicion).getBlob(ok));
+  const nombre = `Clase ${clase.numero_clase || ''} - ${clase.titulo_clase || 'clase'}`.replace(/[\\/:*?"<>|]/g, '').trim() + '.pdf';
+  return new File([blob], nombre, { type: 'application/pdf' });
+};
+// Abre el menú de compartir del celular (Guardar en Archivos, imprimir, WhatsApp…); si no se puede, abre el PDF
+const compartirArchivo = async (archivo) => {
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [archivo] })) return await navigator.share({ files: [archivo], title: archivo.name });
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+  }
+  const url = URL.createObjectURL(archivo);
+  if (!window.open(url, '_blank')) window.location.href = url;
+};
+
 // Texto de una sección de la clase con sus tablas del Word en el lugar donde iban
 const TextoConTablas = ({ texto, tablas, paleta, isDark, estiloTexto }) =>
   String(texto)
@@ -3153,7 +3271,11 @@ function MenuPrincipalScreen({ navigation }) {
       }
       (async () => {
         const hoy = fechaISO(new Date());
-        const [{ data }, { data: cena }] = await Promise.all([supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy), supabase.from('cena_turnos').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).in('estado', ['invitado', 'confirmado']).limit(1)]);
+        const rolPropio = async () => {
+          const r = await supabase.from('programa_servicios').select('id').or(`nombre_usuario.ilike.${usuarioActivoGlobal},preside.ilike.${usuarioActivoGlobal}`).gte('fecha', hoy).limit(1);
+          return r.error ? supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).limit(1) : r;
+        };
+        const [{ data }, { data: cena }] = await Promise.all([rolPropio(), supabase.from('cena_turnos').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).in('estado', ['invitado', 'confirmado']).limit(1)]);
         setTieneRol((data && data.length > 0) || (cena && cena.length > 0));
       })();
       (async () => {
@@ -3241,6 +3363,7 @@ function MiRolScreen({ navigation, route }) {
   const scrollRolRef = useRef(null);
   const yaDesplazadoRol = useRef(false);
   const listaRolY = useRef(0);
+  const mesesY = useRef({});
   const pulso = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (!servicioId) return;
@@ -3368,18 +3491,29 @@ function MiRolScreen({ navigation, route }) {
     }
     m.items.push(item);
   });
+  // Quien preside cambia en domingo: desde ese domingo se muestra la franja con su nombre.
+  // Entre semana, si preside otro hermano, se marca en chico en esa fecha.
+  let presideActual = null;
   meses.forEach((m) => {
-    const cuenta = {};
-    m.items.forEach((it) => {
-      if (it.preside) cuenta[it.preside.toLowerCase()] = (cuenta[it.preside.toLowerCase()] || 0) + 1;
-    });
-    m.preside = Object.keys(cuenta).sort((a, b) => cuenta[b] - cuenta[a])[0] || null;
     m.dias = Object.entries(
       m.items.reduce((acc, item) => {
         (acc[item.fecha] = acc[item.fecha] || []).push(item);
         return acc;
       }, {}),
-    );
+    ).map(([fecha, items]) => {
+      const cuenta = {};
+      items.forEach((it) => {
+        if (it.preside) cuenta[it.preside.toLowerCase()] = (cuenta[it.preside.toLowerCase()] || 0) + 1;
+      });
+      const delDia = Object.keys(cuenta).sort((a, b) => cuenta[b] - cuenta[a])[0] || null;
+      const esDomingo = new Date(fecha + 'T00:00:00').getDay() === 0;
+      let franja = null;
+      if (delDia && (presideActual === null || (esDomingo && delDia !== presideActual))) {
+        franja = { preside: delDia, desde: presideActual === null ? null : fecha };
+        presideActual = delDia;
+      }
+      return { fecha, items, franja, actual: presideActual };
+    });
   });
 
   return (
@@ -3411,92 +3545,98 @@ function MiRolScreen({ navigation, route }) {
           {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
           {!cargando && fechas.length === 0 && <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>{rolUsuarioActivoGlobal === 'administrador' ? 'No hay fechas programadas.' : 'No tienes fechas próximas.'}</Text>}
           {meses.map((m) => (
-            <View key={m.clave}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 4, marginBottom: 10 }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: colors.textMain }}>{m.nombre}</Text>
-                {m.preside ? (
-                  <View style={{ flexShrink: 1, backgroundColor: paletaRol.fondo, borderRadius: 999, paddingVertical: 5, paddingHorizontal: 12 }}>
-                    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '700', color: paletaRol.texto }}>
-                      Preside: {nombreEnRol({ nombre_usuario: m.preside }, mapaNombres)}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              {m.dias.map(([fecha, items]) => (
-                <View
-                  key={fecha}
-                  onLayout={(e) => {
-                    if (servicioId && !yaDesplazadoRol.current && items.some(esObjetivo) && scrollRolRef.current) {
-                      yaDesplazadoRol.current = true;
-                      const y = listaRolY.current + e.nativeEvent.layout.y - 10;
-                      setTimeout(() => {
-                        if (scrollRolRef.current) scrollRolRef.current.scrollTo({ y: Math.max(0, y), animated: true });
-                      }, 150);
-                    }
-                  }}
-                  style={{ flexDirection: 'row', marginBottom: 14 }}
-                >
-                  <View style={{ width: 56, alignItems: 'center', paddingTop: 14 }}>
-                    <Text style={{ fontSize: 21, fontWeight: '700', color: colors.textMain }}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(fecha + 'T00:00:00').getDay()]}</Text>
-                    <Text style={{ fontSize: 13, color: colors.textSub }}>
-                      {new Date(fecha + 'T00:00:00').getDate()} {new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).replace('.', '')}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 16 }}>
-                    {items.map((item, idx) => {
-                      const tipoCalculado = calcularTipo(item.fecha, item.horario);
-                      const esClase = tipoCalculado === 'Clase';
-                      const esInvitado = !item.nombre_usuario;
-                      const mia = esMia(item);
-                      const tintBg = esInvitado ? '#F3E3E3' : esClase ? '#EDF2FA' : '#FBEAE0';
-                      const tintText = esInvitado ? '#9A5A5A' : esClase ? '#3A5A8A' : '#A65A2E';
-                      // Solo se marca quién preside cuando es distinto al del mes
-                      const otroPreside = item.preside && item.preside.toLowerCase() !== m.preside ? item.preside : null;
-                      return (
-                        <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, ...(esObjetivo(item) ? { backgroundColor: isDark ? 'rgba(126, 160, 216, 0.18)' : '#EDF2FA', borderRadius: 18, marginHorizontal: -8, paddingHorizontal: 8 } : {}) }}>
-                          <View style={{ width: 36, height: 36, borderRadius: 14, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
-                            <Feather name={esInvitado ? 'user' : esClase ? 'calendar' : 'mic'} size={16} color={tintText} />
+            <View
+              key={m.clave}
+              onLayout={(e) => {
+                mesesY.current[m.clave] = e.nativeEvent.layout.y;
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: colors.textMain, marginTop: 4, marginBottom: 10 }}>{m.nombre}</Text>
+              {m.dias.map(({ fecha, items, franja, actual }) => (
+                <React.Fragment key={fecha}>
+                  {franja ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: paletaRol.fondo, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 16, marginBottom: 12, alignSelf: 'flex-start', maxWidth: '100%' }}>
+                      <Feather name="user-check" size={15} color={paletaRol.texto} />
+                      <Text style={{ flexShrink: 1, fontSize: 13, color: paletaRol.texto }}>
+                        <Text style={{ fontWeight: '800' }}>Preside: {nombreEnRol({ nombre_usuario: franja.preside }, mapaNombres)}</Text>
+                        {franja.desde ? `  ·  desde el ${new Date(franja.desde + 'T00:00:00').getDate()} de ${NOMBRES_MESES[new Date(franja.desde + 'T00:00:00').getMonth()].toLowerCase()}` : ''}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View
+                    onLayout={(e) => {
+                      if (servicioId && !yaDesplazadoRol.current && items.some(esObjetivo) && scrollRolRef.current) {
+                        yaDesplazadoRol.current = true;
+                        const y = listaRolY.current + (mesesY.current[m.clave] || 0) + e.nativeEvent.layout.y - 10;
+                        setTimeout(() => {
+                          if (scrollRolRef.current) scrollRolRef.current.scrollTo({ y: Math.max(0, y), animated: true });
+                        }, 150);
+                      }
+                    }}
+                    style={{ flexDirection: 'row', marginBottom: 14 }}
+                  >
+                    <View style={{ width: 56, alignItems: 'center', paddingTop: 14 }}>
+                      <Text style={{ fontSize: 21, fontWeight: '700', color: colors.textMain }}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(fecha + 'T00:00:00').getDay()]}</Text>
+                      <Text style={{ fontSize: 13, color: colors.textSub }}>
+                        {new Date(fecha + 'T00:00:00').getDate()} {new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).replace('.', '')}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 16 }}>
+                      {items.map((item, idx) => {
+                        const tipoCalculado = calcularTipo(item.fecha, item.horario);
+                        const esClase = tipoCalculado === 'Clase';
+                        const esInvitado = !item.nombre_usuario;
+                        const mia = esMia(item);
+                        const tintBg = esInvitado ? '#F3E3E3' : esClase ? '#EDF2FA' : '#FBEAE0';
+                        const tintText = esInvitado ? '#9A5A5A' : esClase ? '#3A5A8A' : '#A65A2E';
+                        // Solo se marca quién preside cuando es distinto al del mes
+                        const otroPreside = item.preside && item.preside.toLowerCase() !== actual ? item.preside : null;
+                        return (
+                          <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, ...(esObjetivo(item) ? { backgroundColor: isDark ? 'rgba(126, 160, 216, 0.18)' : '#EDF2FA', borderRadius: 18, marginHorizontal: -8, paddingHorizontal: 8 } : {}) }}>
+                            <View style={{ width: 36, height: 36, borderRadius: 14, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
+                              <Feather name={esInvitado ? 'user' : esClase ? 'calendar' : 'mic'} size={16} color={tintText} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, color: colors.textMain }}>
+                                {item.horario}
+                                {esAdminRol || !mia ? ` • ${nombreEnRol(item, mapaNombres)}` : ''}
+                              </Text>
+                              {otroPreside ? <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 2 }}>Preside: {nombreEnRol({ nombre_usuario: otroPreside }, mapaNombres)}</Text> : null}
+                              {esObjetivo(item) && item.estado_confirmacion !== 'confirmado' && mia && <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#9FBCE8' : '#2C4A73', marginTop: 3 }}>Confirma aquí tu asistencia 👉</Text>}
+                            </View>
+                            {item.usuario_original && <Text style={{ fontSize: 11, color: colors.textSub, textDecorationLine: 'line-through', marginRight: 2 }}>{mapaNombres[item.usuario_original.toLowerCase()] || item.usuario_original}</Text>}
+                            {mia
+                              ? item.estado_confirmacion !== 'confirmado' && (
+                                  <TouchableOpacity onPress={() => confirmarAsistencia(item)} style={{ padding: 6 }}>
+                                    <Animated.View style={{ transform: [{ scale: esObjetivo(item) ? pulso : 1 }] }}>
+                                      <Feather name="thumbs-up" size={18} color={esObjetivo(item) ? (isDark ? '#9FBCE8' : '#2C4A73') : colors.textSub} />
+                                    </Animated.View>
+                                  </TouchableOpacity>
+                                )
+                              : esAdminRol &&
+                                !esInvitado &&
+                                item.estado_confirmacion !== 'confirmado' && (
+                                  <TouchableOpacity onPress={() => confirmarPorOtro(item, esClase)} accessibilityLabel="Confirmar por otro" style={{ padding: 6 }}>
+                                    <Feather name="clock" size={16} color="#C9A227" />
+                                  </TouchableOpacity>
+                                )}
+                            {(mia || (esAdminRol && !esInvitado)) && (
+                              <TouchableOpacity
+                                onPress={() => {
+                                  setItemApoyo(item);
+                                  setMostrarModalApoyo(true);
+                                }}
+                                style={{ padding: 6, marginLeft: 2 }}
+                              >
+                                <Feather name="repeat" size={18} color={colors.textSub} />
+                              </TouchableOpacity>
+                            )}
                           </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 13, color: colors.textMain }}>
-                              {item.horario}
-                              {esAdminRol || !mia ? ` • ${nombreEnRol(item, mapaNombres)}` : ''}
-                            </Text>
-                            {otroPreside ? <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 2 }}>Preside: {nombreEnRol({ nombre_usuario: otroPreside }, mapaNombres)}</Text> : null}
-                            {esObjetivo(item) && item.estado_confirmacion !== 'confirmado' && mia && <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#9FBCE8' : '#2C4A73', marginTop: 3 }}>Confirma aquí tu asistencia 👉</Text>}
-                          </View>
-                          {item.usuario_original && <Text style={{ fontSize: 11, color: colors.textSub, textDecorationLine: 'line-through', marginRight: 2 }}>{mapaNombres[item.usuario_original.toLowerCase()] || item.usuario_original}</Text>}
-                          {mia
-                            ? item.estado_confirmacion !== 'confirmado' && (
-                                <TouchableOpacity onPress={() => confirmarAsistencia(item)} style={{ padding: 6 }}>
-                                  <Animated.View style={{ transform: [{ scale: esObjetivo(item) ? pulso : 1 }] }}>
-                                    <Feather name="thumbs-up" size={18} color={esObjetivo(item) ? (isDark ? '#9FBCE8' : '#2C4A73') : colors.textSub} />
-                                  </Animated.View>
-                                </TouchableOpacity>
-                              )
-                            : esAdminRol &&
-                              !esInvitado &&
-                              item.estado_confirmacion !== 'confirmado' && (
-                                <TouchableOpacity onPress={() => confirmarPorOtro(item, esClase)} accessibilityLabel="Confirmar por otro" style={{ padding: 6 }}>
-                                  <Feather name="clock" size={16} color="#C9A227" />
-                                </TouchableOpacity>
-                              )}
-                          {(mia || (esAdminRol && !esInvitado)) && (
-                            <TouchableOpacity
-                              onPress={() => {
-                                setItemApoyo(item);
-                                setMostrarModalApoyo(true);
-                              }}
-                              style={{ padding: 6, marginLeft: 2 }}
-                            >
-                              <Feather name="repeat" size={18} color={colors.textSub} />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      );
-                    })}
+                        );
+                      })}
+                    </View>
                   </View>
-                </View>
+                </React.Fragment>
               ))}
             </View>
           ))}
@@ -4700,9 +4840,33 @@ function ClaseDetalleScreen({ route, navigation }) {
   }
 
   // La clase completa como PDF (se arma al momento, no ocupa espacio)
-  const descargarClase = () => {
+  const [preparandoPdf, setPreparandoPdf] = useState(false);
+  const descargarClase = async () => {
     const t = fechaClase ? new Date(fechaClase + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : `Clase ${clase.numero_clase}`;
-    imprimirClase({ clase, grupo, subtitulo: `${t.charAt(0).toUpperCase() + t.slice(1)} • ${grupo}` });
+    const datos = { clase, grupo, subtitulo: `${t.charAt(0).toUpperCase() + t.slice(1)} • ${grupo}` };
+    // En Android y en la computadora se abre «Imprimir»; en iPhone se arma el PDF y se comparte
+    if (!esIPhone()) return imprimirClase(datos);
+    if (preparandoPdf) return;
+    setPreparandoPdf(true);
+    try {
+      const archivo = await crearPdfClase(datos);
+      setAlerta({
+        visible: true,
+        titulo: 'Tu PDF está listo',
+        mensaje: 'Toca «Guardar» y elige «Guardar en Archivos», imprimir o mandarlo por WhatsApp.',
+        textoConfirmar: 'Guardar',
+        onCancelar: cerrarAlerta,
+        isDark: isDark,
+        themeColor: theme.main,
+        onConfirmar: () => {
+          cerrarAlerta();
+          compartirArchivo(archivo);
+        },
+      });
+    } catch (e) {
+      setAlerta({ visible: true, titulo: 'No se pudo', mensaje: 'No se pudo preparar el PDF. Revisa tu conexión e intenta de nuevo.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main });
+    }
+    setPreparandoPdf(false);
   };
 
   const [fotoAbierta, setFotoAbierta] = useState(null);
@@ -4795,7 +4959,7 @@ function ClaseDetalleScreen({ route, navigation }) {
           <BotonChico icono="life-buoy" texto="Solicitar apoyo" categoria={grupo} isDark={isDark} onPress={abrirApoyo} />
           {clase.url_pdf ? <BotonChico icono="download" texto="Actividad" categoria={grupo} isDark={isDark} onPress={descargarPDF} /> : null}
           {clase.url_ilustraciones ? <BotonChico icono="image" texto="Ilustraciones" categoria={grupo} isDark={isDark} onPress={() => setVerPdf({ url: clase.url_ilustraciones, titulo: 'Ilustraciones' })} /> : null}
-          {Platform.OS === 'web' && !clase.pendiente && Array.isArray(clase.secciones) && clase.secciones.length > 0 ? <BotonChico icono="printer" texto="Clase en PDF" categoria={grupo} isDark={isDark} onPress={descargarClase} /> : null}
+          {Platform.OS === 'web' && !clase.pendiente && Array.isArray(clase.secciones) && clase.secciones.length > 0 ? <BotonChico icono="printer" texto={preparandoPdf ? 'Preparando…' : 'Clase en PDF'} categoria={grupo} isDark={isDark} onPress={descargarClase} /> : null}
         </View>
       </ScrollView>
       <AlertaPersonalizada {...alerta} />
