@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
-import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Linking, Platform, StatusBar, KeyboardAvoidingView, Image, Animated, RefreshControl, useWindowDimensions } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Linking, Platform, StatusBar, KeyboardAvoidingView, Image, Animated, RefreshControl, PanResponder, useWindowDimensions } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import { Feather } from '@expo/vector-icons';
@@ -185,6 +185,12 @@ const usuarioSeguro = (texto) =>
 // Al volver a subir un rol: compara lo cargado con lo nuevo para saber qué se agrega, qué se quita y qué cambia.
 // Lo que no cambia se queda igual (conserva confirmaciones y quién cubre a quién).
 const titularDe = (r) => (r.usuario_original || r.nombre_usuario || '').toLowerCase();
+// Nombre de quien tiene una fecha del rol: el hermano o un invitado (que no tiene cuenta)
+const nombreEnRol = (r, mapa = {}) => {
+  if (r.nombre_usuario) return ponerMayusculas(mapa[r.nombre_usuario.toLowerCase()] || r.nombre_usuario);
+  if (!r.invitado || r.invitado === 'Invitado') return 'Invitado';
+  return `${ponerMayusculas(r.invitado)} (invitado)`;
+};
 // Hora para comparar: "18:00", "6:00 pm" y "6:00:00 p. m." cuentan como la misma
 const horaClave = (h) => {
   const m = (h || '')
@@ -1103,6 +1109,9 @@ const buscarConflictoDia = async (usuario, fecha, ignorar = {}) => {
   if (rol) return `una predicación ese día (${rol.horario})`;
   const clase = (clases.data || []).find((c) => !(ignorar.claseId && c.id === ignorar.claseId));
   if (clase) return `una clase con ${clase.grupo} ese día`;
+  // Quien preside ese día no puede cubrir clases ni predicaciones
+  const { data: preside, error } = await supabase.from('programa_servicios').select('id').ilike('preside', usuario).eq('fecha', fecha).limit(1);
+  if (!error && preside && preside.length > 0) return 'que presidir ese día';
   return null;
 };
 
@@ -3148,27 +3157,26 @@ function MiRolScreen({ navigation, route }) {
 
   const cargarRol = async () => {
     const hoy = fechaISO(new Date());
-    let consulta = supabase.from('programa_servicios').select('*').gte('fecha', hoy).order('fecha', { ascending: true });
-    if (rolUsuarioActivoGlobal !== 'administrador') {
-      consulta = consulta.ilike('nombre_usuario', usuarioActivoGlobal);
+    const base = () => supabase.from('programa_servicios').select('*').gte('fecha', hoy).order('fecha', { ascending: true });
+    let data;
+    if (rolUsuarioActivoGlobal === 'administrador') ({ data } = await base());
+    else {
+      // Sus predicaciones y, si preside, también los servicios que le toca presidir
+      const r = await base().or(`nombre_usuario.ilike.${usuarioActivoGlobal},preside.ilike.${usuarioActivoGlobal}`);
+      data = r.error ? (await base().ilike('nombre_usuario', usuarioActivoGlobal)).data : r.data;
     }
-    const { data } = await consulta;
     const ordenado = (data || []).sort((a, b) => {
       if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
       return parsearHorarioMinutos(a.horario) - parsearHorarioMinutos(b.horario);
     });
     setFechas(ordenado);
 
-    if (rolUsuarioActivoGlobal === 'administrador') {
-      const { data: maestros } = await supabase.from('maestros').select('nombre_usuario, nombre_completo');
-      const mapa = {};
-      (maestros || []).forEach((m) => {
-        mapa[m.nombre_usuario.toLowerCase()] = m.nombre_completo;
-      });
-      setMapaNombres(mapa);
-    }
-
     const { data: elegibles } = await supabase.rpc('nombres_publicos');
+    const mapa = {};
+    (elegibles || []).forEach((m) => {
+      mapa[(m.nombre_usuario || '').toLowerCase()] = m.nombre_completo || m.nombre_usuario;
+    });
+    setMapaNombres(mapa);
     setMaestrosElegibles((elegibles || []).filter((m) => m.elegible_predicaciones));
   };
 
@@ -3193,7 +3201,7 @@ function MiRolScreen({ navigation, route }) {
     setAlerta({
       visible: true,
       titulo: 'Confirmar por otro',
-      mensaje: `¿Confirmar ${esClase ? 'la clase' : 'la predicación'} de ${ponerMayusculas(mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario)} del ${formatearFecha(item.fecha).replace(',', '')}?`,
+      mensaje: `¿Confirmar ${esClase ? 'la clase' : 'la predicación'} de ${nombreEnRol(item, mapaNombres)} del ${formatearFecha(item.fecha).replace(',', '')}?`,
       textoConfirmar: 'Confirmar',
       onCancelar: cerrarAlerta,
       isDark: isDark,
@@ -3237,6 +3245,36 @@ function MiRolScreen({ navigation, route }) {
     }
   };
 
+  // Fechas agrupadas por mes; arriba de cada mes va quien preside la mayoría de sus servicios
+  const esAdminRol = rolUsuarioActivoGlobal === 'administrador';
+  const yoRol = (usuarioActivoGlobal || '').toLowerCase();
+  const esMia = (item) => (item.nombre_usuario || '').toLowerCase() === yoRol;
+  const paletaRol = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Predicaciones'];
+  const meses = [];
+  fechas.forEach((item) => {
+    const clave = item.fecha.slice(0, 7);
+    let m = meses[meses.length - 1];
+    if (!m || m.clave !== clave) {
+      const d = new Date(item.fecha + 'T00:00:00');
+      m = { clave, nombre: `${NOMBRES_MESES[d.getMonth()].toUpperCase()}${d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''}`, items: [] };
+      meses.push(m);
+    }
+    m.items.push(item);
+  });
+  meses.forEach((m) => {
+    const cuenta = {};
+    m.items.forEach((it) => {
+      if (it.preside) cuenta[it.preside.toLowerCase()] = (cuenta[it.preside.toLowerCase()] || 0) + 1;
+    });
+    m.preside = Object.keys(cuenta).sort((a, b) => cuenta[b] - cuenta[a])[0] || null;
+    m.dias = Object.entries(
+      m.items.reduce((acc, item) => {
+        (acc[item.fecha] = acc[item.fecha] || []).push(item);
+        return acc;
+      }, {}),
+    );
+  });
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView ref={scrollRolRef} contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
@@ -3265,79 +3303,94 @@ function MiRolScreen({ navigation, route }) {
         >
           {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
           {!cargando && fechas.length === 0 && <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>{rolUsuarioActivoGlobal === 'administrador' ? 'No hay fechas programadas.' : 'No tienes fechas próximas.'}</Text>}
-          {Object.entries(
-            fechas.reduce((acc, item) => {
-              (acc[item.fecha] = acc[item.fecha] || []).push(item);
-              return acc;
-            }, {}),
-          ).map(([fecha, items]) => (
-            <View
-              key={fecha}
-              onLayout={(e) => {
-                if (servicioId && !yaDesplazadoRol.current && items.some(esObjetivo) && scrollRolRef.current) {
-                  yaDesplazadoRol.current = true;
-                  const y = listaRolY.current + e.nativeEvent.layout.y - 10;
-                  setTimeout(() => {
-                    if (scrollRolRef.current) scrollRolRef.current.scrollTo({ y: Math.max(0, y), animated: true });
-                  }, 150);
-                }
-              }}
-              style={{ flexDirection: 'row', marginBottom: 14 }}
-            >
-              <View style={{ width: 56, alignItems: 'center', paddingTop: 14 }}>
-                <Text style={{ fontSize: 21, fontWeight: '700', color: colors.textMain }}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(fecha + 'T00:00:00').getDay()]}</Text>
-                <Text style={{ fontSize: 13, color: colors.textSub }}>
-                  {new Date(fecha + 'T00:00:00').getDate()} {new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).replace('.', '')}
-                </Text>
+          {meses.map((m) => (
+            <View key={m.clave}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 4, marginBottom: 10 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: colors.textMain }}>{m.nombre}</Text>
+                {m.preside ? (
+                  <View style={{ flexShrink: 1, backgroundColor: paletaRol.fondo, borderRadius: 999, paddingVertical: 5, paddingHorizontal: 12 }}>
+                    <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '700', color: paletaRol.texto }}>
+                      Preside: {nombreEnRol({ nombre_usuario: m.preside }, mapaNombres)}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
-              <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 16 }}>
-                {items.map((item, idx) => {
-                  const tipoCalculado = calcularTipo(item.fecha, item.horario);
-                  const esClase = tipoCalculado === 'Clase';
-                  const tintBg = esClase ? '#EDF2FA' : '#FBEAE0';
-                  const tintText = esClase ? '#3A5A8A' : '#A65A2E';
-                  return (
-                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, ...(esObjetivo(item) ? { backgroundColor: isDark ? 'rgba(126, 160, 216, 0.18)' : '#EDF2FA', borderRadius: 18, marginHorizontal: -8, paddingHorizontal: 8 } : {}) }}>
-                      <View style={{ width: 36, height: 36, borderRadius: 14, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
-                        <Feather name={esClase ? 'calendar' : 'mic'} size={16} color={tintText} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, color: colors.textMain }}>
-                          {item.horario}
-                          {rolUsuarioActivoGlobal === 'administrador' ? ` • ${ponerMayusculas(mapaNombres[item.nombre_usuario.toLowerCase()] || item.nombre_usuario)}` : ''}
-                        </Text>
-                        {esObjetivo(item) && item.estado_confirmacion !== 'confirmado' && item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() && <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#9FBCE8' : '#2C4A73', marginTop: 3 }}>Confirma aquí tu asistencia 👉</Text>}
-                      </View>
-                      {item.usuario_original && <Text style={{ fontSize: 11, color: colors.textSub, textDecorationLine: 'line-through', marginRight: 2 }}>{mapaNombres[item.usuario_original.toLowerCase()] || item.usuario_original}</Text>}
-                      {item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase()
-                        ? item.estado_confirmacion !== 'confirmado' && (
-                            <TouchableOpacity onPress={() => confirmarAsistencia(item)} style={{ padding: 6 }}>
-                              <Animated.View style={{ transform: [{ scale: esObjetivo(item) ? pulso : 1 }] }}>
-                                <Feather name="thumbs-up" size={18} color={esObjetivo(item) ? (isDark ? '#9FBCE8' : '#2C4A73') : colors.textSub} />
-                              </Animated.View>
-                            </TouchableOpacity>
-                          )
-                        : rolUsuarioActivoGlobal === 'administrador' &&
-                          item.estado_confirmacion !== 'confirmado' && (
-                            <TouchableOpacity onPress={() => confirmarPorOtro(item, esClase)} accessibilityLabel="Confirmar por otro" style={{ padding: 6 }}>
-                              <Feather name="clock" size={16} color="#C9A227" />
+              {m.dias.map(([fecha, items]) => (
+                <View
+                  key={fecha}
+                  onLayout={(e) => {
+                    if (servicioId && !yaDesplazadoRol.current && items.some(esObjetivo) && scrollRolRef.current) {
+                      yaDesplazadoRol.current = true;
+                      const y = listaRolY.current + e.nativeEvent.layout.y - 10;
+                      setTimeout(() => {
+                        if (scrollRolRef.current) scrollRolRef.current.scrollTo({ y: Math.max(0, y), animated: true });
+                      }, 150);
+                    }
+                  }}
+                  style={{ flexDirection: 'row', marginBottom: 14 }}
+                >
+                  <View style={{ width: 56, alignItems: 'center', paddingTop: 14 }}>
+                    <Text style={{ fontSize: 21, fontWeight: '700', color: colors.textMain }}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'][new Date(fecha + 'T00:00:00').getDay()]}</Text>
+                    <Text style={{ fontSize: 13, color: colors.textSub }}>
+                      {new Date(fecha + 'T00:00:00').getDate()} {new Date(fecha + 'T00:00:00').toLocaleDateString('es-MX', { month: 'short' }).replace('.', '')}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 16 }}>
+                    {items.map((item, idx) => {
+                      const tipoCalculado = calcularTipo(item.fecha, item.horario);
+                      const esClase = tipoCalculado === 'Clase';
+                      const esInvitado = !item.nombre_usuario;
+                      const mia = esMia(item);
+                      const tintBg = esInvitado ? '#F3E3E3' : esClase ? '#EDF2FA' : '#FBEAE0';
+                      const tintText = esInvitado ? '#9A5A5A' : esClase ? '#3A5A8A' : '#A65A2E';
+                      // Solo se marca quién preside cuando es distinto al del mes
+                      const otroPreside = item.preside && item.preside.toLowerCase() !== m.preside ? item.preside : null;
+                      return (
+                        <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, ...(esObjetivo(item) ? { backgroundColor: isDark ? 'rgba(126, 160, 216, 0.18)' : '#EDF2FA', borderRadius: 18, marginHorizontal: -8, paddingHorizontal: 8 } : {}) }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 14, backgroundColor: tintBg, alignItems: 'center', justifyContent: 'center' }}>
+                            <Feather name={esInvitado ? 'user' : esClase ? 'calendar' : 'mic'} size={16} color={tintText} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, color: colors.textMain }}>
+                              {item.horario}
+                              {esAdminRol || !mia ? ` • ${nombreEnRol(item, mapaNombres)}` : ''}
+                            </Text>
+                            {otroPreside ? <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 2 }}>Preside: {nombreEnRol({ nombre_usuario: otroPreside }, mapaNombres)}</Text> : null}
+                            {esObjetivo(item) && item.estado_confirmacion !== 'confirmado' && mia && <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#9FBCE8' : '#2C4A73', marginTop: 3 }}>Confirma aquí tu asistencia 👉</Text>}
+                          </View>
+                          {item.usuario_original && <Text style={{ fontSize: 11, color: colors.textSub, textDecorationLine: 'line-through', marginRight: 2 }}>{mapaNombres[item.usuario_original.toLowerCase()] || item.usuario_original}</Text>}
+                          {mia
+                            ? item.estado_confirmacion !== 'confirmado' && (
+                                <TouchableOpacity onPress={() => confirmarAsistencia(item)} style={{ padding: 6 }}>
+                                  <Animated.View style={{ transform: [{ scale: esObjetivo(item) ? pulso : 1 }] }}>
+                                    <Feather name="thumbs-up" size={18} color={esObjetivo(item) ? (isDark ? '#9FBCE8' : '#2C4A73') : colors.textSub} />
+                                  </Animated.View>
+                                </TouchableOpacity>
+                              )
+                            : esAdminRol &&
+                              !esInvitado &&
+                              item.estado_confirmacion !== 'confirmado' && (
+                                <TouchableOpacity onPress={() => confirmarPorOtro(item, esClase)} accessibilityLabel="Confirmar por otro" style={{ padding: 6 }}>
+                                  <Feather name="clock" size={16} color="#C9A227" />
+                                </TouchableOpacity>
+                              )}
+                          {(mia || (esAdminRol && !esInvitado)) && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                setItemApoyo(item);
+                                setMostrarModalApoyo(true);
+                              }}
+                              style={{ padding: 6, marginLeft: 2 }}
+                            >
+                              <Feather name="repeat" size={18} color={colors.textSub} />
                             </TouchableOpacity>
                           )}
-                      {(item.nombre_usuario.toLowerCase() === usuarioActivoGlobal.toLowerCase() || rolUsuarioActivoGlobal === 'administrador') && (
-                        <TouchableOpacity
-                          onPress={() => {
-                            setItemApoyo(item);
-                            setMostrarModalApoyo(true);
-                          }}
-                          style={{ padding: 6, marginLeft: 2 }}
-                        >
-                          <Feather name="repeat" size={18} color={colors.textSub} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
             </View>
           ))}
         </View>
@@ -5482,6 +5535,7 @@ function AdminScreen({ navigation, route }) {
     const iFecha = columna('fecha');
     const iHora = columna('hora', 'horario');
     const iNombre = columna('nombre', 'nombre_usuario', 'usuario');
+    const iPreside = columna('preside', 'presidente', 'quien_preside');
     if (iFecha < 0 || iHora < 0 || iNombre < 0) return { filas: [], errores: ['El archivo debe tener las columnas Fecha, Hora y Nombre.'] };
     // Fechas como "01-nov-26", "01/11/2026" o "2026-11-01" se guardan como 2026-11-01
     const MESES = { ene: 1, jan: 1, feb: 2, mar: 3, abr: 4, apr: 4, may: 5, jun: 6, jul: 7, ago: 8, aug: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12, dec: 12 };
@@ -5539,7 +5593,7 @@ function AdminScreen({ navigation, route }) {
       const horario = normalizarHorario(textoHora);
       if (!horario) return errores.push(`Fila ${numero}: no se entiende la hora "${textoHora}".`);
       if (!nombre) return errores.push(`Fila ${numero}: falta el nombre.`);
-      filas.push({ fila: numero, fecha: fechaActual, horario, nombre });
+      filas.push({ fila: numero, fecha: fechaActual, horario, nombre, preside: iPreside >= 0 ? valores[iPreside] || '' : '' });
     });
     return { filas, errores };
   };
@@ -5584,11 +5638,29 @@ function AdminScreen({ navigation, route }) {
         const noEncontrados = new Set();
         const dudosos = {};
         const filas = [];
+        // Busca a una persona; anota el problema si no se encuentra o se parece a varias
+        const resolver = (nombre) => {
+          const r = buscarPorNombre(nombre);
+          if (r.maestro) return usuarioSeguro(r.maestro.nombre_usuario);
+          if (r.varios) dudosos[nombre] = r.varios.map((m) => ponerMayusculas(m.nombre_completo || m.nombre_usuario));
+          else noEncontrados.add(nombre);
+          return null;
+        };
+        const hayPreside = leidas.some((f) => f.preside);
         leidas.forEach((f) => {
-          const r = buscarPorNombre(f.nombre);
-          if (r.maestro) filas.push({ fecha: f.fecha, horario: f.horario, nombre_usuario: usuarioSeguro(r.maestro.nombre_usuario) });
-          else if (r.varios) dudosos[f.nombre] = r.varios.map((m) => ponerMayusculas(m.nombre_completo || m.nombre_usuario));
-          else noEncontrados.add(f.nombre);
+          // "Invitado" o "Invitado: Juan Pérez": hermano sin cuenta en la app (sin avisos ni confirmación)
+          const invitado = f.nombre.match(/^invitad[oa]\b\s*[:\-–]?\s*(.*)$/i);
+          const fila = { fecha: f.fecha, horario: f.horario, nombre_usuario: null };
+          if (invitado) fila.invitado = invitado[1].trim() || 'Invitado';
+          else {
+            fila.nombre_usuario = resolver(f.nombre);
+            if (!fila.nombre_usuario) return;
+          }
+          if (hayPreside) {
+            fila.preside = f.preside ? resolver(f.preside) : null;
+            if (f.preside && !fila.preside) return;
+          }
+          filas.push(fila);
         });
         const problemas = [];
         if (noEncontrados.size > 0) problemas.push(`Estos nombres no coinciden con nadie en la app: ${[...noEncontrados].join(', ')}.`);
@@ -5617,7 +5689,7 @@ function AdminScreen({ navigation, route }) {
       await traerTodo(() =>
         supabase
           .from('programa_servicios')
-          .select('id, fecha, horario, nombre_usuario, usuario_original')
+          .select('id, fecha, horario, nombre_usuario, usuario_original, invitado, preside')
           .gte('fecha', `${meses[0]}-01`)
           .lte('fecha', fechaISO(new Date(anioFin, mesFin, 0)))
           .order('id', { ascending: true }),
@@ -5625,9 +5697,9 @@ function AdminScreen({ navigation, route }) {
     ).filter((r) => meses.includes(r.fecha.slice(0, 7)));
     if (actuales.length === 0) return null;
     const mesesConRol = new Set(actuales.map((r) => r.fecha.slice(0, 7)));
-    const cambios = compararRol(actuales, filas, (r) => `${r.fecha}|${horaClave(r.horario)}|${titularDe(r)}`, []);
+    const cambios = compararRol(actuales, filas, (r) => `${r.fecha}|${horaClave(r.horario)}|${titularDe(r) || 'invitado:' + sinAcentos(r.invitado || '')}`, 'preside' in filas[0] ? ['preside'] : []);
     const hoy = fechaISO(new Date());
-    const afectados = [...cambios.agregar.filter((r) => r.fecha >= hoy && mesesConRol.has(r.fecha.slice(0, 7))).map((r) => r.nombre_usuario), ...cambios.quitar.filter((r) => r.fecha >= hoy).flatMap((r) => [r.nombre_usuario, r.usuario_original])];
+    const afectados = [...cambios.agregar.filter((r) => r.fecha >= hoy && mesesConRol.has(r.fecha.slice(0, 7))).flatMap((r) => [r.nombre_usuario, r.preside]), ...cambios.quitar.filter((r) => r.fecha >= hoy).flatMap((r) => [r.nombre_usuario, r.usuario_original, r.preside]), ...cambios.actualizar.filter((u) => u.antes.fecha >= hoy).flatMap((u) => [u.antes.preside, u.despues.preside])];
     return { ...cambios, mesesConRol: [...mesesConRol], afectados: [...new Set(afectados.filter(Boolean).map((u) => u.toLowerCase()))] };
   };
 
@@ -5646,6 +5718,11 @@ function AdminScreen({ navigation, route }) {
           'programa_servicios',
           cambiosRol.quitar.map((r) => r.id),
         );
+        // Fechas que se quedan igual pero cambió quién preside
+        for (const u of cambiosRol.actualizar) {
+          const { error } = await supabase.from('programa_servicios').update(u.cambios).eq('id', u.id);
+          if (error) throw error;
+        }
         if (cambiosRol.agregar.length > 0) {
           const { data: subidas, error } = await supabase.from('programa_servicios').insert(cambiosRol.agregar).select('id, fecha');
           if (error) throw error;
@@ -5653,8 +5730,8 @@ function AdminScreen({ navigation, route }) {
           const deMesesNuevos = (subidas || []).filter((r) => !cambiosRol.mesesConRol.includes(r.fecha.slice(0, 7))).map((r) => r.id);
           if (deMesesNuevos.length > 0) supabase.functions.invoke('recordatorios', { body: { accion: 'rol-nuevo', ids: deMesesNuevos } }).catch((e) => console.error('No se pudo avisar del rol nuevo:', e));
         }
-                avisarRolActualizado(cambiosRol.afectados, 'predicaciones', true);
-        setAlerta({ visible: true, titulo: 'Rol actualizado', mensaje: `Se agregaron ${cambiosRol.agregar.length} y se quitaron ${cambiosRol.quitar.length} fechas. Se avisó a ${cambiosRol.afectados.length} persona(s).`, onConfirmar: cerrarAlerta, isDark: isDark });
+        avisarRolActualizado(cambiosRol.afectados, 'predicaciones', true);
+        setAlerta({ visible: true, titulo: 'Rol actualizado', mensaje: `Se agregaron ${cambiosRol.agregar.length} y se quitaron ${cambiosRol.quitar.length} fechas${cambiosRol.actualizar.length ? `, y cambió quién preside en ${cambiosRol.actualizar.length}` : ''}. Se avisó a ${cambiosRol.afectados.length} persona(s).`, onConfirmar: cerrarAlerta, isDark: isDark });
       }
       setPreviaRol([]);
       setCambiosRol(null);
@@ -5816,7 +5893,7 @@ function AdminScreen({ navigation, route }) {
           const { error } = await supabase.from('clases_asignadas').insert(c.agregar);
           if (error) throw error;
         }
-           avisarRolActualizado(c.afectados, 'clases', true);
+        avisarRolActualizado(c.afectados, 'clases', true);
         setAlerta({ visible: true, titulo: 'Rol actualizado', mensaje: `Se agregaron ${c.agregar.length}, se quitaron ${c.quitar.length} y se actualizaron ${c.actualizar.length} clases. Se avisó a ${c.afectados.length} persona(s).`, onConfirmar: cerrarAlerta, isDark: isDark });
       }
       setPreviaClases(null);
@@ -6155,28 +6232,28 @@ function AdminScreen({ navigation, route }) {
         {seccion === 'predicaciones' && (
           <>
             <OpcionAdmin {...opc('subirRol')} icono="upload" titulo="Subir o actualizar rol" subtitulo="Archivo CSV con las fechas del periodo">
-              <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las columnas Día, Fecha, Hora y Nombre (la fecha solo en la primera fila de cada día; el nombre igual al nombre completo de cada persona). Si esos meses ya tienen rol, no se borra nada: solo se aplican los cambios y se avisa a quienes les cambió algo.</Text>
+              <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el archivo CSV con las columnas Día, Fecha, Hora, Nombre y Preside (la fecha solo en la primera fila de cada día; los nombres iguales al nombre completo de cada persona; para un hermano sin cuenta escribe «Invitado» o «Invitado: su nombre»). Si esos meses ya tienen rol, no se borra nada: solo se aplican los cambios y se avisa a quienes les cambió algo.</Text>
 
               {Platform.OS === 'web' && <SelectorArchivo isDark={isDark} onArchivo={manejarArchivoCSV} etiqueta="Elegir CSV del Rol" />}
 
               {previaRol.length > 0 && cambiosRol && (
                 <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                   <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Actualización del rol</Text>
-                  {cambiosRol.agregar.length + cambiosRol.quitar.length === 0 ? (
+                  {cambiosRol.agregar.length + cambiosRol.quitar.length + cambiosRol.actualizar.length === 0 ? (
                     <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 4 }}>El archivo es igual al rol que ya está cargado. No hay nada que actualizar.</Text>
                   ) : (
                     <>
                       <Text style={{ color: colors.textMain, fontSize: 13, marginTop: 4 }}>
-                        Se agregan {cambiosRol.agregar.length} y se quitan {cambiosRol.quitar.length} fechas. Las demás se quedan igual (con su confirmación).
+                        Se agregan {cambiosRol.agregar.length} y se quitan {cambiosRol.quitar.length} fechas{cambiosRol.actualizar.length ? `; en ${cambiosRol.actualizar.length} cambia quién preside` : ''}. Las demás se quedan igual (con su confirmación).
                       </Text>
                       {cambiosRol.quitar.slice(0, 6).map((r) => (
                         <Text key={'q' + r.id} style={{ color: '#C97A7A', fontSize: 12, marginTop: 4 }}>
-                          – {r.fecha} • {r.horario} • {r.nombre_usuario}
+                          – {r.fecha} • {r.horario} • {nombreEnRol(r)}
                         </Text>
                       ))}
                       {cambiosRol.agregar.slice(0, 6).map((r, i) => (
                         <Text key={'a' + i} style={{ color: '#6FA884', fontSize: 12, marginTop: 4 }}>
-                          + {r.fecha} • {r.horario} • {r.nombre_usuario}
+                          + {r.fecha} • {r.horario} • {nombreEnRol(r)}
                         </Text>
                       ))}
                       <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 8 }}>{cambiosRol.afectados.length > 0 ? `Se avisará a ${cambiosRol.afectados.length} persona(s): ${cambiosRol.afectados.slice(0, 8).join(', ')}${cambiosRol.afectados.length > 8 ? '…' : ''}` : 'Los cambios son de fechas que ya pasaron: no se avisará a nadie.'}</Text>
@@ -6192,7 +6269,8 @@ function AdminScreen({ navigation, route }) {
                   <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Se van a subir {previaRol.length} fechas:</Text>
                   {previaRol.slice(0, 5).map((fila, index) => (
                     <Text key={index} style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>
-                      {fila.fecha} • {fila.horario} • {calcularTipo(fila.fecha, fila.horario)} • {fila.nombre_usuario}
+                      {fila.fecha} • {fila.horario} • {calcularTipo(fila.fecha, fila.horario)} • {nombreEnRol(fila)}
+                      {fila.preside ? ` • Preside: ${fila.preside}` : ''}
                     </Text>
                   ))}
                   {previaRol.length > 5 && <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 4 }}>...y {previaRol.length - 5} más</Text>}
@@ -6224,7 +6302,7 @@ function AdminScreen({ navigation, route }) {
                     <TouchableOpacity key={item.id} onPress={() => toggleSeleccionRol(item.id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
                       <Feather name={seleccionadosRol.includes(item.id) ? 'check-square' : 'square'} size={18} color={seleccionadosRol.includes(item.id) ? '#7EA0D8' : colors.textSub} />
                       <Text style={{ color: colors.textMain, fontSize: 13, marginLeft: 10, flex: 1 }}>
-                        {item.fecha} • {item.horario} • {item.nombre_usuario}
+                        {item.fecha} • {item.horario} • {nombreEnRol(item)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -6543,6 +6621,26 @@ function CalendarioScreen({ navigation }) {
   const [altoZona, setAltoZona] = useState(0);
   const [editando, setEditando] = useState(null); // null = cerrado, 'nueva' o la actividad a editar
   const subir = useRef(new Animated.Value(0)).current;
+  // Deslizar a la izquierda o a la derecha cambia de mes
+  const deslizar = useRef(new Animated.Value(0)).current;
+  const cambiarMesRef = useRef(null);
+  const gestos = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 18 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderMove: (_, g) => deslizar.setValue(Math.max(-60, Math.min(60, g.dx / 3))),
+      onPanResponderRelease: (_, g) => {
+        if (Math.abs(g.dx) < 50) return Animated.spring(deslizar, { toValue: 0, useNativeDriver: false }).start();
+        const n = g.dx < 0 ? 1 : -1;
+        Animated.timing(deslizar, { toValue: -n * 60, duration: 110, useNativeDriver: false }).start(() => {
+          if (cambiarMesRef.current) cambiarMesRef.current(n);
+          deslizar.setValue(n * 60);
+          Animated.timing(deslizar, { toValue: 0, duration: 160, useNativeDriver: false }).start();
+        });
+      },
+      onPanResponderTerminate: () => Animated.spring(deslizar, { toValue: 0, useNativeDriver: false }).start(),
+      onPanResponderTerminationRequest: () => true,
+    }),
+  ).current;
 
   const cargar = () =>
     supabase
@@ -6584,6 +6682,7 @@ function CalendarioScreen({ navigation }) {
     setSel(claveMes(nuevo) === hoy.slice(0, 7) ? hoy : fechaISO(nuevo));
     setAbierta(false);
   };
+  cambiarMesRef.current = cambiarMes;
   const tocarDia = (f) => {
     setSel(f);
     if (!horizontal) setAbierta(true);
@@ -6721,7 +6820,7 @@ function CalendarioScreen({ navigation }) {
       }}
     >
       {tam ? (
-        <View style={{ width: anchoRejilla }}>
+        <Animated.View {...gestos.panHandlers} style={{ width: anchoRejilla, touchAction: 'pan-y', transform: [{ translateX: deslizar }], opacity: deslizar.interpolate({ inputRange: [-60, 0, 60], outputRange: [0.35, 1, 0.35] }) }}>
           <View style={{ flexDirection: 'row', gap: separacion, marginBottom: 8 }}>
             {DIAS_SEMANA_CORTOS.map((d) => (
               <Text key={d} style={{ width: tam, textAlign: 'center', fontSize: horizontal ? 12.5 : 11, color: colors.textSub }}>
@@ -6753,7 +6852,7 @@ function CalendarioScreen({ navigation }) {
               );
             })}
           </View>
-        </View>
+        </Animated.View>
       ) : null}
     </View>
   );
