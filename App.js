@@ -1122,6 +1122,11 @@ const buscarConflictoDia = async (usuario, fecha, ignorar = {}) => {
   return null;
 };
 
+// ---- OFERTAS DE INTERCAMBIO: vencen a las 48 horas si nadie responde ----
+const HORAS_OFERTA = 48;
+const ofertaVigente = (o) => o.estado === 'Pendiente' && Date.now() - new Date(o.creado_en).getTime() < HORAS_OFERTA * 3600000;
+const fechaLargaOferta = (fechaTexto) => (fechaTexto ? new Date(fechaTexto + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) : '');
+
 // ---- NOTIFICACIONES: avisos de apoyo para el usuario activo ----
 const claveVistas = () => `notificaciones_vistas_${(usuarioActivoGlobal || '').toLowerCase()}`;
 const claveHoras = () => `notificaciones_horas_${(usuarioActivoGlobal || '').toLowerCase()}`;
@@ -1166,7 +1171,12 @@ const obtenerNotificaciones = async () => {
     const soyElegiblePred = !!(yoInfo && yoInfo.elegible_predicaciones);
 
     const { data: reqs } = await supabase.from('solicitudes_sustitucion').select('*').or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`).order('creado_en', { ascending: false }).range(0, 499);
-    const solicitudes = reqs || [];
+        const solicitudes = reqs || [];
+    let ofertasTodas = [];
+    if (solicitudes.length > 0) {
+      const { data: of } = await supabase.from('ofertas_intercambio').select('*').in('solicitud_id', solicitudes.map((s) => s.id));
+      ofertasTodas = of || [];
+    }
 
     const idsClases = [...new Set(solicitudes.filter((s) => s.clase_asignada_id).map((s) => s.clase_asignada_id))];
     const coordPorClase = {};
@@ -1193,7 +1203,7 @@ const obtenerNotificaciones = async () => {
         const conflictoPred = await buscarConflictoDia(usuarioActivoGlobal, s.fecha_referencia);
         if (!conflictoPred) items.push({ clave: `gen-rol:${s.id}`, fecha: s.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo en una predicación y tú estás libre`, detalle: cuando(s) });
       }
-      if (s.estado === 'Cubierta' && solicitante === yo && s.maestro_suplente) {
+            if (s.estado === 'Cubierta' && solicitante === yo && s.maestro_suplente && !ofertasTodas.some((o) => o.solicitud_id === s.id && o.estado === 'Aceptada' && (o.respondido_por || '').toLowerCase() === yo)) {
         items.push({ clave: `acepto:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
       }
       if (rolUsuarioActivoGlobal === 'administrador' && items.length === antes && solicitante !== yo && !(esClase && coordPorClase[s.clase_asignada_id] === yo)) {
@@ -1202,7 +1212,19 @@ const obtenerNotificaciones = async () => {
       }
       if (esClase && coordPorClase[s.clase_asignada_id] === yo && solicitante !== yo) {
         if (s.estado === 'Pendiente' && items.length === antes) items.push({ clave: `coord-pide:${s.id}`, fecha: s.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} (tu equipo) pide apoyo`, detalle: cuando(s) });
-        else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
+                else if (s.estado === 'Cubierta') items.push({ clave: `coord-acepta:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
+      }
+      for (const o of ofertasTodas.filter((x) => x.solicitud_id === s.id)) {
+        const ofertante = (o.ofertante || '').toLowerCase();
+        const fechaOf = `${fechaLargaOferta(o.fecha_ofrecida)}${o.detalle ? ' • ' + o.detalle : ''}`;
+        if (s.estado === 'Pendiente' && ofertaVigente(o) && solicitante === yo) items.push({ clave: `oferta:${o.id}`, fecha: o.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} te ofrece un intercambio`, detalle: `A cambio te da: ${fechaOf}` });
+        else if (s.estado === 'Pendiente' && ofertaVigente(o) && rolUsuarioActivoGlobal === 'administrador' && ofertante !== yo) items.push({ clave: `admin-oferta:${o.id}`, fecha: o.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} ofrece un intercambio a ${nom(s.maestro_solicitante)}`, detalle: `A cambio da: ${fechaOf}` });
+        if (ofertante === yo) {
+          if (o.estado === 'Aceptada') items.push({ clave: `oferta-si:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} aceptó tu intercambio`, detalle: `Te toca: ${cuando(s)}` });
+          else if (o.estado === 'Rechazada') items.push({ clave: `oferta-no:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} no aceptó tu oferta`, detalle: `Ofreciste: ${fechaOf}` });
+          else if (o.estado === 'Descartada') items.push({ clave: `oferta-desc:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} ya resolvió su solicitud`, detalle: `Ofreciste: ${fechaOf}` });
+          else if (o.estado === 'Pendiente' && !ofertaVigente(o)) items.push({ clave: `oferta-vence:${o.id}`, fecha: new Date(new Date(o.creado_en).getTime() + HORAS_OFERTA * 3600000).toISOString(), accion: false, destino: irTablon(s), mensaje: `Venció tu oferta de intercambio a ${nom(s.maestro_solicitante)}`, detalle: `Ofreciste: ${fechaOf}` });
+        }
       }
     }
     // ---- RECORDATORIOS: clases, equipo y rol (desaparecen solos cuando pasa la fecha) ----
@@ -1354,9 +1376,22 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
               <TouchableOpacity style={styles.primaryButton} onPress={() => setPaso('buscar')}>
                 <Text style={styles.primaryButtonText}>Sí, alguien específico</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder }]} onPress={() => onConfirmar({ destino: null, tipo: null, fechaIntercambioId: null })}>
+                            <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder }]} onPress={() => setPaso('general')}>
                 <Text style={[styles.primaryButtonText, { color: colors.textMain }]}>No, cualquiera elegible</Text>
               </TouchableOpacity>
+            </>
+          )}
+
+          {paso === 'general' && (
+            <>
+              <Text style={{ color: colors.textSub, marginBottom: 15 }}>Se lo pedirás a cualquiera que pueda apoyarte. ¿Qué necesitas?</Text>
+              <TouchableOpacity style={styles.primaryButton} onPress={() => onConfirmar({ destino: null, tipo: null, fechaIntercambioId: null })}>
+                <Text style={styles.primaryButtonText}>Solo que me cubran</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder }]} onPress={() => onConfirmar({ destino: null, tipo: 'intercambio', fechaIntercambioId: null })}>
+                <Text style={[styles.primaryButtonText, { color: colors.textMain }]}>Busco intercambio</Text>
+              </TouchableOpacity>
+              <Text style={{ color: colors.textSub, fontSize: 12, marginTop: 6 }}>Con intercambio, quien responda te propone una de sus fechas y tú decides si la aceptas.</Text>
             </>
           )}
 
@@ -5332,6 +5367,11 @@ function TablonScreen({ navigation, route }) {
   const scrollRef = useRef(null);
   const yaDesplazado = useRef(false);
   const [miPerfil, setMiPerfil] = useState({});
+  const [ofertas, setOfertas] = useState([]);
+  const [ofreciendo, setOfreciendo] = useState(null);
+  const [misFechas, setMisFechas] = useState([]);
+  const [cargandoMisFechas, setCargandoMisFechas] = useState(false);
+  const [avisoOferta, setAvisoOferta] = useState('');
 
   const [refrescando, setRefrescando] = useState(false);
 
@@ -5386,7 +5426,12 @@ function TablonScreen({ navigation, route }) {
         return s.grupo_clase === 'Predicaciones' ? !!yoInfo.elegible_predicaciones : !!yoInfo.elegible_clases_ninos;
       });
     }
-    setSolicitudes(data || []);
+        const listaSol = data || [];
+    if (listaSol.length > 0) {
+      const { data: of } = await supabase.from('ofertas_intercambio').select('*').in('solicitud_id', listaSol.map((s) => s.id)).order('creado_en', { ascending: true });
+      setOfertas(of || []);
+    } else setOfertas([]);
+    setSolicitudes(listaSol);
     setCargando(false);
   }
 
@@ -5397,6 +5442,117 @@ function TablonScreen({ navigation, route }) {
     if (sol.maestro_destino) return sol.maestro_destino.toLowerCase() === yo;
     return sol.grupo_clase === 'Predicaciones' ? !!miPerfil.elegible_predicaciones : !!miPerfil.elegible_clases_ninos;
   };
+
+    // Solicitud general en la que se busca intercambio: quien responde propone una de sus fechas
+  const esBuscaIntercambio = (sol) => sol.tipo_intercambio === 'intercambio' && !sol.maestro_destino;
+  const yoMin = () => (usuarioActivoGlobal || '').toLowerCase();
+  const ofertasDe = (sol) => ofertas.filter((o) => o.solicitud_id === sol.id && ofertaVigente(o));
+  const miOferta = (sol) => ofertasDe(sol).find((o) => (o.ofertante || '').toLowerCase() === yoMin());
+  // Quien pidió el apoyo decide; un administrador también puede decidir por él
+  const puedeResponderOfertas = (sol) => (sol.maestro_solicitante || '').toLowerCase() === yoMin() || rolUsuarioActivoGlobal === 'administrador';
+
+  async function abrirOfrecer(sol) {
+    setAvisoOferta('');
+    setMisFechas([]);
+    setOfreciendo(sol);
+    setCargandoMisFechas(true);
+    const { data } = await supabase
+      .from(sol.clase_asignada_id ? 'clases_asignadas' : 'programa_servicios')
+      .select('*')
+      .ilike('nombre_usuario', usuarioActivoGlobal)
+      .gte('fecha', fechaISO(new Date()))
+      .order('fecha', { ascending: true });
+    setMisFechas((data || []).filter((f) => f.fecha !== sol.fecha_referencia));
+    setCargandoMisFechas(false);
+  }
+
+  async function enviarOferta(f) {
+    const sol = ofreciendo;
+    if (!sol) return;
+    const esClase = !!sol.clase_asignada_id;
+    setAvisoOferta('');
+    const c1 = await buscarConflictoDia(usuarioActivoGlobal, sol.fecha_referencia, esClase ? { claseId: f.id } : { rolId: f.id });
+    if (c1) return setAvisoOferta(`Ya tienes ${c1}, así que no puedes tomar su fecha.`);
+    const c2 = await buscarConflictoDia(sol.maestro_solicitante, f.fecha, esClase ? { claseId: sol.clase_asignada_id } : { rolId: sol.programa_servicio_id });
+    if (c2) return setAvisoOferta(`${nombreBonito(sol.maestro_solicitante)} ya tiene ${c2}. Elige otra fecha.`);
+    const { error } = await supabase.from('ofertas_intercambio').insert([{ solicitud_id: sol.id, ofertante: usuarioActivoGlobal, fecha_ofrecida_id: String(f.id), fecha_ofrecida: f.fecha, detalle: esClase ? f.grupo : f.horario }]);
+    if (error) return setAvisoOferta('No se pudo enviar: ' + error.message);
+    setOfreciendo(null);
+    const theme = getThemeColors(sol.grupo_clase, isDark);
+    setTimeout(() => setAlerta({ visible: true, titulo: 'Oferta enviada', mensaje: `${nombreBonito(sol.maestro_solicitante)} decidirá si la acepta. Si no responde en ${HORAS_OFERTA} horas, la oferta vence.`, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 300);
+    obtenerSolicitudes();
+  }
+
+  function retirarOferta(sol, o) {
+    const theme = getThemeColors(sol.grupo_clase, isDark);
+    setAlerta({
+      visible: true,
+      titulo: 'Retirar oferta',
+      mensaje: '¿Ya no quieres ofrecer esta fecha?',
+      isDark: isDark,
+      themeColor: theme.main,
+      textoConfirmar: 'Sí, retirar',
+      onCancelar: cerrarAlerta,
+      onConfirmar: async () => {
+        cerrarAlerta();
+        await supabase.from('ofertas_intercambio').delete().eq('id', o.id).eq('estado', 'Pendiente');
+        obtenerSolicitudes();
+      },
+    });
+  }
+
+  function responderOferta(sol, o, aceptar) {
+    const theme = getThemeColors(sol.grupo_clase, isDark);
+    const esMia = (sol.maestro_solicitante || '').toLowerCase() === yoMin();
+    const quien = esMia ? 'tú tomas' : `${nombreBonito(sol.maestro_solicitante)} toma`;
+    const aviso = (titulo, mensaje) => setTimeout(() => setAlerta({ visible: true, titulo, mensaje, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+    setAlerta({
+      visible: true,
+      titulo: aceptar ? 'Aceptar intercambio' : 'Rechazar oferta',
+      mensaje: aceptar ? `${nombreBonito(o.ofertante)} cubre el ${fechaLargaOferta(sol.fecha_referencia)} y ${quien} el ${fechaLargaOferta(o.fecha_ofrecida)}${o.detalle ? ' (' + o.detalle + ')' : ''}. ¿Aceptas?` : `¿Rechazas la oferta de ${nombreBonito(o.ofertante)}? La solicitud seguirá abierta para otros.`,
+      isDark: isDark,
+      themeColor: theme.main,
+      textoConfirmar: aceptar ? 'Aceptar' : 'Rechazar',
+      onCancelar: cerrarAlerta,
+      onConfirmar: async () => {
+        cerrarAlerta();
+        const ahora = new Date().toISOString();
+        if (!aceptar) {
+          await supabase.from('ofertas_intercambio').update({ estado: 'Rechazada', respondido_en: ahora, respondido_por: usuarioActivoGlobal }).eq('id', o.id);
+          obtenerSolicitudes();
+          return;
+        }
+        if (!ofertaVigente(o)) {
+          aviso('Oferta vencida', `Esta oferta ya pasó las ${HORAS_OFERTA} horas.`);
+          obtenerSolicitudes();
+          return;
+        }
+        const esClase = !!sol.clase_asignada_id;
+        const { data: otro } = await supabase
+          .from(esClase ? 'clases_asignadas' : 'programa_servicios')
+          .select('id, fecha, nombre_usuario')
+          .eq('id', o.fecha_ofrecida_id)
+          .maybeSingle();
+        if (!otro || (otro.nombre_usuario || '').toLowerCase() !== (o.ofertante || '').toLowerCase()) {
+          aviso('No se puede aceptar', `Esa fecha ya no le pertenece a ${nombreBonito(o.ofertante)}.`);
+          return;
+        }
+        const c1 = await buscarConflictoDia(o.ofertante, sol.fecha_referencia, esClase ? { claseId: otro.id } : { rolId: otro.id });
+        if (c1) return aviso('No se puede aceptar', `${nombreBonito(o.ofertante)} ya tiene ${c1}.`);
+        const c2 = await buscarConflictoDia(sol.maestro_solicitante, otro.fecha, esClase ? { claseId: sol.clase_asignada_id } : { rolId: sol.programa_servicio_id });
+        if (c2) return aviso('No se puede aceptar', `${nombreBonito(sol.maestro_solicitante)} ya tiene ${c2}.`);
+        const r = await aplicarCambio(sol, o.ofertante, otro.id);
+        if (r.noDisponible) aviso('Ya no está disponible', 'Esta solicitud ya fue cubierta.');
+        else if (r.error) aviso('Error', 'No se pudo completar: ' + r.error.message);
+        else {
+          await supabase.from('ofertas_intercambio').update({ estado: 'Aceptada', respondido_en: ahora, respondido_por: usuarioActivoGlobal }).eq('id', o.id);
+          await supabase.from('ofertas_intercambio').update({ estado: 'Descartada', respondido_en: ahora }).eq('solicitud_id', sol.id).eq('estado', 'Pendiente');
+          aviso('¡Listo!', 'Se hizo el intercambio de fechas.');
+        }
+        obtenerSolicitudes();
+      },
+    });
+  }
 
   function cancelarSolicitud(solicitudId, grupoClase) {
     const theme = getThemeColors(grupoClase, isDark);
@@ -5475,53 +5631,16 @@ function TablonScreen({ navigation, route }) {
             }
           }
         }
-        const { data: tomada, error: error1 } = await supabase.from('solicitudes_sustitucion').update({ estado: 'Cubierta', maestro_suplente: usuarioActivoGlobal }).eq('id', solicitud.id).eq('estado', 'Pendiente').select('id');
-        if (!error1 && (!tomada || tomada.length === 0)) {
+                const esClaseSol = !!solicitud.clase_asignada_id;
+        const idOtroSol = solicitud.tipo_intercambio === 'intercambio' && !esBuscaIntercambio(solicitud) ? (esClaseSol ? solicitud.clase_asignada_id_intercambio : solicitud.programa_servicio_id_intercambio) || null : null;
+        const r = await aplicarCambio(solicitud, usuarioActivoGlobal, idOtroSol);
+        if (r.noDisponible) {
           setTimeout(() => setAlerta({ visible: true, titulo: 'Ya no está disponible', mensaje: 'Alguien más ya aceptó esta solicitud.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
           obtenerSolicitudes();
           return;
         }
-        let error2 = null,
-          error3 = null;
-        if (solicitud.programa_servicio_id) {
-          const r = await supabase
-            .from('programa_servicios')
-            .update({
-              nombre_usuario: usuarioActivoGlobal,
-              usuario_original: await titularOriginal('programa_servicios', solicitud.programa_servicio_id, solicitud.maestro_solicitante),
-              sustituido_en: new Date().toISOString(),
-              estado_confirmacion: 'pendiente',
-            })
-            .eq('id', solicitud.programa_servicio_id);
-          error2 = r.error;
-        }
-        if (solicitud.tipo_intercambio === 'intercambio' && solicitud.programa_servicio_id_intercambio) {
-          const r = await supabase
-            .from('programa_servicios')
-            .update({
-              nombre_usuario: solicitud.maestro_solicitante,
-              usuario_original: await titularOriginal('programa_servicios', solicitud.programa_servicio_id_intercambio, usuarioActivoGlobal),
-              sustituido_en: new Date().toISOString(),
-              estado_confirmacion: 'pendiente',
-            })
-            .eq('id', solicitud.programa_servicio_id_intercambio);
-          error3 = r.error;
-        }
-        if (solicitud.clase_asignada_id) {
-          const r = await supabase
-            .from('clases_asignadas')
-            .update({ nombre_usuario: usuarioActivoGlobal, usuario_original: await titularOriginal('clases_asignadas', solicitud.clase_asignada_id, solicitud.maestro_solicitante), sustituido_en: new Date().toISOString() })
-            .eq('id', solicitud.clase_asignada_id);
-          error2 = error2 || r.error;
-        }
-        if (solicitud.tipo_intercambio === 'intercambio' && solicitud.clase_asignada_id_intercambio) {
-          const r = await supabase
-            .from('clases_asignadas')
-            .update({ nombre_usuario: solicitud.maestro_solicitante, usuario_original: await titularOriginal('clases_asignadas', solicitud.clase_asignada_id_intercambio, usuarioActivoGlobal), sustituido_en: new Date().toISOString() })
-            .eq('id', solicitud.clase_asignada_id_intercambio);
-          error3 = error3 || r.error;
-        }
-        const errorReal = error1 || error2 || error3;
+        if (!r.error && esBuscaIntercambio(solicitud)) await supabase.from('ofertas_intercambio').update({ estado: 'Descartada', respondido_en: new Date().toISOString() }).eq('solicitud_id', solicitud.id).eq('estado', 'Pendiente');
+        const errorReal = r.error;
         if (errorReal) {
           setTimeout(() => setAlerta({ visible: true, titulo: 'Error', mensaje: 'No se pudo completar: ' + errorReal.message, onConfirmar: cerrarAlerta, isDark: isDark }), 500);
         } else {
@@ -5530,6 +5649,36 @@ function TablonScreen({ navigation, route }) {
         obtenerSolicitudes();
       },
     });
+  }
+
+  // Marca la solicitud como cubierta y pasa las fechas. idOtro = fecha que el suplente entrega (intercambio) o null (solo cubrir)
+  async function aplicarCambio(solicitud, suplente, idOtro) {
+    const esClase = !!solicitud.clase_asignada_id;
+    const cambios = { estado: 'Cubierta', maestro_suplente: suplente, tipo_intercambio: idOtro ? 'intercambio' : 'cobertura' };
+    if (idOtro) cambios[esClase ? 'clase_asignada_id_intercambio' : 'programa_servicio_id_intercambio'] = idOtro;
+    const { data: tomada, error: error1 } = await supabase.from('solicitudes_sustitucion').update(cambios).eq('id', solicitud.id).eq('estado', 'Pendiente').select('id');
+    if (error1) return { error: error1 };
+    if (!tomada || tomada.length === 0) return { noDisponible: true };
+    const tabla = esClase ? 'clases_asignadas' : 'programa_servicios';
+    const extra = esClase ? {} : { estado_confirmacion: 'pendiente' };
+    const ahora = new Date().toISOString();
+    const idPropio = esClase ? solicitud.clase_asignada_id : solicitud.programa_servicio_id;
+    let error = null;
+    if (idPropio) {
+      const r1 = await supabase
+        .from(tabla)
+        .update({ nombre_usuario: suplente, usuario_original: await titularOriginal(tabla, idPropio, solicitud.maestro_solicitante), sustituido_en: ahora, ...extra })
+        .eq('id', idPropio);
+      error = r1.error;
+    }
+    if (idOtro) {
+      const r2 = await supabase
+        .from(tabla)
+        .update({ nombre_usuario: solicitud.maestro_solicitante, usuario_original: await titularOriginal(tabla, idOtro, suplente), sustituido_en: ahora, ...extra })
+        .eq('id', idOtro);
+      error = error || r2.error;
+    }
+    return { error };
   }
 
   return (
@@ -5579,9 +5728,37 @@ function TablonScreen({ navigation, route }) {
                       {solicitud.maestro_destino && (
                         <Text style={[styles.topicSubtitle, { color: colors.textSub, fontStyle: 'italic' }]}>
                           Para: {nombreBonito(solicitud.maestro_destino)}
-                          {solicitud.tipo_intercambio === 'intercambio' ? ' • Intercambio de fechas' : ''}
+                                                    {solicitud.tipo_intercambio === 'intercambio' ? ' • Intercambio de fechas' : ''}
                         </Text>
                       )}
+                      {esBuscaIntercambio(solicitud) && solicitud.estado === 'Pendiente' && <Text style={[styles.topicSubtitle, { color: colors.textSub, fontStyle: 'italic' }]}>Busca intercambio de fechas</Text>}
+                      {solicitud.estado === 'Pendiente' && miOferta(solicitud) && (
+                        <Text style={[styles.topicSubtitle, { color: colors.textMain, marginTop: 6 }]}>
+                          Ofreciste: {fechaLargaOferta(miOferta(solicitud).fecha_ofrecida)}
+                          {miOferta(solicitud).detalle ? ' • ' + miOferta(solicitud).detalle : ''}
+                        </Text>
+                      )}
+                      {solicitud.estado === 'Pendiente' &&
+                        puedeResponderOfertas(solicitud) &&
+                        ofertasDe(solicitud).map((o) => (
+                          <View key={o.id} style={{ marginTop: 10, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.cardBg }}>
+                            <Text style={{ color: colors.textMain, fontSize: 14, fontWeight: 'bold' }}>
+                              {nombreBonito(o.ofertante)} {(solicitud.maestro_solicitante || '').toLowerCase() === yoMin() ? 'te ofrece' : 'ofrece'} a cambio:
+                            </Text>
+                            <Text style={{ color: colors.textMain, fontSize: 14, marginTop: 2 }}>
+                              {fechaLargaOferta(o.fecha_ofrecida)}
+                              {o.detalle ? ' • ' + o.detalle : ''}
+                            </Text>
+                            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
+                              <TouchableOpacity style={[styles.cancelarButton, { borderColor: colors.cardBorder }]} onPress={() => responderOferta(solicitud, o, false)}>
+                                <Text style={[styles.cancelarButtonText, { color: colors.textSub }]}>Rechazar</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={[styles.aceptarDiscreto, { backgroundColor: theme.main }]} onPress={() => responderOferta(solicitud, o, true)}>
+                                <Text style={styles.aceptarDiscretoText}>Aceptar</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ))}
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 15 }}>
                       {solicitud.maestro_solicitante === usuarioActivoGlobal && solicitud.estado === 'Pendiente' && (
@@ -5590,7 +5767,22 @@ function TablonScreen({ navigation, route }) {
                         </TouchableOpacity>
                       )}
                       {solicitud.estado === 'Pendiente' ? (
-                        puedeAceptar(solicitud) ? (
+                                                puedeAceptar(solicitud) && esBuscaIntercambio(solicitud) ? (
+                          miOferta(solicitud) ? (
+                            <TouchableOpacity style={[styles.cancelarButton, { borderColor: colors.cardBorder }]} onPress={() => retirarOferta(solicitud, miOferta(solicitud))}>
+                              <Text style={[styles.cancelarButtonText, { color: colors.textSub }]}>Retirar oferta</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <>
+                              <TouchableOpacity style={[styles.cancelarButton, { borderColor: colors.cardBorder }]} onPress={() => aceptarSustitucion(solicitud)}>
+                                <Text style={[styles.cancelarButtonText, { color: colors.textSub }]}>Solo cubrir</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={[styles.aceptarDiscreto, { backgroundColor: theme.main }]} onPress={() => abrirOfrecer(solicitud)}>
+                                <Text style={styles.aceptarDiscretoText}>Ofrecer fecha</Text>
+                              </TouchableOpacity>
+                            </>
+                          )
+                        ) : puedeAceptar(solicitud) ? (
                           <TouchableOpacity style={[styles.aceptarDiscreto, { backgroundColor: theme.main }]} onPress={() => aceptarSustitucion(solicitud)}>
                             <Text style={styles.aceptarDiscretoText}>Aceptar Apoyo</Text>
                           </TouchableOpacity>
@@ -5608,6 +5800,35 @@ function TablonScreen({ navigation, route }) {
           </ScrollView>
         )}
       </View>
+            <Modal visible={!!ofreciendo} transparent animationType="fade">
+        <View style={[styles.modalOverlay, { justifyContent: 'flex-start', paddingTop: 40 }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.cardBorder }]}>
+            <Text style={[styles.title, { color: colors.textMain, marginBottom: 15 }]}>Ofrecer fecha</Text>
+            <Text style={{ color: colors.textSub, marginBottom: 15 }}>
+              Cubrirás a {ofreciendo ? nombreBonito(ofreciendo.maestro_solicitante) : ''} el {ofreciendo ? fechaLargaOferta(ofreciendo.fecha_referencia) : ''}. ¿Cuál de tus fechas le das a cambio?
+            </Text>
+            {cargandoMisFechas ? (
+              <ActivityIndicator color={colors.textSub} />
+            ) : misFechas.length === 0 ? (
+              <Text style={{ color: colors.textSub, fontSize: 13 }}>No tienes fechas próximas para ofrecer. Puedes usar «Solo cubrir».</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 220 }}>
+                {misFechas.map((f) => (
+                  <TouchableOpacity key={f.id} onPress={() => enviarOferta(f)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                    <Text style={{ color: colors.textMain, fontSize: 14 }}>
+                      {fechaLargaOferta(f.fecha)} • {ofreciendo && ofreciendo.clase_asignada_id ? f.grupo : f.horario}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            {avisoOferta ? <Text style={{ color: '#C97A7A', marginTop: 14, fontSize: 13 }}>{avisoOferta}</Text> : null}
+            <TouchableOpacity onPress={() => setOfreciendo(null)} style={{ marginTop: 20, alignItems: 'center', paddingVertical: 8 }}>
+              <Text style={{ color: colors.textSub, fontSize: 14 }}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <AlertaPersonalizada {...alerta} />
     </SafeAreaView>
   );
