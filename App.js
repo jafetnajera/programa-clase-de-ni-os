@@ -1050,6 +1050,16 @@ const ponerMayusculas = (t) =>
     .map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : p))
     .join(' ');
 
+// Nombre propio: "JUAN de la CRUZ" -> "Juan de la Cruz"
+const nombrePropio = (t) =>
+  String(t || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .map((p, i) => (i > 0 && ['de', 'del', 'la', 'las', 'los', 'y'].includes(p) ? p : p.replace(/\p{L}/u, (c) => c.toUpperCase())))
+    .join(' ');
+
 // Descarga una tabla como archivo CSV (se abre directo en Excel, con acentos)
 const descargarTablaCSV = (nombreArchivo, encabezados, filas) => {
   const escapar = (valor) => `"${String(valor ?? '').replace(/"/g, '""')}"`;
@@ -2102,6 +2112,199 @@ const FormCorito = ({ corito, onGuardado, isDark }) => {
 };
 
 // Lista de coritos para el administrador: buscar, corregir o borrar
+// Niños (solo administradores): buscar, corregir nombre y grupo, juntar repetidos o borrar
+const ListaNinosAdmin = ({ isDark }) => {
+  const colors = getColors(isDark);
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Clases de niños'];
+  const [texto, setTexto] = useState('');
+  const [resultados, setResultados] = useState([]);
+  const [asistencias, setAsistencias] = useState({});
+  const [abierto, setAbierto] = useState(null);
+  const [nombre, setNombre] = useState('');
+  const [grupo, setGrupo] = useState('');
+  const [modo, setModo] = useState('editar'); // 'editar' o 'juntar'
+  const [textoOtro, setTextoOtro] = useState('');
+  const [otros, setOtros] = useState([]);
+  const [mensaje, setMensaje] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '' });
+  const cerrarAlerta = () => setAlerta((a) => ({ ...a, visible: false }));
+  const campo = [styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 0 }];
+
+  const contar = async (lista) => {
+    if (!lista.length) return;
+    const { data } = await supabase.from('asistencia_clases').select('nino_id').in('nino_id', lista.map((n) => n.id));
+    const cuenta = {};
+    (data || []).forEach((a) => (cuenta[a.nino_id] = (cuenta[a.nino_id] || 0) + 1));
+    setAsistencias((prev) => ({ ...prev, ...Object.fromEntries(lista.map((n) => [n.id, cuenta[n.id] || 0])) }));
+  };
+  const buscar = async (t) => {
+    if (t.trim().length < 2) return setResultados([]);
+    const { data } = await supabase.rpc('buscar_ninos', { p_texto: t.trim(), p_exacto: false });
+    setResultados(data || []);
+    contar(data || []);
+  };
+  useEffect(() => {
+    const espera = setTimeout(() => buscar(texto), 250);
+    return () => clearTimeout(espera);
+  }, [texto]);
+  useEffect(() => {
+    if (modo !== 'juntar' || textoOtro.trim().length < 2) return setOtros([]);
+    const espera = setTimeout(async () => {
+      const { data } = await supabase.rpc('buscar_ninos', { p_texto: textoOtro.trim(), p_exacto: false });
+      const lista = (data || []).filter((n) => !abierto || n.id !== abierto.id);
+      setOtros(lista);
+      contar(lista);
+    }, 250);
+    return () => clearTimeout(espera);
+  }, [textoOtro, modo]);
+
+  const abrir = (n) => {
+    if (abierto && abierto.id === n.id) return setAbierto(null);
+    setAbierto(n);
+    setNombre(n.nombre_completo || '');
+    setGrupo(n.grupo || '');
+    setModo('editar');
+    setTextoOtro('');
+    setMensaje('');
+  };
+  const guardar = async () => {
+    const limpio = nombrePropio(nombre);
+    if (limpio.length < 3) return setMensaje('Escribe el nombre completo.');
+    const { data: iguales } = await supabase.rpc('buscar_ninos', { p_texto: limpio, p_exacto: true });
+    const otro = (iguales || []).find((x) => x.id !== abierto.id);
+    if (otro) return setMensaje(`Ya existe "${otro.nombre_completo}" (${otro.grupo || 'sin grupo'}). Si es el mismo niño, usa «Juntar con otro».`);
+    setGuardando(true);
+    const { error } = await supabase.from('ninos').update({ nombre_completo: limpio, grupo: grupo || null }).eq('id', abierto.id);
+    setGuardando(false);
+    if (error) return setMensaje('No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
+    setAbierto(null);
+    buscar(texto);
+  };
+  const juntar = (queda, quita) =>
+    setAlerta({
+      visible: true,
+      titulo: 'Juntar niños',
+      mensaje: `Se queda «${queda.nombre_completo}» y se borra «${quita.nombre_completo}». Su asistencia (${asistencias[quita.id] || 0}) pasa al que se queda. ¿Continuar?`,
+      textoConfirmar: 'Sí, juntar',
+      onCancelar: cerrarAlerta,
+      isDark,
+      onConfirmar: async () => {
+        cerrarAlerta();
+        const { data: motivo, error } = await supabase.rpc('juntar_ninos', { p_queda: queda.id, p_quita: quita.id });
+        if (error || motivo) return setMensaje(motivo || 'No se pudo juntar. Revisa tu conexión e intenta de nuevo.');
+        setAbierto(null);
+        setTexto(queda.nombre_completo);
+        buscar(queda.nombre_completo);
+      },
+    });
+  const borrar = (n) =>
+    setAlerta({
+      visible: true,
+      titulo: 'Borrar niño',
+      mensaje: `¿Borrar a «${n.nombre_completo}»?`,
+      textoConfirmar: 'Sí, borrar',
+      onCancelar: cerrarAlerta,
+      isDark,
+      onConfirmar: async () => {
+        cerrarAlerta();
+        const { error } = await supabase.from('ninos').delete().eq('id', n.id);
+        if (error) return setMensaje('No se pudo borrar.');
+        setAbierto(null);
+        buscar(texto);
+      },
+    });
+  const pildora = (activa) => ({ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: activa ? p.fondo : colors.cardBorder, backgroundColor: activa ? p.fondo : 'transparent' });
+
+  return (
+    <View>
+      <TextInput style={campo} value={texto} onChangeText={setTexto} placeholder="Buscar niño por nombre…" placeholderTextColor={colors.textSub} />
+      {texto.trim().length >= 2 && resultados.length === 0 ? <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 10 }}>No encontré a nadie con ese nombre.</Text> : null}
+      {resultados.map((n) => {
+        const abiertoAqui = abierto && abierto.id === n.id;
+        const total = asistencias[n.id];
+        return (
+          <View key={n.id} style={{ marginTop: 10, borderRadius: 20, borderWidth: 1, borderColor: abiertoAqui ? p.fondo : colors.cardBorder, backgroundColor: colors.cardBg, overflow: 'hidden' }}>
+            <TouchableOpacity onPress={() => abrir(n)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{n.nombre_completo}</Text>
+                <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>
+                  {n.grupo || 'Sin grupo'}
+                  {total !== undefined ? ` · ${total} asistencia${total === 1 ? '' : 's'}` : ''}
+                </Text>
+              </View>
+              <Feather name={abiertoAqui ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSub} />
+            </TouchableOpacity>
+            {abiertoAqui ? (
+              <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  {[
+                    { valor: 'editar', texto: 'Editar' },
+                    { valor: 'juntar', texto: 'Juntar con otro' },
+                  ].map((o) => (
+                    <TouchableOpacity key={o.valor} onPress={() => setModo(o.valor)} style={pildora(modo === o.valor)}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: modo === o.valor ? p.texto : colors.textSub }}>{o.texto}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {modo === 'editar' ? (
+                  <>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, marginBottom: 6 }}>Nombre completo</Text>
+                    <TextInput style={campo} value={nombre} onChangeText={setNombre} placeholderTextColor={colors.textSub} />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, marginTop: 12, marginBottom: 6 }}>Grupo</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {ORDEN_GRUPOS.map((g) => (
+                        <TouchableOpacity key={g} onPress={() => setGrupo(g)} style={pildora(grupo === g)}>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: grupo === g ? p.texto : colors.textSub }}>{g}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 }}>
+                      <TouchableOpacity onPress={guardar} disabled={guardando} style={{ flexGrow: 1, height: 46, borderRadius: 999, backgroundColor: p.fondo, alignItems: 'center', justifyContent: 'center' }}>
+                        {guardando ? <ActivityIndicator color={p.texto} /> : <Text style={{ fontSize: 14.5, fontWeight: '800', color: p.texto }}>Guardar</Text>}
+                      </TouchableOpacity>
+                      {total === 0 ? (
+                        <TouchableOpacity onPress={() => borrar(n)} style={{ height: 46, paddingHorizontal: 18, borderRadius: 999, borderWidth: 1, borderColor: '#E0806A', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: '#E0806A' }}>Borrar</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    {total > 0 ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 8 }}>Tiene asistencia registrada, por eso no se puede borrar. Si está repetido, usa «Juntar con otro».</Text> : null}
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 13, color: colors.textSub, marginBottom: 8 }}>Busca el otro registro del mismo niño y elige cuál nombre se queda.</Text>
+                    <TextInput style={campo} value={textoOtro} onChangeText={setTextoOtro} placeholder="Buscar el otro registro…" placeholderTextColor={colors.textSub} />
+                    {otros.map((o) => (
+                      <View key={o.id} style={{ marginTop: 10, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }}>{o.nombre_completo}</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                          {o.grupo || 'Sin grupo'}
+                          {asistencias[o.id] !== undefined ? ` · ${asistencias[o.id]} asistencia${asistencias[o.id] === 1 ? '' : 's'}` : ''}
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                          <TouchableOpacity onPress={() => juntar(n, o)} style={pildora(false)}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{n.nombre_completo}»</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => juntar(o, n)} style={pildora(false)}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{o.nombre_completo}»</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )}
+                {mensaje ? <Text style={{ fontSize: 13, color: '#E0806A', marginTop: 10 }}>{mensaje}</Text> : null}
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+      <AlertaPersonalizada {...alerta} />
+    </View>
+  );
+};
+
 const ListaCoritosAdmin = ({ isDark }) => {
   const colors = getColors(isDark);
   const [coritos, setCoritos] = useState([]);
@@ -2993,7 +3196,7 @@ const ModalAsistencia = ({ visible, onCerrar, fecha, grupo, isDark, usuario }) =
     }
     let cancelado = false;
     const espera = setTimeout(async () => {
-      const { data } = await supabase.from('ninos').select('id, nombre_completo, grupo').ilike('nombre_completo', `%${texto.trim()}%`).order('nombre_completo', { ascending: true }).limit(15);
+      const { data } = await supabase.rpc('buscar_ninos', { p_texto: texto.trim(), p_exacto: false });
       if (!cancelado) setResultados(data || []);
     }, 250);
     return () => {
@@ -3028,13 +3231,13 @@ const ModalAsistencia = ({ visible, onCerrar, fecha, grupo, isDark, usuario }) =
   };
 
   const agregarYMarcar = async () => {
-    const nombre = texto.trim().replace(/\s+/g, ' ');
+    const nombre = nombrePropio(texto);
     if (nombre.length < 3) {
       setMensaje('Escribe el nombre completo del niño.');
       return;
     }
     setGuardando(true);
-    const { data: existente } = await supabase.from('ninos').select('id, nombre_completo').ilike('nombre_completo', nombre).limit(1);
+    const { data: existente } = await supabase.rpc('buscar_ninos', { p_texto: nombre, p_exacto: true });
     if (existente && existente.length > 0) {
       setGuardando(false);
       setMensaje(`Ya existe "${existente[0].nombre_completo}". Búscalo y márcalo.`);
@@ -6915,6 +7118,9 @@ function AdminScreen({ navigation, route }) {
             </OpcionAdmin>
             <OpcionAdmin {...opc('resumenClases')} icono="bar-chart-2" titulo="Resumen de clases" subtitulo="Clases por maestro, apoyos y lo que falta cubrir" onPress={() => navigation.navigate('ResumenClases')} />
             <OpcionAdmin {...opc('resumenAsistencia')} icono="bar-chart-2" titulo="Resumen de asistencia" subtitulo="Gráficas por mes y por grupo" onPress={() => navigation.navigate('ResumenAsistencia')} />
+            <OpcionAdmin {...opc('ninos')} icono="edit-3" titulo="Niños" subtitulo="Corregir nombres y grupos, juntar repetidos o borrar">
+              <ListaNinosAdmin isDark={isDark} />
+            </OpcionAdmin>
             <OpcionAdmin {...opc('asistencia')} icono="download" titulo="Descargar asistencia" subtitulo="En CSV, de un grupo o de todos juntos">
               <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Descarga la asistencia en CSV: de un grupo o de todos juntos.</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
@@ -6972,13 +7178,13 @@ const diasEntre = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a +
 
 // Campo de fecha u hora con selector propio de la app (igual en celular, tablet y PC)
 // Fecha: "AAAA-MM-DD". Hora: "HH:MM" en 24 horas.
-const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta }) => {
+const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = false }) => {
   const colors = getColors(isDark);
   const [abierto, setAbierto] = useState(false);
   const textoFecha = (f) => {
     if (!f) return '';
     const d = new Date(f + 'T00:00:00');
-    return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
+    return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()}${d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''}`;
   };
   const texto = tipo === 'date' ? textoFecha(valor) : horaBonita(valor);
   return (
@@ -6986,7 +7192,7 @@ const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta }) => {
       <TouchableOpacity onPress={() => setAbierto(true)} accessibilityLabel={etiqueta} style={{ height: 48, borderRadius: 16, borderWidth: 1, borderColor: colors.inputBorder, backgroundColor: colors.inputBg, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <Feather name={tipo === 'date' ? 'calendar' : 'clock'} size={16} color={colors.textSub} />
         <Text style={{ flex: 1, fontSize: 15, color: texto ? colors.inputText : colors.textSub }} numberOfLines={1}>
-          {texto || (tipo === 'date' ? 'Elegir fecha' : 'Elegir hora')}
+                    {texto || (tipo === 'date' ? 'Elegir fecha' : opcional ? 'Opcional' : 'Elegir hora')}
         </Text>
       </TouchableOpacity>
       {abierto ? (
@@ -7012,6 +7218,17 @@ const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta }) => {
                   }}
                 />
               )}
+                            {opcional && valor ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    onCambiar('');
+                    setAbierto(false);
+                  }}
+                  style={{ marginTop: 6, height: 44, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#E0806A' }}>Quitar hora</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity onPress={() => setAbierto(false)} style={{ marginTop: 6, height: 44, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSub }}>Cancelar</Text>
               </TouchableOpacity>
@@ -7120,6 +7337,29 @@ const SelectorHora = ({ valor, isDark, onElegir }) => {
   );
 };
 
+// Días entre dos fechas "AAAA-MM-DD" (incluidas)
+const diasDelRango = (desde, hasta) => {
+  const lista = [];
+  if (!desde || !hasta || hasta < desde) return lista;
+  const d = new Date(desde + 'T12:00:00');
+  while (lista.length < 62) {
+    const f = fechaISO(d);
+    if (f > hasta) break;
+    lista.push(f);
+    d.setDate(d.getDate() + 1);
+  }
+  return lista;
+};
+// Horario de una actividad en un día: { hora, hora_fin } (hora vacía = todo el día)
+const horarioDe = (a, f) => {
+  if (a.horarios && a.horarios[f]) return { hora: a.horarios[f].hora || '', hora_fin: a.horarios[f].hora_fin || '' };
+  return { hora: a.hora ? String(a.hora).slice(0, 5) : '', hora_fin: a.hora_fin ? String(a.hora_fin).slice(0, 5) : '' };
+};
+const fechaCortaDia = (f) => {
+  const d = new Date(f + 'T00:00:00');
+  return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()}`;
+};
+
 // Ventana para agregar, editar o borrar una actividad del calendario (solo administradores)
 const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado }) => {
   const colors = getColors(isDark);
@@ -7130,8 +7370,13 @@ const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado 
   const [inicio, setInicio] = useState(actividad ? actividad.fecha_inicio : fechaInicial);
   const [varios, setVarios] = useState(actividad ? actividad.fecha_inicio !== actividad.fecha_fin : false);
   const [fin, setFin] = useState(actividad ? actividad.fecha_fin : fechaInicial);
-  const [todoElDia, setTodoElDia] = useState(actividad ? !actividad.hora : false);
+  const [todoElDia, setTodoElDia] = useState(actividad ? !actividad.hora && !actividad.horarios : false);
   const [hora, setHora] = useState(actividad && actividad.hora ? String(actividad.hora).slice(0, 5) : '');
+  const [horaFin, setHoraFin] = useState(actividad && actividad.hora_fin ? String(actividad.hora_fin).slice(0, 5) : '');
+  const [mismoHorario, setMismoHorario] = useState(actividad ? !actividad.horarios : true);
+  const [horarios, setHorarios] = useState(actividad && actividad.horarios ? actividad.horarios : {});
+  const diasRango = varios ? diasDelRango(inicio, fin) : [];
+  const ponerHorario = (f, campoHora, valor) => setHorarios((h) => ({ ...h, [f]: { ...(h[f] || {}), [campoHora]: valor } }));
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [borrar, setBorrar] = useState(false);
@@ -7142,10 +7387,23 @@ const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado 
     if (!nombre.trim()) return setError('Escribe el nombre de la actividad.');
     if (!inicio) return setError('Elige la fecha.');
     if (varios && (!fin || fin < inicio)) return setError('La fecha en que termina debe ser igual o después de la fecha en que empieza.');
-    if (!varios && !todoElDia && !hora) return setError('Elige la hora o marca «Todo el día».');
+        const porDia = varios && !mismoHorario;
+    if (!porDia && !todoElDia && !hora) return setError('Elige la hora en que empieza o marca «Todo el día».');
+    if (!porDia && !todoElDia && horaFin && horaFin <= hora) return setError('La hora en que termina debe ser después de la hora en que empieza.');
+    let horariosGuardar = null;
+    if (porDia) {
+      horariosGuardar = {};
+      for (const f of diasRango) {
+        const h = horarios[f] || {};
+        if (h.hora_fin && !h.hora) return setError(`El ${fechaCortaDia(f)} tiene hora de fin pero no de inicio.`);
+        if (h.hora && h.hora_fin && h.hora_fin <= h.hora) return setError(`El ${fechaCortaDia(f)} termina antes de empezar.`);
+        if (h.hora) horariosGuardar[f] = { hora: h.hora, hora_fin: h.hora_fin || null };
+      }
+    }
     setError('');
     setGuardando(true);
-    const fila = { actividad: nombre.trim(), lugar: lugar.trim() || null, descripcion: descripcion.trim() || null, fecha_inicio: inicio, fecha_fin: varios ? fin : inicio, hora: varios || todoElDia ? null : hora };
+    const sinHora = porDia || todoElDia;
+    const fila = { actividad: nombre.trim(), lugar: lugar.trim() || null, descripcion: descripcion.trim() || null, fecha_inicio: inicio, fecha_fin: varios ? fin : inicio, hora: sinHora ? null : hora, hora_fin: sinHora ? null : horaFin || null, horarios: horariosGuardar };
     const { error: e } = nueva ? await supabase.from('actividades').insert([fila]) : await supabase.from('actividades').update(fila).eq('id', actividad.id);
     setGuardando(false);
     if (e) return setError('No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
@@ -7194,17 +7452,44 @@ const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado 
                 </View>
               ) : null}
             </View>
-            {!varios ? (
+                        {varios ? interruptor('Mismo horario todos los días', mismoHorario, setMismoHorario) : null}
+            {!varios || mismoHorario ? (
               <>
                 {interruptor('Todo el día', todoElDia, setTodoElDia)}
                 {!todoElDia ? (
-                  <>
-                    <Text style={etiqueta}>Hora</Text>
-                    <CampoFechaHora tipo="time" valor={hora} onCambiar={setHora} isDark={isDark} etiqueta="Hora" />
-                  </>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={etiqueta}>Empieza</Text>
+                      <CampoFechaHora tipo="time" valor={hora} onCambiar={setHora} isDark={isDark} etiqueta="Hora en que empieza" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={etiqueta}>Termina</Text>
+                      <CampoFechaHora tipo="time" valor={horaFin} onCambiar={setHoraFin} isDark={isDark} etiqueta="Hora en que termina" opcional />
+                    </View>
+                  </View>
                 ) : null}
               </>
-            ) : null}
+            ) : (
+              <View style={{ marginTop: 6 }}>
+                <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 8, marginBottom: 4 }}>Deja un día sin hora si dura todo el día.</Text>
+                {diasRango.map((f, i) => {
+                  const h = horarios[f] || {};
+                  return (
+                    <View key={f} style={{ paddingVertical: 10, borderTopWidth: i ? 1 : 0, borderTopColor: colors.cardBorder }}>
+                      <Text style={{ fontSize: 13.5, fontWeight: '800', color: colors.textMain, marginBottom: 6 }}>{fechaCortaDia(f)}</Text>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <CampoFechaHora tipo="time" valor={h.hora || ''} onCambiar={(v) => ponerHorario(f, 'hora', v)} isDark={isDark} etiqueta={`Empieza el ${fechaCortaDia(f)}`} opcional />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <CampoFechaHora tipo="time" valor={h.hora_fin || ''} onCambiar={(v) => ponerHorario(f, 'hora_fin', v)} isDark={isDark} etiqueta={`Termina el ${fechaCortaDia(f)}`} opcional />
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
             <Text style={etiqueta}>Descripción</Text>
             <TextInput style={[campo, { minHeight: 80, paddingTop: 12, textAlignVertical: 'top' }]} value={descripcion} onChangeText={setDescripcion} placeholder="Opcional" placeholderTextColor={colors.textSub} multiline />
             {error ? <Text style={{ fontSize: 13, color: '#E0806A', marginTop: 12 }}>{error}</Text> : null}
@@ -7556,7 +7841,7 @@ function CalendarioScreen({ navigation }) {
   const cargar = () =>
     supabase
       .from('actividades')
-      .select('id, fecha_inicio, fecha_fin, hora, actividad, lugar, descripcion')
+      .select('id, fecha_inicio, fecha_fin, hora, hora_fin, horarios, actividad, lugar, descripcion')
       .order('fecha_inicio', { ascending: true })
       .then(({ data }) => setActividades(data || []));
   useEffect(() => {
@@ -7583,7 +7868,9 @@ function CalendarioScreen({ navigation }) {
       .sort((a, b) => {
         const va = a.fecha_inicio !== a.fecha_fin ? 0 : 1;
         const vb = b.fecha_inicio !== b.fecha_fin ? 0 : 1;
-        return va - vb || String(a.hora || '').localeCompare(String(b.hora || ''));
+                const ha = horarioDe(a, f).hora;
+        const hb = horarioDe(b, f).hora;
+        return (ha ? 1 : 0) - (hb ? 1 : 0) || ha.localeCompare(hb) || va - vb;
       });
   const puntosDe = (f) => Math.min(3, actividades.filter((a) => a.fecha_inicio === f && a.fecha_fin === f).length);
 
@@ -7668,7 +7955,18 @@ function CalendarioScreen({ navigation }) {
         const tengo = mios.includes(a.id);
         return (
           <View key={a.id} style={{ flexDirection: 'row', gap: 14, paddingVertical: 14, borderTopWidth: i ? 1 : 0, borderTopColor: colors.cardBorder }}>
-            <View style={{ width: 68 }}>{varios || !a.hora ? <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMain }}>Todo el día</Text> : <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textMain }}>{horaBonita(a.hora)}</Text>}</View>
+                        <View style={{ width: 76 }}>
+              {(() => {
+                const h = horarioDe(a, sel);
+                if (!h.hora) return <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMain }}>Todo el día</Text>;
+                return (
+                  <>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textMain }}>{horaBonita(h.hora)}</Text>
+                    {h.hora_fin ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>a {horaBonita(h.hora_fin)}</Text> : null}
+                  </>
+                );
+              })()}
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 15.5, fontWeight: '700', color: colors.textMain }}>{a.actividad}</Text>
               {a.lugar ? <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 3 }}>{a.lugar}</Text> : null}
