@@ -3464,8 +3464,12 @@ function MiRolScreen({ navigation, route }) {
     setRefrescando(false);
   }, []);
 
-  const confirmarAsistencia = async (item) => {
-    await supabase.from('programa_servicios').update({ estado_confirmacion: 'confirmado' }).eq('id', item.id);
+    const confirmarAsistencia = async (item) => {
+    const { data: motivo, error } = await supabase.rpc('confirmar_servicio', { p_id: item.id });
+    if (error || motivo) {
+      setAlerta({ visible: true, titulo: 'No se pudo confirmar', mensaje: motivo || 'Revisa tu conexión e intenta de nuevo.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' });
+      return;
+    }
     setFechas((prev) => prev.map((f) => (f.id === item.id ? { ...f, estado_confirmacion: 'confirmado' } : f)));
   };
   // El administrador confirma por alguien que todavía no tiene la app
@@ -5548,14 +5552,11 @@ function TablonScreen({ navigation, route }) {
         if (c1) return aviso('No se puede aceptar', `${nombreBonito(o.ofertante)} ya tiene ${c1}.`);
         const c2 = await buscarConflictoDia(sol.maestro_solicitante, otro.fecha, esClase ? { claseId: sol.clase_asignada_id } : { rolId: sol.programa_servicio_id });
         if (c2) return aviso('No se puede aceptar', `${nombreBonito(sol.maestro_solicitante)} ya tiene ${c2}.`);
-        const r = await aplicarCambio(sol, o.ofertante, otro.id);
+                const r = await aplicarCambio(sol, o.id);
         if (r.noDisponible) aviso('Ya no está disponible', 'Esta solicitud ya fue cubierta.');
-        else if (r.error) aviso('Error', 'No se pudo completar: ' + r.error.message);
-        else {
-          await supabase.from('ofertas_intercambio').update({ estado: 'Aceptada', respondido_en: ahora, respondido_por: usuarioActivoGlobal }).eq('id', o.id);
-          await supabase.from('ofertas_intercambio').update({ estado: 'Descartada', respondido_en: ahora }).eq('solicitud_id', sol.id).eq('estado', 'Pendiente');
-          aviso('¡Listo!', 'Se hizo el intercambio de fechas.');
-        }
+        else if (r.motivo) aviso('No se puede aceptar', r.motivo);
+        else if (r.error) aviso('Error', 'No se pudo completar. Revisa tu conexión e intenta de nuevo.');
+        else aviso('¡Listo!', 'Se hizo el intercambio de fechas.');
         obtenerSolicitudes();
       },
     });
@@ -5638,18 +5639,14 @@ function TablonScreen({ navigation, route }) {
             }
           }
         }
-                const esClaseSol = !!solicitud.clase_asignada_id;
-        const idOtroSol = solicitud.tipo_intercambio === 'intercambio' && !esBuscaIntercambio(solicitud) ? (esClaseSol ? solicitud.clase_asignada_id_intercambio : solicitud.programa_servicio_id_intercambio) || null : null;
-        const r = await aplicarCambio(solicitud, usuarioActivoGlobal, idOtroSol);
+                        const r = await aplicarCambio(solicitud, null);
         if (r.noDisponible) {
           setTimeout(() => setAlerta({ visible: true, titulo: 'Ya no está disponible', mensaje: 'Alguien más ya aceptó esta solicitud.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
           obtenerSolicitudes();
           return;
         }
-        if (!r.error && esBuscaIntercambio(solicitud)) await supabase.from('ofertas_intercambio').update({ estado: 'Descartada', respondido_en: new Date().toISOString() }).eq('solicitud_id', solicitud.id).eq('estado', 'Pendiente');
-        const errorReal = r.error;
-        if (errorReal) {
-          setTimeout(() => setAlerta({ visible: true, titulo: 'Error', mensaje: 'No se pudo completar: ' + errorReal.message, onConfirmar: cerrarAlerta, isDark: isDark }), 500);
+        if (r.motivo || r.error) {
+          setTimeout(() => setAlerta({ visible: true, titulo: 'No se puede aceptar', mensaje: r.motivo || 'No se pudo completar. Revisa tu conexión e intenta de nuevo.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
         } else {
           setTimeout(() => setAlerta({ visible: true, titulo: '¡Gracias!', mensaje: 'Has sido asignado a esta clase.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
         }
@@ -5658,34 +5655,14 @@ function TablonScreen({ navigation, route }) {
     });
   }
 
-  // Marca la solicitud como cubierta y pasa las fechas. idOtro = fecha que el suplente entrega (intercambio) o null (solo cubrir)
-  async function aplicarCambio(solicitud, suplente, idOtro) {
-    const esClase = !!solicitud.clase_asignada_id;
-    const cambios = { estado: 'Cubierta', maestro_suplente: suplente, tipo_intercambio: idOtro ? 'intercambio' : 'cobertura' };
-    if (idOtro) cambios[esClase ? 'clase_asignada_id_intercambio' : 'programa_servicio_id_intercambio'] = idOtro;
-    const { data: tomada, error: error1 } = await supabase.from('solicitudes_sustitucion').update(cambios).eq('id', solicitud.id).eq('estado', 'Pendiente').select('id');
-    if (error1) return { error: error1 };
-    if (!tomada || tomada.length === 0) return { noDisponible: true };
-    const tabla = esClase ? 'clases_asignadas' : 'programa_servicios';
-    const extra = esClase ? {} : { estado_confirmacion: 'pendiente' };
-    const ahora = new Date().toISOString();
-    const idPropio = esClase ? solicitud.clase_asignada_id : solicitud.programa_servicio_id;
-    let error = null;
-    if (idPropio) {
-      const r1 = await supabase
-        .from(tabla)
-        .update({ nombre_usuario: suplente, usuario_original: await titularOriginal(tabla, idPropio, solicitud.maestro_solicitante), sustituido_en: ahora, ...extra })
-        .eq('id', idPropio);
-      error = r1.error;
-    }
-    if (idOtro) {
-      const r2 = await supabase
-        .from(tabla)
-        .update({ nombre_usuario: solicitud.maestro_solicitante, usuario_original: await titularOriginal(tabla, idOtro, suplente), sustituido_en: ahora, ...extra })
-        .eq('id', idOtro);
-      error = error || r2.error;
-    }
-    return { error };
+    // La base de datos revisa las reglas y hace el cambio (función aplicar_apoyo).
+  // ofertaId = null: quien tiene la sesión cubre. ofertaId = id: se acepta esa oferta de intercambio.
+  async function aplicarCambio(solicitud, ofertaId) {
+    const { data: motivo, error } = await supabase.rpc('aplicar_apoyo', { p_solicitud: solicitud.id, p_oferta: ofertaId });
+    if (error) return { error };
+    if (motivo === 'Alguien más ya aceptó esta solicitud.') return { noDisponible: true };
+    if (motivo) return { motivo };
+    return {};
   }
 
   return (
