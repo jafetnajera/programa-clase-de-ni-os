@@ -1220,12 +1220,19 @@ const obtenerNotificaciones = async () => {
         if (s.estado === 'Pendiente' && ofertaVigente(o) && solicitante === yo) items.push({ clave: `oferta:${o.id}`, fecha: o.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} te ofrece un intercambio`, detalle: `A cambio te da: ${fechaOf}` });
         else if (s.estado === 'Pendiente' && ofertaVigente(o) && rolUsuarioActivoGlobal === 'administrador' && ofertante !== yo) items.push({ clave: `admin-oferta:${o.id}`, fecha: o.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} ofrece un intercambio a ${nom(s.maestro_solicitante)}`, detalle: `A cambio da: ${fechaOf}` });
         if (ofertante === yo) {
-          if (o.estado === 'Aceptada') items.push({ clave: `oferta-si:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} aceptó tu intercambio`, detalle: `Te toca: ${cuando(s)}` });
+          if (o.estado === 'Aceptada') items.push({ clave: `oferta-si:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} aceptó tu intercambio`, detalle: `Te toca: ${fechaLargaOferta(s.fecha_referencia)} • ${s.titulo_tema}` });
           else if (o.estado === 'Rechazada') items.push({ clave: `oferta-no:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} no aceptó tu oferta`, detalle: `Ofreciste: ${fechaOf}` });
           else if (o.estado === 'Descartada') items.push({ clave: `oferta-desc:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} ya resolvió su solicitud`, detalle: `Ofreciste: ${fechaOf}` });
           else if (o.estado === 'Pendiente' && !ofertaVigente(o)) items.push({ clave: `oferta-vence:${o.id}`, fecha: new Date(new Date(o.creado_en).getTime() + HORAS_OFERTA * 3600000).toISOString(), accion: false, destino: irTablon(s), mensaje: `Venció tu oferta de intercambio a ${nom(s.maestro_solicitante)}`, detalle: `Ofreciste: ${fechaOf}` });
         }
       }
+    }
+        // Los avisos informativos (aceptaciones y respuestas a ofertas) se quitan a los 7 días, aunque la clase o predicación sea más adelante
+    const DIAS_AVISO_INFO = 7;
+    const limiteInfo = Date.now() - DIAS_AVISO_INFO * 86400000;
+    const esInfo = (n) => /^(acepto|admin-acepta|coord-acepta|oferta-si|oferta-no|oferta-desc|oferta-vence):/.test(n.clave);
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (esInfo(items[i]) && items[i].fecha && new Date(items[i].fecha).getTime() < limiteInfo) items.splice(i, 1);
     }
     // ---- RECORDATORIOS: clases, equipo y rol (desaparecen solos cuando pasa la fecha) ----
     const recordatorios = [];
@@ -3287,7 +3294,7 @@ function MenuPrincipalScreen({ navigation }) {
   const [avisosPush, setAvisosPush] = useState(estadoAvisos());
   const columnas = useColumnas();
   const esTablet = columnas >= 2;
-  const tarjetas = [tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Petición de oración', categoria: 'Petición', pronto: true, onPress: () => proximamente(getThemeColors('Petición', isDark).textDark) }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', pronto: rolUsuarioActivoGlobal !== 'administrador', onPress: () => (rolUsuarioActivoGlobal === 'administrador' ? navigation.navigate('Calendario') : proximamente(getThemeColors('Calendario', isDark).textDark)) }].filter(Boolean);
+  const tarjetas = [tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Petición de oración', categoria: 'Petición', pronto: true, onPress: () => proximamente(getThemeColors('Petición', isDark).textDark) }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -6985,16 +6992,154 @@ const horaBonita = (h) => {
 };
 const diasEntre = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
 
-// Campo de fecha u hora del navegador: en el celular abre su selector propio
+// Campo de fecha u hora con selector propio de la app (igual en celular, tablet y PC)
+// Fecha: "AAAA-MM-DD". Hora: "HH:MM" en 24 horas.
 const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta }) => {
   const colors = getColors(isDark);
-  return React.createElement('input', {
-    type: tipo,
-    value: valor || '',
-    'aria-label': etiqueta,
-    onChange: (e) => onCambiar(e.target.value),
-    style: { width: '100%', boxSizing: 'border-box', height: 48, borderRadius: 16, border: `1px solid ${colors.inputBorder}`, background: colors.inputBg, color: colors.inputText, padding: '0 14px', fontSize: 16, fontFamily: 'inherit', colorScheme: isDark ? 'dark' : 'light', outline: 'none' },
-  });
+  const [abierto, setAbierto] = useState(false);
+  const textoFecha = (f) => {
+    if (!f) return '';
+    const d = new Date(f + 'T00:00:00');
+    return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
+  };
+  const texto = tipo === 'date' ? textoFecha(valor) : horaBonita(valor);
+  return (
+    <>
+      <TouchableOpacity onPress={() => setAbierto(true)} accessibilityLabel={etiqueta} style={{ height: 48, borderRadius: 16, borderWidth: 1, borderColor: colors.inputBorder, backgroundColor: colors.inputBg, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Feather name={tipo === 'date' ? 'calendar' : 'clock'} size={16} color={colors.textSub} />
+        <Text style={{ flex: 1, fontSize: 15, color: texto ? colors.inputText : colors.textSub }} numberOfLines={1}>
+          {texto || (tipo === 'date' ? 'Elegir fecha' : 'Elegir hora')}
+        </Text>
+      </TouchableOpacity>
+      {abierto ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setAbierto(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <View style={{ width: '100%', maxWidth: 360, backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: 1, borderColor: colors.cardBorder, padding: 18 }}>
+              {tipo === 'date' ? (
+                <SelectorFecha
+                  valor={valor}
+                  isDark={isDark}
+                  onElegir={(f) => {
+                    onCambiar(f);
+                    setAbierto(false);
+                  }}
+                />
+              ) : (
+                <SelectorHora
+                  valor={valor}
+                  isDark={isDark}
+                  onElegir={(h) => {
+                    onCambiar(h);
+                    setAbierto(false);
+                  }}
+                />
+              )}
+              <TouchableOpacity onPress={() => setAbierto(false)} style={{ marginTop: 6, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSub }}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+    </>
+  );
+};
+
+// Cuadrícula del mes: al tocar un día se elige
+const SelectorFecha = ({ valor, isDark, onElegir }) => {
+  const colors = getColors(isDark);
+  const base = valor ? new Date(valor + 'T00:00:00') : new Date();
+  const [mesVista, setMesVista] = useState(new Date(base.getFullYear(), base.getMonth(), 1));
+  const anio = mesVista.getFullYear();
+  const numMes = mesVista.getMonth();
+  const primero = new Date(anio, numMes, 1).getDay();
+  const totalDias = new Date(anio, numMes + 1, 0).getDate();
+  const hoyTexto = fechaISO(new Date());
+  const celdas = [...Array(primero).fill(null), ...Array.from({ length: totalDias }, (_, i) => i + 1)];
+  while (celdas.length % 7) celdas.push(null);
+  const flecha = { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' };
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+        <TouchableOpacity onPress={() => setMesVista(new Date(anio, numMes - 1, 1))} style={flecha} accessibilityLabel="Mes anterior">
+          <Feather name="chevron-left" size={18} color={colors.textSub} />
+        </TouchableOpacity>
+        <Text style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '800', color: colors.textMain }}>
+          {NOMBRES_MESES[numMes]} {anio}
+        </Text>
+        <TouchableOpacity onPress={() => setMesVista(new Date(anio, numMes + 1, 1))} style={flecha} accessibilityLabel="Mes siguiente">
+          <Feather name="chevron-right" size={18} color={colors.textSub} />
+        </TouchableOpacity>
+      </View>
+      <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+        {DIAS_SEMANA_CORTOS.map((d) => (
+          <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 11.5, color: colors.textSub }}>
+            {d}
+          </Text>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {celdas.map((d, i) => {
+          if (!d) return <View key={'v' + i} style={{ width: `${100 / 7}%`, height: 44 }} />;
+          const f = `${anio}-${String(numMes + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const elegido = f === valor;
+          const esHoy = f === hoyTexto;
+          return (
+            <View key={f} style={{ width: `${100 / 7}%`, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+              <TouchableOpacity onPress={() => onElegir(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: elegido ? VERDE_CALENDARIO : 'transparent', borderWidth: esHoy && !elegido ? 1.5 : 0, borderColor: colors.textMain }}>
+                <Text style={{ fontSize: 14.5, fontWeight: elegido || esHoy ? '800' : '500', color: elegido ? '#1E1D1B' : colors.textMain }}>{d}</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+};
+
+// Hora, minutos (de 5 en 5) y am/pm, con botón Listo
+const SelectorHora = ({ valor, isDark, onElegir }) => {
+  const colors = getColors(isDark);
+  const m = String(valor || '').match(/^(\d{1,2}):(\d{2})/);
+  const h24 = m ? parseInt(m[1], 10) : 19;
+  const [hora, setHora] = useState(h24 % 12 || 12);
+  const [minuto, setMinuto] = useState(m ? Math.round(parseInt(m[2], 10) / 5) * 5 % 60 : 0);
+  const [pm, setPm] = useState(h24 >= 12);
+  const resultado = () => `${String((hora % 12) + (pm ? 12 : 0)).padStart(2, '0')}:${String(minuto).padStart(2, '0')}`;
+  const boton = (activo) => ({ width: '23%', height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: activo ? VERDE_CALENDARIO : colors.cardBorder, backgroundColor: activo ? VERDE_CALENDARIO : 'transparent' });
+  const textoBoton = (activo) => ({ fontSize: 15, fontWeight: activo ? '800' : '600', color: activo ? '#1E1D1B' : colors.textMain });
+  const etiqueta = { fontSize: 12.5, fontWeight: '700', color: colors.textSub, marginTop: 12, marginBottom: 8 };
+  return (
+    <View>
+      <Text style={{ textAlign: 'center', fontSize: 38, fontWeight: '800', letterSpacing: -1, color: colors.textMain }}>{horaBonita(resultado())}</Text>
+      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 8 }}>
+        {[false, true].map((esPm) => (
+          <TouchableOpacity key={String(esPm)} onPress={() => setPm(esPm)} style={{ paddingHorizontal: 22, height: 38, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: pm === esPm ? VERDE_CALENDARIO : colors.cardBorder, backgroundColor: pm === esPm ? VERDE_CALENDARIO : 'transparent' }}>
+            <Text style={{ fontSize: 14, fontWeight: '800', color: pm === esPm ? '#1E1D1B' : colors.textSub }}>{esPm ? 'pm' : 'am'}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={etiqueta}>Hora</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' }}>
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((h) => (
+          <TouchableOpacity key={h} onPress={() => setHora(h)} style={boton(hora === h)}>
+            <Text style={textoBoton(hora === h)}>{h}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={etiqueta}>Minutos</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' }}>
+        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((mi) => (
+          <TouchableOpacity key={mi} onPress={() => setMinuto(mi)} style={boton(minuto === mi)}>
+            <Text style={textoBoton(minuto === mi)}>:{String(mi).padStart(2, '0')}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <TouchableOpacity onPress={() => onElegir(resultado())} style={{ marginTop: 16, height: 48, borderRadius: 999, backgroundColor: VERDE_CALENDARIO, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E1D1B' }}>Listo</Text>
+      </TouchableOpacity>
+    </View>
+  );
 };
 
 // Ventana para agregar, editar o borrar una actividad del calendario (solo administradores)
@@ -7663,7 +7808,8 @@ function ResumenAsistenciaScreen({ navigation }) {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
-  const [grupo, setGrupo] = useState('Todos');
+    const [grupo, setGrupo] = useState('Todos');
+  const [domingoVista, setDomingoVista] = useState(null);
   useEffect(() => {
     traerTodo(() => supabase.from('asistencia_clases').select('id, fecha, grupo, nino_id, ninos(nombre_completo)').order('fecha', { ascending: true }).order('id', { ascending: true }))
       .then(setFilas)
@@ -7687,7 +7833,14 @@ function ResumenAsistenciaScreen({ navigation }) {
     const mesAnt = NOMBRES_MESES[d.anterior.getMonth()].toLowerCase();
     comparacion = cambio === 0 ? `Igual que ${mesAnt}` : `${cambio > 0 ? '▲' : '▼'} ${Math.abs(cambio)}% vs ${mesAnt}`;
   }
-  const nombreMes = `${NOMBRES_MESES[mes.getMonth()]} ${mes.getFullYear()}`;
+    const nombreMes = `${NOMBRES_MESES[mes.getMonth()]} ${mes.getFullYear()}`;
+  // Quiénes vinieron: por omisión, el último domingo del mes con lista
+  const domingosLista = d ? d.porDomingo.map((x) => x.fecha) : [];
+  const domingoElegido = domingosLista.includes(domingoVista) ? domingoVista : domingosLista[domingosLista.length - 1];
+  const vinieron = (filas && domingoElegido ? filas.filter((f) => f.fecha === domingoElegido && (grupo === 'Todos' || f.grupo === grupo)) : []).map((f) => ({ grupo: f.grupo, nombre: ponerMayusculas((f.ninos && f.ninos.nombre_completo) || 'Sin nombre') }));
+  const vinieronPorGrupo = (grupo === 'Todos' ? ORDEN_GRUPOS : [grupo])
+    .map((g) => ({ grupo: g, nombres: vinieron.filter((v) => v.grupo === g).map((v) => v.nombre).sort((a, b) => a.localeCompare(b)) }))
+    .filter((x) => x.nombres.length > 0);
   const flecha = { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.cardBg, alignItems: 'center', justifyContent: 'center' };
   const mostrarLista = (lista, armar) => (
     <>
@@ -7770,7 +7923,39 @@ function ResumenAsistenciaScreen({ navigation }) {
                       {d.dejaron.length === 0 ? <SinDatosResumen texto="Nadie por ahora." isDark={isDark} /> : mostrarLista(d.dejaron, (n, i) => <FilaResumen key={n.nombre + i} primera={i === 0} avatar={inicialesDe(n.nombre)} nombre={n.nombre} detalle={n.grupo} etiqueta={`Último: ${fechaCorta(n.ultima)}`} categoria={n.grupo} isDark={isDark} />)}
                     </TarjetaResumen>
                     <TarjetaResumen titulo="Llegaron este mes" subtitulo="Primera vez que se registran" ancho={anchoTarjeta(columnas)} isDark={isDark}>
-                      {d.nuevos.length === 0 ? <SinDatosResumen texto="Nadie nuevo este mes." isDark={isDark} /> : mostrarLista(d.nuevos, (n, i) => <FilaResumen key={n.nombre + i} primera={i === 0} avatar={inicialesDe(n.nombre)} nombre={n.nombre} detalle={n.grupo} etiqueta={fechaCorta(n.fecha)} categoria={n.grupo} isDark={isDark} />)}
+                                            {d.nuevos.length === 0 ? <SinDatosResumen texto="Nadie nuevo este mes." isDark={isDark} /> : mostrarLista(d.nuevos, (n, i) => <FilaResumen key={n.nombre + i} primera={i === 0} avatar={inicialesDe(n.nombre)} nombre={n.nombre} detalle={n.grupo} etiqueta={fechaCorta(n.fecha)} categoria={n.grupo} isDark={isDark} />)}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Quiénes vinieron" subtitulo="Elige un domingo para ver los nombres" ancho="100%" isDark={isDark}>
+                      {domingosLista.length === 0 ? (
+                        <SinDatosResumen texto="Todavía no hay lista tomada en este mes." isDark={isDark} />
+                      ) : (
+                        <>
+                          <PildorasResumen opciones={domingosLista.map((f) => ({ valor: f, texto: fechaCorta(f) }))} valor={domingoElegido} onCambiar={setDomingoVista} categoria="Clases de niños" isDark={isDark} />
+                          {vinieronPorGrupo.length === 0 ? (
+                            <SinDatosResumen texto="Nadie registrado ese domingo en este grupo." isDark={isDark} />
+                          ) : (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+                              {vinieronPorGrupo.map((g) => {
+                                const p = paleta[g.grupo] || paleta['Niños'];
+                                return (
+                                  <View key={g.grupo} style={{ flexGrow: 1, flexBasis: columnas === 1 ? '100%' : 260, minWidth: 0, borderRadius: 20, borderWidth: 1, borderColor: colors.cardBorder, padding: 14 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                      <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: p.fondo, marginRight: 8 }} />
+                                      <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: colors.textMain }}>{g.grupo}</Text>
+                                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub }}>{g.nombres.length}</Text>
+                                    </View>
+                                    {g.nombres.map((n, i) => (
+                                      <Text key={n + i} style={{ fontSize: 13.5, color: colors.textMain, paddingVertical: 5, borderTopWidth: i ? 1 : 0, borderTopColor: colors.cardBorder }}>
+                                        {n}
+                                      </Text>
+                                    ))}
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          )}
+                        </>
+                      )}
                     </TarjetaResumen>
                   </View>
                 </>
