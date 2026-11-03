@@ -315,6 +315,7 @@ const linking = {
       ResumenClases: 'resumen-clases',
       ResumenPredicaciones: 'resumen-predicaciones',
       Calendario: 'calendario',
+      Peticiones: 'peticiones',
     },
   },
 };
@@ -3294,7 +3295,7 @@ function MenuPrincipalScreen({ navigation }) {
   const [avisosPush, setAvisosPush] = useState(estadoAvisos());
   const columnas = useColumnas();
   const esTablet = columnas >= 2;
-  const tarjetas = [tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Petición de oración', categoria: 'Petición', pronto: true, onPress: () => proximamente(getThemeColors('Petición', isDark).textDark) }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
+  const tarjetas = [tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Petición de oración', categoria: 'Petición', onPress: () => navigation.navigate('Peticiones') }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -7222,6 +7223,295 @@ const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado 
   );
 };
 
+// ==========================================
+// PANTALLA: PETICIÓN DE ORACIÓN
+// Cualquiera envía; solo los administradores ven las peticiones recibidas
+// ==========================================
+const CATEGORIAS_PETICION = [
+  { valor: 'Acción de gracias', icono: 'sun', claro: { fondo: '#F3D9A4', texto: '#6B4A0E' }, oscuro: { fondo: '#C9A55E', texto: '#2E2106' } },
+  { valor: 'Salud', icono: 'activity', claro: { fondo: '#BFDCD3', texto: '#1F5546' }, oscuro: { fondo: '#7FB3A6', texto: '#10302A' } },
+  { valor: 'Espiritual', icono: 'book-open', claro: { fondo: '#D4CBEA', texto: '#3F3170' }, oscuro: { fondo: '#9B8AC4', texto: '#1E1638' } },
+  { valor: 'Otros', icono: 'more-horizontal', claro: { fondo: '#DCD8D1', texto: '#46433D' }, oscuro: { fondo: '#A39E95', texto: '#24221E' } },
+];
+const LARGO_PETICION = 600;
+
+function PeticionesScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const yo = (usuarioActivoGlobal || '').toLowerCase();
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Petición'];
+  const tono = (c) => (isDark ? c.oscuro : c.claro);
+  const [vista, setVista] = useState('enviar');
+  const [categoria, setCategoria] = useState(null);
+  const [texto, setTexto] = useState('');
+  const [editando, setEditando] = useState(null); // la petición propia que se está editando
+  const [enviando, setEnviando] = useState(false);
+  const [mensaje, setMensaje] = useState('');
+  const [peticiones, setPeticiones] = useState(null);
+  const [filtroEstado, setFiltroEstado] = useState('Pendiente');
+  const [filtro, setFiltro] = useState('Todas');
+  const [mapaNombres, setMapaNombres] = useState({});
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '' });
+  const cerrarAlerta = () => setAlerta((a) => ({ ...a, visible: false }));
+
+  // El admin recibe todas; cada hermano solo las suyas (lo controla la base de datos)
+  const cargar = async () => {
+    const { data, error } = await supabase.from('peticiones_oracion').select('id, creado_en, nombre_usuario, categoria, texto, estado, orada_en, editado_en').order('creado_en', { ascending: false }).limit(300);
+    setPeticiones(error ? [] : data || []);
+  };
+  useEffect(() => {
+    cargar();
+    if (esAdmin) cargarMapaNombres().then(setMapaNombres);
+  }, []);
+
+  const limpiar = () => {
+    setCategoria(null);
+    setTexto('');
+    setEditando(null);
+    setMensaje('');
+  };
+  const enviar = async () => {
+    if (!categoria) return setMensaje('Elige una categoría.');
+    if (texto.trim().length < 3) return setMensaje('Escribe tu petición.');
+    setMensaje('');
+    setEnviando(true);
+    const { error } = editando
+      ? await supabase.from('peticiones_oracion').update({ categoria, texto: texto.trim() }).eq('id', editando.id)
+      : await supabase.from('peticiones_oracion').insert([{ nombre_usuario: usuarioActivoGlobal, categoria, texto: texto.trim() }]);
+    setEnviando(false);
+    if (error) return setMensaje('No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
+    const eraEdicion = !!editando;
+    limpiar();
+    setAlerta({ visible: true, titulo: eraEdicion ? 'Petición actualizada' : 'Petición enviada', mensaje: eraEdicion ? 'Guardamos tus cambios.' : 'Gracias por compartirla. Estaremos orando por ti.', onConfirmar: cerrarAlerta, isDark, themeColor: paleta.fondo });
+    cargar();
+  };
+  const editar = (p) => {
+    setEditando(p);
+    setCategoria(p.categoria);
+    setTexto(p.texto);
+    setMensaje('');
+  };
+  const borrar = (p) =>
+    setAlerta({
+      visible: true,
+      titulo: 'Borrar petición',
+      mensaje: '¿Seguro que quieres borrarla?',
+      textoConfirmar: 'Sí, borrar',
+      onCancelar: cerrarAlerta,
+      isDark,
+      themeColor: paleta.fondo,
+      onConfirmar: async () => {
+        cerrarAlerta();
+        await supabase.from('peticiones_oracion').delete().eq('id', p.id);
+        if (editando && editando.id === p.id) limpiar();
+        cargar();
+      },
+    });
+  const marcar = async (p) => {
+    const orada = p.estado !== 'Orada';
+    setPeticiones((lista) => lista.map((x) => (x.id === p.id ? { ...x, estado: orada ? 'Orada' : 'Pendiente' } : x)));
+    const { error } = await supabase.from('peticiones_oracion').update({ estado: orada ? 'Orada' : 'Pendiente' }).eq('id', p.id);
+    if (error) cargar();
+  };
+
+  const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
+  const fechaPeticion = (iso) => {
+    const d = new Date(iso);
+    return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()} ${d.getFullYear()} · ${horaBonita(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`)}`;
+  };
+  const mias = (peticiones || []).filter((p) => (p.nombre_usuario || '').toLowerCase() === yo);
+  const recibidas = esAdmin ? peticiones || [] : [];
+  const pendientes = recibidas.filter((p) => p.estado !== 'Orada').length;
+  const lista = recibidas.filter((p) => (filtroEstado === 'Todas' || (filtroEstado === 'Orada' ? p.estado === 'Orada' : p.estado !== 'Orada')) && (filtro === 'Todas' || p.categoria === filtro));
+  const ancha = columnas >= 2;
+  const base = columnas >= 3 ? '31%' : columnas === 2 ? '45%' : '100%';
+  const etiquetaCategoria = (p) => {
+    const c = CATEGORIAS_PETICION.find((x) => x.valor === p.categoria) || CATEGORIAS_PETICION[3];
+    const t = tono(c);
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: t.fondo, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+        <Feather name={c.icono} size={12} color={t.texto} />
+        <Text style={{ fontSize: 12, fontWeight: '800', color: t.texto }}>{p.categoria}</Text>
+      </View>
+    );
+  };
+  const botonChico = (icono, textoBoton, onPress, lleno) => (
+    <TouchableOpacity onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: lleno ? paleta.fondo : colors.cardBorder, backgroundColor: lleno ? paleta.fondo : 'transparent' }}>
+      <Feather name={icono} size={14} color={lleno ? paleta.texto : colors.textSub} />
+      <Text style={{ fontSize: 13, fontWeight: '700', color: lleno ? paleta.texto : colors.textSub }}>{textoBoton}</Text>
+    </TouchableOpacity>
+  );
+  const sello = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
+      <Feather name="check-circle" size={14} color={isDark ? '#9FD3BF' : '#2F6E5E'} />
+      <Text style={{ fontSize: 12.5, fontWeight: '700', color: isDark ? '#9FD3BF' : '#2F6E5E' }}>Ya oramos por esta petición</Text>
+    </View>
+  );
+
+  const formulario = (
+    <View style={{ backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: 1, borderColor: editando ? paleta.fondo : colors.cardBorder, padding: 20 }}>
+      <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textMain }}>{editando ? 'Editar tu petición' : '¿Por qué quieres que oremos?'}</Text>
+      <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 4 }}>{editando ? 'Cambia lo que necesites y guarda.' : 'Elige una categoría y cuéntanos tu petición.'}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
+        {CATEGORIAS_PETICION.map((c) => {
+          const activa = categoria === c.valor;
+          const t = tono(c);
+          return (
+            <TouchableOpacity key={c.valor} onPress={() => setCategoria(c.valor)} accessibilityLabel={c.valor} style={{ flexGrow: 1, flexBasis: '45%', minHeight: 64, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 2, borderColor: activa ? t.texto : 'transparent', backgroundColor: activa ? t.fondo : colors.background }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: activa ? 'rgba(255,255,255,0.55)' : t.fondo }}>
+                <Feather name={c.icono} size={17} color={t.texto} />
+              </View>
+              <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '700', color: activa ? t.texto : colors.textMain }}>{c.valor}</Text>
+              {activa ? <Feather name="check" size={18} color={t.texto} /> : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, marginTop: 18, marginBottom: 6 }}>Tu petición</Text>
+      <TextInput
+        style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, minHeight: 130, paddingTop: 14, textAlignVertical: 'top', marginBottom: 0 }]}
+        value={texto}
+        onChangeText={(t) => {
+          setTexto(t.slice(0, LARGO_PETICION));
+          setMensaje('');
+        }}
+        placeholder="Escribe aquí por qué quieres que oremos…"
+        placeholderTextColor={colors.textSub}
+        multiline
+      />
+      <Text style={{ fontSize: 11.5, color: colors.textSub, textAlign: 'right', marginTop: 4 }}>
+        {texto.length}/{LARGO_PETICION}
+      </Text>
+      {mensaje ? <Text style={{ fontSize: 13, color: '#E0806A', marginTop: 6 }}>{mensaje}</Text> : null}
+      <TouchableOpacity onPress={enviar} disabled={enviando} style={{ marginTop: 12, height: 52, borderRadius: 999, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: categoria && texto.trim() ? 1 : 0.55 }}>
+        {enviando ? (
+          <ActivityIndicator color={paleta.texto} />
+        ) : (
+          <>
+            <Feather name={editando ? 'check' : 'send'} size={17} color={paleta.texto} />
+            <Text style={{ fontSize: 15.5, fontWeight: '800', color: paleta.texto }}>{editando ? 'Guardar cambios' : 'Enviar petición'}</Text>
+          </>
+        )}
+      </TouchableOpacity>
+      {editando ? (
+        <TouchableOpacity onPress={limpiar} style={{ marginTop: 6, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSub }}>Cancelar edición</Text>
+        </TouchableOpacity>
+      ) : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, justifyContent: 'center' }}>
+        <Feather name="lock" size={12} color={colors.textSub} />
+        <Text style={{ fontSize: 12, color: colors.textSub }}>Solo los administradores pueden verla.</Text>
+      </View>
+    </View>
+  );
+
+  const misPeticiones =
+    mias.length === 0 ? null : (
+      <View style={{ marginTop: 22 }}>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textMain, marginBottom: 10, marginLeft: 4 }}>Mis peticiones</Text>
+        <View style={{ gap: 12 }}>
+          {mias.map((p) => (
+            <View key={p.id} style={{ backgroundColor: colors.cardBg, borderRadius: 24, borderWidth: 1, borderColor: colors.cardBorder, padding: 16, opacity: editando && editando.id === p.id ? 0.5 : 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {etiquetaCategoria(p)}
+                <Text style={{ flex: 1, textAlign: 'right', fontSize: 12, color: colors.textSub }}>{fechaPeticion(p.creado_en)}</Text>
+              </View>
+              <Text style={{ fontSize: 14.5, lineHeight: 21, color: colors.textMain, marginTop: 10 }}>{p.texto}</Text>
+              {p.estado === 'Orada' ? sello : null}
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                {botonChico('trash-2', 'Borrar', () => borrar(p))}
+                {botonChico('edit-2', 'Editar', () => editar(p))}
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+
+  const recibidasVista = (
+    <View>
+      <PildorasResumen
+        opciones={[
+          { valor: 'Pendiente', texto: `Pendientes (${pendientes})` },
+          { valor: 'Orada', texto: `Oradas (${recibidas.length - pendientes})` },
+          { valor: 'Todas', texto: `Todas (${recibidas.length})` },
+        ]}
+        valor={filtroEstado}
+        onCambiar={setFiltroEstado}
+        categoria="Petición"
+        isDark={isDark}
+      />
+      <PildorasResumen opciones={['Todas', ...CATEGORIAS_PETICION.map((c) => c.valor)].map((v) => ({ valor: v, texto: v === 'Todas' ? 'Todas las categorías' : v }))} valor={filtro} onCambiar={setFiltro} categoria="Petición" isDark={isDark} />
+      {peticiones === null ? (
+        <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+      ) : lista.length === 0 ? (
+        <Text style={{ fontSize: 14, color: colors.textSub, paddingVertical: 20, textAlign: 'center' }}>No hay peticiones aquí.</Text>
+      ) : (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          {lista.map((p) => {
+            const orada = p.estado === 'Orada';
+            return (
+              <View key={p.id} style={{ flexGrow: 1, flexBasis: base, minWidth: 0, backgroundColor: colors.cardBg, borderRadius: 24, borderWidth: 1, borderColor: colors.cardBorder, padding: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {etiquetaCategoria(p)}
+                  <Text style={{ flex: 1, textAlign: 'right', fontSize: 12, color: colors.textSub }}>{fechaPeticion(p.creado_en)}</Text>
+                </View>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain, marginTop: 12 }}>{nombreDe(p.nombre_usuario)}</Text>
+                <Text style={{ fontSize: 14.5, lineHeight: 21, color: colors.textMain, marginTop: 6 }}>{p.texto}</Text>
+                {p.editado_en ? <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 6, fontStyle: 'italic' }}>Editada {fechaPeticion(p.editado_en)}</Text> : null}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>{orada ? botonChico('rotate-ccw', 'Orada · Desmarcar', () => marcar(p)) : botonChico('check', 'Marcar como orada', () => marcar(p), true)}</View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <View style={{ width: '95%', maxWidth: ancha && esAdmin && vista === 'recibidas' ? 1100 : 640, flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal'))} style={{ padding: 8, marginLeft: -8, marginRight: 4 }} accessibilityLabel="Regresar">
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={[styles.headerSoloText, { flex: 1 }]}>
+            <Text style={[styles.titleMini, { color: colors.textMain }]}>PETICIÓN DE ORACIÓN</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
+        </View>
+        {esAdmin ? (
+          <View style={{ flexDirection: 'row', backgroundColor: colors.cardBg, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder, padding: 4, marginVertical: 10, alignSelf: 'center', width: '100%', maxWidth: 420 }}>
+            {[
+              { valor: 'enviar', texto: 'Enviar' },
+              { valor: 'recibidas', texto: `Recibidas${peticiones ? ` (${pendientes})` : ''}` },
+            ].map((o) => (
+              <TouchableOpacity key={o.valor} onPress={() => setVista(o.valor)} style={{ flex: 1, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: vista === o.valor ? paleta.fondo : 'transparent' }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: vista === o.valor ? paleta.texto : colors.textSub }}>{o.texto}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+        <ScrollView contentContainerStyle={{ paddingTop: esAdmin ? 4 : 12, paddingBottom: 30 }} keyboardShouldPersistTaps="handled">
+          {esAdmin && vista === 'recibidas' ? (
+            recibidasVista
+          ) : (
+            <>
+              {formulario}
+              {misPeticiones}
+            </>
+          )}
+        </ScrollView>
+      </View>
+      <AlertaPersonalizada {...alerta} />
+    </SafeAreaView>
+  );
+}
+
 function CalendarioScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
@@ -8691,6 +8981,7 @@ export default function App() {
             <Stack.Screen name="ResumenClases" component={ResumenClasesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenPredicaciones" component={ResumenPredicacionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Calendario" component={CalendarioScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Peticiones" component={PeticionesScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
       </View>
