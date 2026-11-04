@@ -7801,7 +7801,9 @@ function CalendarioScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const { width, height } = useWindowDimensions();
-    const horizontal = width >= 760 && width > height;
+      const horizontal = width >= 760 && width > height;
+  // Tablet en vertical: más ancho y la lista del día va debajo de la cuadrícula (sin ventana que sube)
+  const tabletVertical = !horizontal && width >= 700;
   // Tablet en vertical: más ancho y la lista del día va debajo de la cuadrícula (sin ventana que sube)
   const tabletVertical = !horizontal && width >= 700;
   const esAdmin = rolUsuarioActivoGlobal === 'administrador';
@@ -8102,6 +8104,14 @@ function CalendarioScreen({ navigation }) {
             </ScrollView>
             {cuadricula}
           </View>
+                ) : tabletVertical ? (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
+            {fecha}
+            {cuadricula}
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain, marginTop: 26, marginBottom: 10 }}>{tituloDia}</Text>
+            <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingVertical: 6 }}>{listaActividades}</View>
+            {botonAgregar ? <View style={{ marginTop: 10 }}>{botonAgregar}</View> : null}
+          </ScrollView>
                 ) : tabletVertical ? (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
             {fecha}
