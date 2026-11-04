@@ -7801,7 +7801,9 @@ function CalendarioScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const { width, height } = useWindowDimensions();
-  const horizontal = width >= 760 && width > height;
+    const horizontal = width >= 760 && width > height;
+  // Tablet en vertical: más ancho y la lista del día va debajo de la cuadrícula (sin ventana que sube)
+  const tabletVertical = !horizontal && width >= 700;
   const esAdmin = rolUsuarioActivoGlobal === 'administrador';
   const hoy = fechaISO(new Date());
   const [mes, setMes] = useState(() => {
@@ -7882,8 +7884,8 @@ function CalendarioScreen({ navigation }) {
   };
   cambiarMesRef.current = cambiarMes;
   const tocarDia = (f) => {
-    setSel(f);
-    if (!horizontal) setAbierta(true);
+        setSel(f);
+    if (!horizontal && !tabletVertical) setAbierta(true);
   };
   const alternarRecordatorio = async (id) => {
     const tengo = mios.includes(id);
@@ -7897,8 +7899,8 @@ function CalendarioScreen({ navigation }) {
     if (fecha) {
       const d = new Date(fecha + 'T00:00:00');
       setMes(new Date(d.getFullYear(), d.getMonth(), 1));
-      setSel(fecha);
-      if (!horizontal) setAbierta(true);
+            setSel(fecha);
+      if (!horizontal && !tabletVertical) setAbierta(true);
     }
   };
 
@@ -7909,7 +7911,7 @@ function CalendarioScreen({ navigation }) {
   if (zona.w) {
     const porAncho = Math.floor((zona.w - separacion * 6 - 1) / 7);
     const porAlto = horizontal && zona.h ? Math.floor((zona.h - 34 - separacion * (filas - 1)) / filas) : porAncho;
-    tam = Math.max(28, Math.min(horizontal ? 132 : 92, porAncho, porAlto));
+        tam = Math.max(28, Math.min(horizontal ? 132 : tabletVertical ? 112 : 92, porAncho, porAlto));
   }
   const anchoRejilla = tam * 7 + separacion * 6;
   const celdas = [...Array(primero).fill(null), ...Array.from({ length: totalDias }, (_, i) => i + 1)];
@@ -8049,14 +8051,22 @@ function CalendarioScreen({ navigation }) {
               const colorPunto = esHoy ? '#1E1D1B' : f < hoy ? '#FFFFFF' : isDark ? '#F2F0EA' : '#1E1D1B';
               const n = puntosDe(f);
               const elegido = f === sel && !esHoy;
-              const punto = tam >= 90 ? 8 : 6;
+                            // Cada día es su número: los que ya pasaron se ven apagados, hoy en verde.
+              // Si ese día hay actividad, lleva un anillo verde. Las de varios días usan la cápsula verde.
+              // El día elegido no lleva número (ya se ve en grande arriba): solo una rayita.
+              const esElegido = f === sel;
+              const enCapsula = actividades.some((a) => a.fecha_inicio !== a.fecha_fin && a.fecha_inicio <= f && a.fecha_fin >= f);
+              const conEvento = n > 0 && !enCapsula;
+              const colorNumero = enCapsula ? (f < hoy ? 'rgba(30,29,27,0.45)' : '#1E1D1B') : esHoy ? VERDE_CALENDARIO : f < hoy ? (isDark ? '#55524B' : '#B3AFA6') : colors.textMain;
+              const altoNumero = Math.round(tam * 0.56);
               return (
-                <TouchableOpacity key={f} activeOpacity={0.8} onPress={() => tocarDia(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: tam, height: tam, borderRadius: tam / 2, padding: 4, borderWidth: elegido ? 2.5 : 0, borderColor: colors.textMain, alignItems: 'center', justifyContent: 'center' }}>
-                  <View style={{ width: '100%', height: '100%', borderRadius: tam, backgroundColor: fondo, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 3 }}>
-                    {Array.from({ length: n }).map((_, k) => (
-                      <View key={k} style={{ width: punto, height: punto, borderRadius: punto / 2, backgroundColor: colorPunto }} />
-                    ))}
-                  </View>
+                <TouchableOpacity key={f} activeOpacity={0.7} onPress={() => tocarDia(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: tam, height: tam, alignItems: 'center', justifyContent: 'center' }}>
+                  {conEvento ? <View style={{ position: 'absolute', width: tam - 4, height: tam - 4, borderRadius: tam / 2, borderWidth: 2.5, borderColor: VERDE_CALENDARIO, opacity: f < hoy ? 0.45 : 1 }} /> : null}
+                  {esElegido ? (
+                    <View style={{ width: Math.round(tam * 0.36), height: 5, borderRadius: 3, backgroundColor: enCapsula ? '#1E1D1B' : esHoy ? VERDE_CALENDARIO : colors.textMain }} />
+                  ) : (
+                    <Text style={{ fontSize: altoNumero, lineHeight: altoNumero, fontWeight: '800', letterSpacing: -Math.round(tam * 0.04), color: colorNumero }}>{d}</Text>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -8068,7 +8078,7 @@ function CalendarioScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
-      <View style={{ width: '95%', maxWidth: horizontal ? 1400 : 600, flex: 1 }}>
+            <View style={{ width: '95%', maxWidth: horizontal ? 1400 : tabletVertical ? 900 : 600, flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal'))} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -8092,6 +8102,14 @@ function CalendarioScreen({ navigation }) {
             </ScrollView>
             {cuadricula}
           </View>
+                ) : tabletVertical ? (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
+            {fecha}
+            {cuadricula}
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain, marginTop: 26, marginBottom: 10 }}>{tituloDia}</Text>
+            <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingVertical: 6 }}>{listaActividades}</View>
+            {botonAgregar ? <View style={{ marginTop: 10 }}>{botonAgregar}</View> : null}
+          </ScrollView>
         ) : (
           <View style={{ flex: 1 }} onLayout={(e) => setAltoZona(e.nativeEvent.layout.height)}>
             {fecha}
