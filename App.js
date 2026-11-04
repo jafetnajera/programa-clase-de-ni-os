@@ -7802,9 +7802,7 @@ function CalendarioScreen({ navigation }) {
   const colors = getColors(isDark);
   const { width, height } = useWindowDimensions();
       const horizontal = width >= 760 && width > height;
-  // Tablet en vertical: más ancho y la lista del día va debajo de la cuadrícula (sin ventana que sube)
-  const tabletVertical = !horizontal && width >= 700;
-  // Tablet en vertical: más ancho y la lista del día va debajo de la cuadrícula (sin ventana que sube)
+    // Tablet en vertical: más ancho y la lista del día va debajo de la cuadrícula (sin ventana que sube)
   const tabletVertical = !horizontal && width >= 700;
   const esAdmin = rolUsuarioActivoGlobal === 'administrador';
   const hoy = fechaISO(new Date());
@@ -8059,13 +8057,13 @@ function CalendarioScreen({ navigation }) {
               const esElegido = f === sel;
               const enCapsula = actividades.some((a) => a.fecha_inicio !== a.fecha_fin && a.fecha_inicio <= f && a.fecha_fin >= f);
               const conEvento = n > 0 && !enCapsula;
-              const colorNumero = enCapsula ? (f < hoy ? 'rgba(30,29,27,0.45)' : '#1E1D1B') : esHoy ? VERDE_CALENDARIO : f < hoy ? (isDark ? '#55524B' : '#B3AFA6') : colors.textMain;
+                            const colorNumero = enCapsula || conEvento ? (f < hoy ? 'rgba(30,29,27,0.45)' : '#1E1D1B') : esHoy ? VERDE_CALENDARIO : f < hoy ? (isDark ? '#55524B' : '#B3AFA6') : colors.textMain;
               const altoNumero = Math.round(tam * 0.56);
               return (
                 <TouchableOpacity key={f} activeOpacity={0.7} onPress={() => tocarDia(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: tam, height: tam, alignItems: 'center', justifyContent: 'center' }}>
-                  {conEvento ? <View style={{ position: 'absolute', width: tam - 4, height: tam - 4, borderRadius: tam / 2, borderWidth: 2.5, borderColor: VERDE_CALENDARIO, opacity: f < hoy ? 0.45 : 1 }} /> : null}
+                  {conEvento ? <View style={{ position: 'absolute', width: tam, height: tam, borderRadius: tam / 2, backgroundColor: VERDE_CALENDARIO, opacity: f < hoy ? 0.45 : 1 }} /> : null}
                   {esElegido ? (
-                    <View style={{ width: Math.round(tam * 0.36), height: 5, borderRadius: 3, backgroundColor: enCapsula ? '#1E1D1B' : esHoy ? VERDE_CALENDARIO : colors.textMain }} />
+                    <View style={{ width: Math.round(tam * 0.36), height: 5, borderRadius: 3, backgroundColor: enCapsula || conEvento ? '#1E1D1B' : esHoy ? VERDE_CALENDARIO : colors.textMain }} />
                   ) : (
                     <Text style={{ fontSize: altoNumero, lineHeight: altoNumero, fontWeight: '800', letterSpacing: -Math.round(tam * 0.04), color: colorNumero }}>{d}</Text>
                   )}
@@ -8111,15 +8109,7 @@ function CalendarioScreen({ navigation }) {
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain, marginTop: 26, marginBottom: 10 }}>{tituloDia}</Text>
             <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingVertical: 6 }}>{listaActividades}</View>
             {botonAgregar ? <View style={{ marginTop: 10 }}>{botonAgregar}</View> : null}
-          </ScrollView>
-                ) : tabletVertical ? (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
-            {fecha}
-            {cuadricula}
-            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain, marginTop: 26, marginBottom: 10 }}>{tituloDia}</Text>
-            <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingVertical: 6 }}>{listaActividades}</View>
-            {botonAgregar ? <View style={{ marginTop: 10 }}>{botonAgregar}</View> : null}
-          </ScrollView>
+                    </ScrollView>
         ) : (
           <View style={{ flex: 1 }} onLayout={(e) => setAltoZona(e.nativeEvent.layout.height)}>
             {fecha}
