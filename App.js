@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
-import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Switch, Modal, Linking, Platform, StatusBar, KeyboardAvoidingView, Image, Animated, RefreshControl, PanResponder, useWindowDimensions } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Modal, Linking, Platform, StatusBar, KeyboardAvoidingView, Image, Animated, RefreshControl, PanResponder, useWindowDimensions } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import { Feather } from '@expo/vector-icons';
@@ -23,6 +23,20 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 let usuarioActivoGlobal = null;
 let rolUsuarioActivoGlobal = null;
+let encargadoGlobal = []; // áreas que administra: 'ninos', 'anexo', 'peticiones'
+let avisosApagadosGlobal = []; // áreas que el admin general silenció
+// ¿Puede administrar esta área? El administrador general puede todo
+const puedeArea = (area) => rolUsuarioActivoGlobal === 'administrador' || (encargadoGlobal || []).includes(area);
+// ¿Ve la opción «Administración»? (por ahora solo hay sección para el encargado de clases de niños)
+const puedeAdministrar = () => puedeArea('ninos');
+// ¿Le llegan los avisos de esta área? Admin general: si no la apagó. Encargado: siempre los de su área
+const recibeAvisosArea = (area) => (rolUsuarioActivoGlobal === 'administrador' && !(avisosApagadosGlobal || []).includes(area)) || (encargadoGlobal || []).includes(area);
+// Guarda en memoria los datos de acceso de quien inició sesión
+const guardarAccesoGlobal = (m) => {
+  rolUsuarioActivoGlobal = m ? m.rol : null;
+  encargadoGlobal = (m && m.encargado) || [];
+  avisosApagadosGlobal = (m && m.avisos_apagados) || [];
+};
 
 // Contexto Global para el Tema
 const ThemeContext = createContext();
@@ -56,7 +70,8 @@ const PALETA_MENU = {
     'Tarde 9 a 12': { fondo: '#B7C9A8', texto: '#34472A' },
     'Coritos': { fondo: '#D9B8C9', texto: '#55304A' },
     'Usuarios': { fondo: '#F3D9A8', texto: '#6B4A12' },
-    'Cena': { fondo: '#CFA7A7', texto: '#5A2626' },
+        'Cena': { fondo: '#CFA7A7', texto: '#5A2626' },
+    'Anexo': { fondo: '#F4B27C', texto: '#6B330C' },
   },
   oscuro: {
     'Clases de niños': { fondo: '#8FB9B1', texto: '#173B37' },
@@ -73,7 +88,8 @@ const PALETA_MENU = {
     'Tarde 9 a 12': { fondo: '#A0B591', texto: '#26381D' },
     'Coritos': { fondo: '#C7A0B4', texto: '#422238' },
     'Usuarios': { fondo: '#DFC18C', texto: '#4A3208' },
-    'Cena': { fondo: '#B98E8E', texto: '#3E1717' },
+        'Cena': { fondo: '#B98E8E', texto: '#3E1717' },
+    'Anexo': { fondo: '#E39A5E', texto: '#4A2006' },
   },
 };
 
@@ -349,6 +365,80 @@ const AlertaPersonalizada = ({ visible, titulo, mensaje, textoConfirmar, textoCa
   );
 };
 
+// Interruptor con el estilo de la app: cápsula del color del área y bolita blanca
+const Interruptor = ({ value, onValueChange, disabled, color, isDark }) => {
+  const colors = getColors(isDark);
+  const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: value ? 1 : 0, duration: 160, useNativeDriver: false }).start();
+  }, [value]);
+  const encendido = color || '#E8C57A';
+  const x = anim.interpolate({ inputRange: [0, 1], outputRange: [3, 23] });
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      disabled={disabled}
+      onPress={() => onValueChange && onValueChange(!value)}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: !!value, disabled: !!disabled }}
+      style={{ width: 48, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: value ? encendido : colors.cardBorder, backgroundColor: value ? encendido : 'transparent', justifyContent: 'center', opacity: disabled ? 0.45 : 1 }}
+    >
+      <Animated.View style={{ position: 'absolute', left: x, width: 20, height: 20, borderRadius: 10, backgroundColor: value ? '#FFFFFF' : colors.cardBorder, shadowColor: '#000', shadowOpacity: value ? 0.15 : 0, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } }} />
+    </TouchableOpacity>
+  );
+};
+
+// Áreas que puede tener un encargado
+const AREAS_ENCARGADO = [
+  { clave: 'ninos', texto: 'Clases de niños', categoria: 'Clases de niños', cargo: 'Encargado de clases de niños' },
+  { clave: 'anexo', texto: 'Anexo', categoria: 'Anexo', cargo: 'Encargado del anexo' },
+  { clave: 'peticiones', texto: 'Peticiones', categoria: 'Petición', cargo: 'Encargado de peticiones' },
+];
+
+// Acceso y elegibilidad de un hermano (alta y edición)
+// elegibles: [[texto, categoria del color, valor, al cambiar], ...]
+const OpcionesAcceso = ({ isDark, esAdmin, onEsAdmin, adminBloqueado, encargado, onEncargado, elegibles }) => {
+  const colors = getColors(isDark);
+  const pal = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
+  const fila = (texto, valor, onCambiar, color, nota, bloqueado) => (
+    <View key={texto} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+      <View style={{ flex: 1, paddingRight: 10 }}>
+        <Text style={[styles.label, { color: colors.textSub, marginBottom: 0 }]}>{texto}</Text>
+        {nota ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>{nota}</Text> : null}
+      </View>
+      <Interruptor value={valor} onValueChange={onCambiar} color={color} disabled={bloqueado} isDark={isDark} />
+    </View>
+  );
+  const lista = encargado || [];
+  return (
+    <View>
+      {fila('Administrador general', esAdmin, onEsAdmin, pal['Anuncios'].fondo, adminBloqueado ? 'No puedes quitarte a ti mismo' : null, adminBloqueado)}
+      <Text style={[styles.label, { color: colors.textSub, marginTop: 16, marginBottom: 0 }]}>Encargado de</Text>
+      {esAdmin ? (
+        <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 4 }}>El administrador general ya tiene acceso a todo.</Text>
+      ) : (
+        <>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            {AREAS_ENCARGADO.map((a) => {
+              const p = pal[a.categoria];
+              const activo = lista.includes(a.clave);
+              return (
+                <TouchableOpacity key={a.clave} onPress={() => onEncargado(activo ? lista.filter((x) => x !== a.clave) : [...lista, a.clave])} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 13, borderRadius: 999, borderWidth: 1.5, borderColor: activo ? p.fondo : colors.cardBorder, backgroundColor: activo ? p.fondo : 'transparent' }}>
+                  <Feather name={activo ? 'check' : 'plus'} size={14} color={activo ? p.texto : colors.textSub} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: activo ? p.texto : colors.textSub }}>{a.texto}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 6 }}>Solo ve y cambia lo de su área, y recibe sus avisos.</Text>
+        </>
+      )}
+      <View style={{ height: 1, backgroundColor: colors.cardBorder, marginTop: 16, marginBottom: 2 }} />
+      {elegibles.map(([texto, categoria, valor, onCambiar]) => fila(texto, valor, onCambiar, pal[categoria].fondo))}
+    </View>
+  );
+};
+
 const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
   const [nuevoTelefono, setNuevoTelefono] = useState('');
   const [nuevoNombreCompleto, setNuevoNombreCompleto] = useState('');
@@ -356,7 +446,9 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
   const [nuevoElegiblePredicaciones, setNuevoElegiblePredicaciones] = useState(false);
   const [nuevoPresidir, setNuevoPresidir] = useState(false);
   const [nuevoMesa, setNuevoMesa] = useState(false);
-  const [nuevoEsAdmin, setNuevoEsAdmin] = useState(false);
+    const [nuevoEsAdmin, setNuevoEsAdmin] = useState(false);
+  const [nuevoEncargado, setNuevoEncargado] = useState([]);
+  const [nuevoAnexo, setNuevoAnexo] = useState(false);
   const esYoMismo = !!maestro && maestro.nombre_usuario === usuarioActivoGlobal;
   const colors = getColors(isDark);
 
@@ -368,14 +460,17 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
       setNuevoElegiblePredicaciones(!!maestro.elegible_predicaciones);
       setNuevoPresidir(!!maestro.elegible_presidir);
       setNuevoMesa(!!maestro.elegible_mesa);
-      setNuevoEsAdmin(maestro.rol === 'administrador');
+            setNuevoEsAdmin(maestro.rol === 'administrador');
+      setNuevoEncargado(maestro.encargado || []);
+      setNuevoAnexo(!!maestro.elegible_anexo);
     }
   }, [maestro]);
 
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+                <View style={[styles.modalContent, { backgroundColor: colors.background, maxHeight: '92%' }]}>
+          <ScrollView showsVerticalScrollIndicator={false}>
           <Text style={[styles.modalTitle, { color: colors.textMain }]}>Editar Maestro</Text>
           <Text style={[styles.modalMessage, { color: colors.textSub }]}>{maestro?.nombre_usuario}</Text>
 
@@ -385,29 +480,21 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
           <Text style={[styles.label, { color: colors.textSub, marginTop: 12 }]}>Número celular</Text>
           <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} value={nuevoTelefono} onChangeText={(texto) => setNuevoTelefono(texto.replace(/[^0-9]/g, ''))} placeholder="Ej. 8123456789" placeholderTextColor={colors.textSub} keyboardType="numeric" />
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.label, { color: colors.textSub }]}>Es administrador</Text>
-              {esYoMismo ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>No puedes quitarte a ti mismo</Text> : null}
-            </View>
-            <Switch trackColor={{ false: colors.cardBorder, true: '#EFBC68' }} thumbColor={'#FFFFFF'} onValueChange={setNuevoEsAdmin} value={nuevoEsAdmin} disabled={esYoMismo} />
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-            <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Clases de niños</Text>
-            <Switch trackColor={{ false: colors.cardBorder, true: '#5FA8A0' }} thumbColor={'#FFFFFF'} onValueChange={setNuevoElegibleClases} value={nuevoElegibleClases} />
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-            <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Predicaciones y Clases</Text>
-            <Switch trackColor={{ false: colors.cardBorder, true: '#7EA0D8' }} thumbColor={'#FFFFFF'} onValueChange={setNuevoElegiblePredicaciones} value={nuevoElegiblePredicaciones} />
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-            <Text style={[styles.label, { color: colors.textSub }]}>Cena del Señor: presidir</Text>
-            <Switch trackColor={{ false: colors.cardBorder, true: '#B98E8E' }} thumbColor={'#FFFFFF'} onValueChange={setNuevoPresidir} value={nuevoPresidir} />
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-            <Text style={[styles.label, { color: colors.textSub }]}>Cena del Señor: servir la mesa</Text>
-            <Switch trackColor={{ false: colors.cardBorder, true: '#B98E8E' }} thumbColor={'#FFFFFF'} onValueChange={setNuevoMesa} value={nuevoMesa} />
-          </View>
+                    <OpcionesAcceso
+            isDark={isDark}
+            esAdmin={nuevoEsAdmin}
+            onEsAdmin={setNuevoEsAdmin}
+            adminBloqueado={esYoMismo}
+            encargado={nuevoEncargado}
+            onEncargado={setNuevoEncargado}
+            elegibles={[
+              ['Elegible: Clases de niños', 'Clases de niños', nuevoElegibleClases, setNuevoElegibleClases],
+              ['Elegible: Predicaciones y Clases', 'Predicaciones', nuevoElegiblePredicaciones, setNuevoElegiblePredicaciones],
+              ['Elegible: Clases en el anexo', 'Anexo', nuevoAnexo, setNuevoAnexo],
+              ['Cena del Señor: presidir', 'Cena', nuevoPresidir, setNuevoPresidir],
+              ['Cena del Señor: servir la mesa', 'Cena', nuevoMesa, setNuevoMesa],
+            ]}
+          />
 
           <View style={[styles.modalButtons, { marginTop: 20 }]}>
             <TouchableOpacity style={[styles.modalCancelBtn, { borderColor: colors.cardBorder }]} onPress={onCancelar}>
@@ -416,19 +503,20 @@ const ModalEdicion = ({ visible, maestro, onGuardar, onCancelar, isDark }) => {
             <TouchableOpacity
               style={[styles.modalConfirmBtn, { backgroundColor: '#EFBC68' }]}
               onPress={() => {
-                onGuardar({ telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto, elegible_clases_ninos: nuevoElegibleClases, elegible_predicaciones: nuevoElegiblePredicaciones, elegible_presidir: nuevoPresidir, elegible_mesa: nuevoMesa, rol: nuevoEsAdmin ? 'administrador' : 'maestro', equipo: nuevoEsAdmin ? 'Administradores' : maestro.equipo === 'Administradores' ? 'Sin equipo' : maestro.equipo });
+                onGuardar({ telefono: nuevoTelefono, nombre_completo: nuevoNombreCompleto, elegible_clases_ninos: nuevoElegibleClases, elegible_predicaciones: nuevoElegiblePredicaciones, elegible_presidir: nuevoPresidir, elegible_mesa: nuevoMesa, elegible_anexo: nuevoAnexo, encargado: nuevoEsAdmin ? [] : nuevoEncargado, rol: nuevoEsAdmin ? 'administrador' : 'maestro', equipo: nuevoEsAdmin ? 'Administradores' : maestro.equipo === 'Administradores' ? 'Sin equipo' : maestro.equipo });
               }}
             >
-              <Text style={styles.modalConfirmText}>Guardar</Text>
+                            <Text style={styles.modalConfirmText}>Guardar</Text>
             </TouchableOpacity>
           </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
   );
 };
 
-// ---- AVISOS PUSH: estado de este dispositivo y cómo activarlos ----
+// ---- AVISOS PUSH estado de este dispositivo y cómo activarlos ----
 // Devuelve: 'activo' | 'pendiente' | 'bloqueado' | 'instalar' | 'no-soportado'
 // OneSignal: se inicia una sola vez y todo lo demás (login, logout, permisos) espera a que termine de iniciar
 let promesaOneSignal = null;
@@ -503,7 +591,9 @@ const activarAvisos = async () => {
 const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, onAdmin, onAyuda }) => {
   const colors = getColors(isDark);
   const anim = useRef(new Animated.Value(0)).current;
-  const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
+    const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
+  const [encargos, setEncargos] = useState(encargadoGlobal || []);
+  const [apagados, setApagados] = useState(avisosApagadosGlobal || []);
   const [avisos, setAvisos] = useState(estadoAvisos());
   const [prueba, setPrueba] = useState(null); // null, 'enviando', 'enviada' o 'error'
   const [telegram, setTelegram] = useState(null); // null (cargando), 'no', 'abriendo', 'esperando' o 'vinculado'
@@ -564,10 +654,13 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
           data: { session },
         } = await supabase.auth.getSession();
         if (!session) return;
-        const { data } = await supabase.from('maestros').select('nombre_usuario').eq('user_id', session.user.id).single();
+                const { data } = await supabase.from('maestros').select('*').eq('user_id', session.user.id).single();
         if (data) {
           usuarioActivoGlobal = data.nombre_usuario;
+          guardarAccesoGlobal(data);
           setNombreVisible(data.nombre_usuario);
+          setEncargos(encargadoGlobal);
+          setApagados(avisosApagadosGlobal);
         }
       } catch (e) {
         console.error('No se pudo leer el usuario:', e);
@@ -584,7 +677,14 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
       </TouchableOpacity>
       <Animated.View style={{ position: 'absolute', top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 16 : 48, left: 0, width: '72%', maxWidth: 300, backgroundColor: colors.background, borderTopRightRadius: 36, borderBottomRightRadius: 36, overflow: 'hidden', transform: [{ translateX }], paddingTop: 26, paddingBottom: 12, paddingHorizontal: 20 }}>
-        <Text style={{ color: colors.textMain, fontSize: 20, fontWeight: '700', marginBottom: 18 }}>Hola, {nombreVisible}</Text>
+                <Text style={{ color: colors.textMain, fontSize: 20, fontWeight: '700', marginBottom: rolUsuarioActivoGlobal !== 'administrador' && encargos.length > 0 ? 4 : 18 }}>Hola, {nombreVisible}</Text>
+        {rolUsuarioActivoGlobal !== 'administrador' && encargos.length > 0 ? (
+          <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 18 }}>
+            {AREAS_ENCARGADO.filter((a) => encargos.includes(a.clave))
+              .map((a) => a.cargo)
+              .join(' · ')}
+          </Text>
+        ) : null}
         <Text style={[styles.titleMini, { color: colors.textSub, marginBottom: 14 }]}>Ajustes</Text>
         <TouchableOpacity
           onPress={() => {
@@ -637,6 +737,37 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
             )}
           </TouchableOpacity>
         )}
+                {rolUsuarioActivoGlobal === 'administrador' && (
+          <View style={{ paddingTop: 10, paddingBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 0.4, color: colors.textSub }}>Avisos como administrador</Text>
+            <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 2, marginBottom: 4 }}>Tus avisos personales siempre te llegan</Text>
+            {[
+              ['ninos', 'Clases de niños', 'Clases de niños'],
+              ['predicaciones', 'Predicaciones y Cena', 'Predicaciones'],
+              ['peticiones', 'Peticiones', 'Petición'],
+            ].map(([area, texto, categoria]) => (
+              <View key={area} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 7 }}>
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria].fondo, marginLeft: 5, marginRight: 12 }} />
+                <Text style={{ flex: 1, fontSize: 14.5, color: colors.textMain }}>{texto}</Text>
+                <Interruptor
+                  value={!apagados.includes(area)}
+                  color={PALETA_MENU[isDark ? 'oscuro' : 'claro']['Anuncios'].fondo}
+                  isDark={isDark}
+                  onValueChange={async (encender) => {
+                    const nuevos = encender ? apagados.filter((x) => x !== area) : [...apagados, area];
+                    setApagados(nuevos);
+                    avisosApagadosGlobal = nuevos;
+                    const { error } = await supabase.from('maestros').update({ avisos_apagados: nuevos }).ilike('nombre_usuario', usuarioActivoGlobal);
+                    if (error) {
+                      setApagados(apagados);
+                      avisosApagadosGlobal = apagados;
+                    }
+                  }}
+                />
+              </View>
+            ))}
+          </View>
+        )}
         {onAyuda && (
           <TouchableOpacity
             onPress={() => {
@@ -649,7 +780,7 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
             <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>Ayuda</Text>
           </TouchableOpacity>
         )}
-        {rolUsuarioActivoGlobal === 'administrador' && onAdmin && (
+                {puedeAdministrar() && onAdmin && (
           <TouchableOpacity
             onPress={() => {
               onCerrar();
@@ -675,6 +806,19 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
       </Animated.View>
     </View>
   );
+};
+
+// Área de un aviso según su clave, para ponerle su etiqueta de color
+const ETIQUETA_AREA = { Anexo: 'ANEXO', Predicaciones: 'PREDICACIÓN', 'Clases de niños': 'CLASES DE NIÑOS', Cena: 'CENA DEL SEÑOR', 'Petición': 'PETICIONES' };
+const areaDeAviso = (clave, solPorId, ofPorId) => {
+  const [tipo, id] = String(clave).split(':');
+  if (tipo.startsWith('cena')) return 'Cena';
+  if (tipo.startsWith('pet')) return 'Petición';
+  if (tipo.startsWith('rec-rol') || (tipo === 'rec-mes' && String(clave).endsWith(':rol'))) return 'Predicaciones';
+  if (tipo.startsWith('rec')) return 'Clases de niños';
+  const s = tipo.includes('oferta') ? solPorId[(ofPorId[id] || {}).solicitud_id] : solPorId[id];
+  if (!s) return null;
+  return s.grupo_clase === 'Predicaciones' ? 'Predicaciones' : 'Clases de niños';
 };
 
 // Panel de avisos: sale por la derecha, igual que el de ajustes, y mide lo que su contenido (con límite)
@@ -730,9 +874,14 @@ const PanelNotificaciones = ({ visible, onCerrar, onNavegar, onRevisadas, isDark
                   onCerrar();
                   onNavegar(s.destino ? s.destino.pantalla : 'Tablon', s.destino ? s.destino.params : {});
                 }}
-                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 22, paddingVertical: 13, paddingHorizontal: 16, marginBottom: 10, opacity: !s.accion && !s.abierta && vistasPrevias.includes(s.clave) ? 0.5 : 1 }}
+                                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderLeftWidth: s.area ? 5 : 1, borderLeftColor: s.area ? PALETA_MENU[isDark ? 'oscuro' : 'claro'][s.area].fondo : colors.cardBorder, borderRadius: 22, paddingVertical: 13, paddingHorizontal: 16, marginBottom: 10, opacity: !s.accion && !s.abierta && vistasPrevias.includes(s.clave) ? 0.5 : 1 }}
               >
-                <View style={{ flex: 1 }}>
+                                <View style={{ flex: 1 }}>
+                  {s.area ? (
+                    <View style={{ alignSelf: 'flex-start', backgroundColor: PALETA_MENU[isDark ? 'oscuro' : 'claro'][s.area].fondo, borderRadius: 999, paddingVertical: 2, paddingHorizontal: 9, marginBottom: 6 }}>
+                      <Text style={{ color: PALETA_MENU[isDark ? 'oscuro' : 'claro'][s.area].texto, fontSize: 10.5, fontWeight: '800', letterSpacing: 0.6 }}>{ETIQUETA_AREA[s.area]}</Text>
+                    </View>
+                  ) : null}
                   <Text style={{ color: colors.textMain, fontWeight: '700', fontSize: 14 }}>{s.mensaje}</Text>
                   <Text style={{ color: colors.textSub, fontSize: 12.5, marginTop: 2 }}>{s.detalle}</Text>
                   {s.fecha ? <Text style={{ color: colors.textSub, fontSize: 11.5, marginTop: 5, opacity: 0.85 }}>{cuandoAviso(s.fecha)}</Text> : null}
@@ -1217,7 +1366,7 @@ const obtenerNotificaciones = async () => {
             if (s.estado === 'Cubierta' && solicitante === yo && s.maestro_suplente && !ofertasTodas.some((o) => o.solicitud_id === s.id && o.estado === 'Aceptada' && (o.respondido_por || '').toLowerCase() === yo)) {
         items.push({ clave: `acepto:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
       }
-      if (rolUsuarioActivoGlobal === 'administrador' && items.length === antes && solicitante !== yo && !(esClase && coordPorClase[s.clase_asignada_id] === yo)) {
+      if (recibeAvisosArea(esClase ? 'ninos' : 'predicaciones') && items.length === antes && solicitante !== yo && !(esClase && coordPorClase[s.clase_asignada_id] === yo)) {
         if (s.estado === 'Pendiente') items.push({ clave: `admin-pide:${s.id}`, fecha: s.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo`, detalle: cuando(s) });
         else if (s.estado === 'Cubierta' && s.maestro_suplente && (s.maestro_suplente || '').toLowerCase() !== yo) items.push({ clave: `admin-acepta:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
       }
@@ -1229,7 +1378,7 @@ const obtenerNotificaciones = async () => {
         const ofertante = (o.ofertante || '').toLowerCase();
         const fechaOf = `${fechaLargaOferta(o.fecha_ofrecida)}${o.detalle ? ' • ' + o.detalle : ''}`;
         if (s.estado === 'Pendiente' && ofertaVigente(o) && solicitante === yo) items.push({ clave: `oferta:${o.id}`, fecha: o.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} te ofrece un intercambio`, detalle: `A cambio te da: ${fechaOf}` });
-        else if (s.estado === 'Pendiente' && ofertaVigente(o) && rolUsuarioActivoGlobal === 'administrador' && ofertante !== yo) items.push({ clave: `admin-oferta:${o.id}`, fecha: o.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} ofrece un intercambio a ${nom(s.maestro_solicitante)}`, detalle: `A cambio da: ${fechaOf}` });
+        else if (s.estado === 'Pendiente' && ofertaVigente(o) && recibeAvisosArea(s.clase_asignada_id ? 'ninos' : 'predicaciones') && ofertante !== yo) items.push({ clave: `admin-oferta:${o.id}`, fecha: o.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} ofrece un intercambio a ${nom(s.maestro_solicitante)}`, detalle: `A cambio da: ${fechaOf}` });
         if (ofertante === yo) {
           if (o.estado === 'Aceptada') items.push({ clave: `oferta-si:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} aceptó tu intercambio`, detalle: `Te toca: ${fechaLargaOferta(s.fecha_referencia)} • ${s.titulo_tema}` });
           else if (o.estado === 'Rechazada') items.push({ clave: `oferta-no:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} no aceptó tu oferta`, detalle: `Ofreciste: ${fechaOf}` });
@@ -1302,11 +1451,24 @@ const obtenerNotificaciones = async () => {
         else if (t.asignado_por) items.unshift({ clave: `cena-asig:${t.id}`, fecha: t.respondido_en, accion: false, destino: { pantalla: 'Cena' }, mensaje: 'Fuiste asignado para la Cena del Señor', detalle: `${fechaLargaCena(t.fecha)} • ${t.posicion === 0 ? 'Presides' : `Posición ${t.posicion}`}` });
       });
     const ahoraCena = new Date();
-    if (rolUsuarioActivoGlobal === 'administrador' && ((ahoraCena.getDay() === 6 && ahoraCena.getHours() >= 12) || ahoraCena.getDay() === 0)) {
+        if (recibeAvisosArea('predicaciones') && ((ahoraCena.getDay() === 6 && ahoraCena.getHours() >= 12) || ahoraCena.getDay() === 0)) {
       const domingoCena = proximoDomingo();
       const faltan = 7 - new Set((turnosCena || []).filter((t) => t.fecha === domingoCena && t.estado === 'confirmado').map((t) => t.posicion)).size;
-      if (faltan > 0) items.unshift({ clave: `cena-faltan:${domingoCena}:${faltan}`, accion: true, destino: { pantalla: 'Cena' }, mensaje: `Faltan ${faltan} lugar(es) para la Cena del Señor`, detalle: 'Toca para asignarlos' });
+            if (faltan > 0) items.unshift({ clave: `cena-faltan:${domingoCena}:${faltan}`, accion: true, destino: { pantalla: 'Cena' }, mensaje: `Faltan ${faltan} lugar(es) para la Cena del Señor`, detalle: 'Toca para asignarlos' });
     }
+    // ---- PETICIONES: las que faltan por orar (admin con el aviso encendido, o encargado de peticiones) ----
+    if (recibeAvisosArea('peticiones')) {
+      const { count } = await supabase.from('peticiones_oracion').select('id', { count: 'exact', head: true }).eq('estado', 'Pendiente');
+      if (count > 0) items.unshift({ clave: `pet-pend:${count}`, accion: false, abierta: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas' } }, mensaje: count === 1 ? 'Hay 1 petición de oración por orar' : `Hay ${count} peticiones de oración por orar`, detalle: 'Toca para verlas' });
+    }
+    // ---- Área de cada aviso, para su etiqueta de color ----
+    const solPorId = {};
+    solicitudes.forEach((s) => (solPorId[s.id] = s));
+    const ofPorId = {};
+    ofertasTodas.forEach((o) => (ofPorId[o.id] = o));
+    items.forEach((n) => {
+      if (!n.area) n.area = areaDeAviso(n.clave, solPorId, ofPorId);
+    });
   } catch (e) {
     console.error('Error leyendo notificaciones:', e);
   }
@@ -1747,14 +1909,14 @@ const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, eti
 
 // Botón pequeño en forma de pastilla, con el mismo estilo que «Tomar lista».
 // Sin onPress se muestra como etiqueta (por ejemplo, el nombre del coordinador).
-const BotonChico = ({ icono, texto, onPress, categoria, isDark, neutro, peligro }) => {
+const BotonChico = ({ icono, texto, onPress, categoria, isDark, neutro, peligro, lleno }) => {
   const colors = getColors(isDark);
   const tonos = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
   const p = peligro ? (isDark ? { fondo: '#D9A3A3', texto: '#4A1515' } : { fondo: '#F2CFCF', texto: '#7A2E2E' }) : tonos[categoria] || tonos['Clases de niños'];
   const color = neutro ? colors.textSub : p.texto;
   const Contenedor = onPress ? TouchableOpacity : View;
   return (
-    <Contenedor onPress={onPress} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, backgroundColor: neutro ? colors.cardBg : p.fondo, borderWidth: neutro ? 1 : 0, borderColor: colors.cardBorder }}>
+        <Contenedor onPress={onPress} style={{ alignSelf: lleno ? 'stretch' : 'flex-start', justifyContent: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 999, backgroundColor: neutro ? colors.cardBg : p.fondo, borderWidth: neutro ? 1 : 0, borderColor: colors.cardBorder }}>
       <Feather name={icono} size={18} color={color} />
       <Text style={{ color, fontWeight: '700', fontSize: 14 }}>{texto}</Text>
     </Contenedor>
@@ -3442,8 +3604,8 @@ function LoginScreen({ navigation }) {
         if (error || !data) {
           setAlerta({ visible: true, titulo: 'Error', mensaje: 'No se encontró tu perfil de maestro.' });
         } else {
-          usuarioActivoGlobal = data.nombre_usuario;
-          rolUsuarioActivoGlobal = data.rol;
+                    usuarioActivoGlobal = data.nombre_usuario;
+          guardarAccesoGlobal(data);
           vincularOneSignal(data.nombre_usuario);
           setUsuarioLogin('');
           setPinLogin('');
@@ -3526,7 +3688,7 @@ function MenuPrincipalScreen({ navigation }) {
       })();
       (async () => {
         const { data } = await supabase.from('clases_asignadas').select('id').or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`).gte('fecha', fechaISO(new Date())).limit(1);
-        setTieneClases(!!(data && data.length > 0));
+                setTieneClases(puedeArea('ninos') || !!(data && data.length > 0));
       })();
       return () => clearInterval(temporizador);
     }, []),
@@ -3535,8 +3697,8 @@ function MenuPrincipalScreen({ navigation }) {
   const cerrarSesion = async () => {
     await supabase.auth.signOut();
     cerrarOneSignal();
-    usuarioActivoGlobal = null;
-    rolUsuarioActivoGlobal = null;
+        usuarioActivoGlobal = null;
+    guardarAccesoGlobal(null);
     navigation.replace('Login');
   };
 
@@ -3932,8 +4094,8 @@ function GruposScreen({ navigation, route }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const columnas = useColumnas();
-  const anchoMax = columnas >= 2 ? 1100 : 850;
-  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+    const anchoMax = columnas >= 2 ? 1100 : 850;
+  const esAdmin = puedeArea('ninos');
   const yo = (usuarioActivoGlobal || '').toLowerCase();
   // Si viene un mes, es la vista de ese mes: todos sus grupos (coordinadores y vista de administrador)
   const mesVista = route?.params?.mes || null;
@@ -4675,6 +4837,7 @@ function TodosUsuariosScreen({ navigation }) {
 function DetalleUsuarioScreen({ route, navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
+  const { width: anchoPantalla } = useWindowDimensions();
   const [maestro, setMaestro] = useState(route.params.maestro);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
@@ -4731,8 +4894,10 @@ function DetalleUsuarioScreen({ route, navigation }) {
         elegible_predicaciones: datos.elegible_predicaciones,
         rol: datos.rol,
         equipo: datos.equipo,
-        elegible_presidir: datos.elegible_presidir,
+                elegible_presidir: datos.elegible_presidir,
         elegible_mesa: datos.elegible_mesa,
+        elegible_anexo: datos.elegible_anexo,
+        encargado: datos.encargado,
       })
       .eq('id', maestro.id);
     recargar();
@@ -4753,31 +4918,84 @@ function DetalleUsuarioScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        <View style={{ width: '95%', maxWidth: 850 }}>
-          <Text style={[styles.label, { color: colors.textSub }]}>Nombre completo</Text>
-          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 12 }}>{maestro.nombre_completo || '(sin definir)'}</Text>
-
-          <Text style={[styles.label, { color: colors.textSub }]}>Celular</Text>
-          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 12 }}>{maestro.telefono || '(sin definir)'}</Text>
-
-          <Text style={[styles.label, { color: colors.textSub }]}>Usuario de acceso</Text>
-          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 12 }}>{maestro.nombre_usuario}</Text>
-
-          <Text style={[styles.label, { color: colors.textSub }]}>PIN</Text>
-          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 12 }}>{maestro.pin_acceso}</Text>
-
-          <Text style={[styles.label, { color: colors.textSub }]}>Elegible para</Text>
-          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 4 }}>{maestro.elegible_clases_ninos ? '✓' : '✗'} Clases de niños</Text>
-          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 4 }}>{maestro.elegible_predicaciones ? '✓' : '✗'} Predicaciones y Clases</Text>
-          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 4 }}>{maestro.elegible_presidir ? '✓' : '✗'} Cena del Señor: presidir</Text>
-          <Text style={{ color: colors.textMain, fontSize: 15, marginBottom: 20 }}>{maestro.elegible_mesa ? '✓' : '✗'} Cena del Señor: servir la mesa</Text>
-
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
-            <BotonChico icono="edit-2" texto="Editar" categoria="Usuarios" isDark={isDark} onPress={() => setMostrarModal(true)} />
-            <BotonChico icono="share-2" texto="Compartir" neutro isDark={isDark} onPress={compartirWhatsApp} />
-            <BotonChico icono="copy" texto="Copiar" neutro isDark={isDark} onPress={copiarInfo} />
-            <BotonChico icono="trash-2" texto="Dar de baja" peligro isDark={isDark} onPress={confirmarBaja} />
-          </View>
+                <View style={{ width: '95%', maxWidth: 850 }}>
+          {(() => {
+            const pal = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
+            const dos = anchoPantalla >= 700;
+            const tarjeta = { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 28, paddingVertical: 16, paddingHorizontal: 18, marginBottom: 12 };
+            const titulo = (t) => <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 0.4, color: colors.textSub, marginBottom: 10 }}>{t}</Text>;
+            const fila = (icono, etiqueta, valor, ultima) => (
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 11, borderBottomWidth: ultima ? 0 : 1, borderBottomColor: colors.cardBorder }}>
+                <Feather name={icono} size={16} color={colors.textSub} />
+                <Text style={{ flex: 1, marginLeft: 12, fontSize: 14, color: colors.textSub }}>{etiqueta}</Text>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textMain }}>{valor}</Text>
+              </View>
+            );
+            // Píldora del color del área: rellena si aplica, solo contorno y tachada si no
+            const pastilla = (texto, categoria, activa) => (
+              <View key={texto} style={{ paddingVertical: 7, paddingHorizontal: 13, borderRadius: 999, borderWidth: 1.5, borderColor: activa ? pal[categoria].fondo : colors.cardBorder, backgroundColor: activa ? pal[categoria].fondo : 'transparent' }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: activa ? pal[categoria].texto : colors.textSub, opacity: activa ? 1 : 0.7, textDecorationLine: activa ? 'none' : 'line-through' }}>{texto}</Text>
+              </View>
+            );
+            const encargos = AREAS_ENCARGADO.filter((a) => (maestro.encargado || []).includes(a.clave));
+            const datos = (
+              <View style={tarjeta}>
+                {titulo('Datos')}
+                {fila('phone', 'Celular', maestro.telefono || 'Sin definir')}
+                {fila('user', 'Usuario de acceso', maestro.nombre_usuario)}
+                {fila('lock', 'PIN', maestro.pin_acceso, true)}
+              </View>
+            );
+            const acceso = (
+              <View style={tarjeta}>
+                {titulo('Acceso')}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {maestro.rol === 'administrador' ? pastilla('Administrador general', 'Anuncios', true) : encargos.length > 0 ? encargos.map((a) => pastilla(a.cargo, a.categoria, true)) : <Text style={{ fontSize: 14, color: colors.textSub }}>Sin cargos</Text>}
+                </View>
+              </View>
+            );
+            const elegible = (
+              <View style={tarjeta}>
+                {titulo('Elegible para')}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {pastilla('Clases de niños', 'Clases de niños', maestro.elegible_clases_ninos)}
+                  {pastilla('Predicaciones y Clases', 'Predicaciones', maestro.elegible_predicaciones)}
+                  {pastilla('Clases en el anexo', 'Anexo', maestro.elegible_anexo)}
+                  {pastilla('Presidir la Cena', 'Cena', maestro.elegible_presidir)}
+                  {pastilla('Servir la mesa', 'Cena', maestro.elegible_mesa)}
+                </View>
+              </View>
+            );
+            // Celular: centrados. Tablet y PC: debajo de «Datos», en dos filas parejas
+            const boton = (b) => (dos ? <View key={b.props.texto} style={{ flexBasis: '45%', flexGrow: 1 }}>{b}</View> : b);
+            const botones = (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: dos ? 'flex-start' : 'center', marginTop: dos ? 2 : 10 }}>
+                {boton(<BotonChico key="editar" icono="edit-2" texto="Editar" categoria="Usuarios" lleno={dos} isDark={isDark} onPress={() => setMostrarModal(true)} />)}
+                {boton(<BotonChico key="compartir" icono="share-2" texto="Compartir" neutro lleno={dos} isDark={isDark} onPress={compartirWhatsApp} />)}
+                {boton(<BotonChico key="copiar" icono="copy" texto="Copiar" neutro lleno={dos} isDark={isDark} onPress={copiarInfo} />)}
+                {boton(<BotonChico key="baja" icono="trash-2" texto="Dar de baja" peligro lleno={dos} isDark={isDark} onPress={confirmarBaja} />)}
+              </View>
+            );
+            return dos ? (
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  {datos}
+                  {botones}
+                </View>
+                <View style={{ flex: 1 }}>
+                  {acceso}
+                  {elegible}
+                </View>
+              </View>
+            ) : (
+              <>
+                {datos}
+                {acceso}
+                {elegible}
+                {botones}
+              </>
+            );
+          })()}
         </View>
       </ScrollView>
       <ModalEdicion visible={mostrarModal} maestro={maestro} onCancelar={() => setMostrarModal(false)} onGuardar={guardarEdicion} isDark={isDark} />
@@ -4805,7 +5023,7 @@ function TemasScreen({ route, navigation }) {
     (async () => {
       const hoy = new Date();
       const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-      const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+            const esAdmin = puedeArea('ninos');
       let consulta = supabase.from('clases_asignadas').select('mes_anio, nombre_usuario, coordinador').eq('grupo', grupo).range(0, 4999);
       if (!esAdmin) consulta = consulta.or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`);
       const [{ data: asignadas }, { data: temas }, { data: conContenido }] = await Promise.all([consulta, supabase.from('temas_mensuales').select('*'), supabase.from('clases_detalle').select('tema_id').eq('rango_edad', grupo).range(0, 4999)]);
@@ -4922,7 +5140,7 @@ function ClasesScreen({ route, navigation }) {
     })();
   }, [tema.id, grupo, enfocada]);
   const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
-  const verTodos = rolUsuarioActivoGlobal === 'administrador' || fechasPermitidas === null;
+    const verTodos = puedeArea('ninos') || fechasPermitidas === null;
   // Texto de cada domingo: quién tiene la clase y, si alguien la cubre, quién la cubre y a quién
   const textoAsignado = (c) => {
     const fecha = fechaDeClase(c);
@@ -4945,7 +5163,7 @@ function ClasesScreen({ route, navigation }) {
       if (!error && data) {
         let permitidas = null;
         const mesTema = parsearMesAnio(tema.mes_anio);
-        if (rolUsuarioActivoGlobal !== 'administrador' && mesTema) {
+                if (!puedeArea('ninos') && mesTema) {
           const etiquetaMes = `${NOMBRES_MESES[mesTema.getMonth()]} ${mesTema.getFullYear()}`;
           const { data: filas } = await supabase.from('clases_asignadas').select('fecha, nombre_usuario, coordinador').eq('grupo', grupo).eq('mes_anio', etiquetaMes).or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`);
           const yo = (usuarioActivoGlobal || '').toLowerCase();
@@ -5243,8 +5461,8 @@ function DomingosScreen({ route, navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const theme = getThemeColors(grupo, isDark);
-  const columnas = useColumnas();
-  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+    const columnas = useColumnas();
+  const esAdmin = puedeArea('ninos');
   const yo = (usuarioActivoGlobal || '').toLowerCase();
   const hoy = fechaISO(new Date());
   const [filas, setFilas] = useState([]);
@@ -5635,8 +5853,8 @@ function TablonScreen({ navigation, route }) {
       const { data: misClases } = await supabase.from('clases_asignadas').select('id').ilike('coordinador', usuarioActivoGlobal);
       const idsCoord = (misClases || []).map((c) => c.id);
       data = (data || []).filter((s) => {
-        if ((s.maestro_solicitante || '').toLowerCase() === yo || (s.maestro_suplente || '').toLowerCase() === yo) return true;
-        if (s.clase_asignada_id && idsCoord.includes(s.clase_asignada_id)) return true;
+                if ((s.maestro_solicitante || '').toLowerCase() === yo || (s.maestro_suplente || '').toLowerCase() === yo) return true;
+        if (s.clase_asignada_id && (idsCoord.includes(s.clase_asignada_id) || puedeArea('ninos'))) return true;
         if (s.maestro_destino) return s.maestro_destino.toLowerCase() === yo;
         return s.grupo_clase === 'Predicaciones' ? !!yoInfo.elegible_predicaciones : !!yoInfo.elegible_clases_ninos;
       });
@@ -5664,7 +5882,7 @@ function TablonScreen({ navigation, route }) {
   const ofertasDe = (sol) => ofertas.filter((o) => o.solicitud_id === sol.id && ofertaVigente(o));
   const miOferta = (sol) => ofertasDe(sol).find((o) => (o.ofertante || '').toLowerCase() === yoMin());
   // Quien pidió el apoyo decide; un administrador también puede decidir por él
-  const puedeResponderOfertas = (sol) => (sol.maestro_solicitante || '').toLowerCase() === yoMin() || rolUsuarioActivoGlobal === 'administrador';
+    const puedeResponderOfertas = (sol) => (sol.maestro_solicitante || '').toLowerCase() === yoMin() || rolUsuarioActivoGlobal === 'administrador' || (!!sol.clase_asignada_id && puedeArea('ninos'));
 
   async function abrirOfrecer(sol) {
     setAvisoOferta('');
@@ -6028,15 +6246,19 @@ function TablonScreen({ navigation, route }) {
 // ==========================================
 function AdminScreen({ navigation, route }) {
   const { isDark } = useContext(ThemeContext);
-  // Sin "seccion" se ven las 3 tarjetas; con "seccion" se abre esa categoría con sus opciones plegadas
-  const seccion = SECCIONES_ADMIN[route?.params?.seccion] ? route.params.seccion : null;
+    // Sin "seccion" se ven las tarjetas; con "seccion" se abre esa categoría con sus opciones plegadas
+  // El admin general ve todas; el encargado de niños solo «Clases de niños» y entra directo
+  const esAdminGeneral = rolUsuarioActivoGlobal === 'administrador';
+  const seccionesPermitidas = Object.keys(SECCIONES_ADMIN).filter((k) => esAdminGeneral || (k === 'clases' && puedeArea('ninos')));
+  const seccionPedida = route?.params?.seccion;
+  const seccion = seccionesPermitidas.includes(seccionPedida) ? seccionPedida : seccionesPermitidas.length === 1 ? seccionesPermitidas[0] : null;
   const columnasAdmin = useColumnas();
   const [opcionAbierta, setOpcionAbierta] = useState(null);
   const alternarOpcion = (id) => setOpcionAbierta((actual) => (actual === id ? null : id));
   const opc = (id) => ({ id, abierta: opcionAbierta === id, onAlternar: alternarOpcion, categoria: seccion ? SECCIONES_ADMIN[seccion].categoria : 'Usuarios', isDark });
   const volverAdmin = () => {
     if (navigation.canGoBack()) navigation.goBack();
-    else if (seccion) navigation.replace('Admin');
+        else if (seccion && seccionesPermitidas.length > 1) navigation.replace('Admin');
     else navigation.navigate('MenuPrincipal');
   };
   const [nombreCompleto, setNombreCompleto] = useState('');
@@ -6046,7 +6268,9 @@ function AdminScreen({ navigation, route }) {
   const [elegibleClases, setElegibleClases] = useState(false);
   const [elegiblePredicaciones, setElegiblePredicaciones] = useState(false);
   const [elegiblePresidir, setElegiblePresidir] = useState(false);
-  const [elegibleMesa, setElegibleMesa] = useState(false);
+    const [elegibleMesa, setElegibleMesa] = useState(false);
+  const [elegibleAnexo, setElegibleAnexo] = useState(false);
+  const [encargadoAlta, setEncargadoAlta] = useState([]);
   const [guardando, setGuardando] = useState(false);
   const [maestros, setMaestros] = useState([]);
   const [equipoSeleccionadoAdmin, setEquipoSeleccionadoAdmin] = useState(null);
@@ -6099,6 +6323,10 @@ function AdminScreen({ navigation, route }) {
   const generarNuevoPin = () => setPinGenerado(Math.floor(1000 + Math.random() * 9000).toString());
 
   async function obtenerMaestros() {
+        if (!esAdminGeneral) {
+      const { data } = await supabase.rpc('nombres_publicos');
+      return setMaestros(data || []);
+    }
     const { data } = await supabase.from('maestros').select('*').order('creado_en', { ascending: false });
     setMaestros(data || []);
   }
@@ -6125,7 +6353,7 @@ function AdminScreen({ navigation, route }) {
       setAlerta({ visible: true, titulo: 'Error', mensaje: detalle, onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
       // La Cena del Señor se guarda aparte (la función de alta no conoce estos dos datos)
-      if (elegiblePresidir || elegibleMesa) await supabase.from('maestros').update({ elegible_presidir: elegiblePresidir, elegible_mesa: elegibleMesa }).eq('nombre_usuario', usuarioGenerado);
+      if (elegiblePresidir || elegibleMesa || elegibleAnexo || (!esAdmin && encargadoAlta.length > 0)) await supabase.from('maestros').update({ elegible_presidir: elegiblePresidir, elegible_mesa: elegibleMesa, elegible_anexo: elegibleAnexo, encargado: esAdmin ? [] : encargadoAlta }).eq('nombre_usuario', usuarioGenerado);
       setAlerta({ visible: true, titulo: '¡Éxito!', mensaje: 'Usuario registrado.', onConfirmar: cerrarAlerta, isDark: isDark });
       setNombreCompleto('');
       setUsuarioGenerado('');
@@ -6134,8 +6362,10 @@ function AdminScreen({ navigation, route }) {
       setEsAdmin(false);
       setElegibleClases(false);
       setElegiblePredicaciones(false);
-      setElegiblePresidir(false);
+            setElegiblePresidir(false);
       setElegibleMesa(false);
+      setElegibleAnexo(false);
+      setEncargadoAlta([]);
       obtenerMaestros();
     }
     setGuardando(false);
@@ -6144,7 +6374,7 @@ function AdminScreen({ navigation, route }) {
   async function guardarEdicion(datos) {
     setMaestroEditando(null);
     setEquipoSeleccionadoAdmin(null);
-    await supabase.from('maestros').update({ telefono: datos.telefono, nombre_completo: datos.nombre_completo, elegible_clases_ninos: datos.elegible_clases_ninos, elegible_predicaciones: datos.elegible_predicaciones, elegible_presidir: datos.elegible_presidir, elegible_mesa: datos.elegible_mesa, rol: datos.rol, equipo: datos.equipo }).eq('id', maestroEditando.id);
+    await supabase.from('maestros').update({ telefono: datos.telefono, nombre_completo: datos.nombre_completo, elegible_clases_ninos: datos.elegible_clases_ninos, elegible_predicaciones: datos.elegible_predicaciones, elegible_presidir: datos.elegible_presidir, elegible_mesa: datos.elegible_mesa, elegible_anexo: datos.elegible_anexo, encargado: datos.encargado, rol: datos.rol, equipo: datos.equipo }).eq('id', maestroEditando.id);
     obtenerMaestros();
   }
 
@@ -6789,7 +7019,7 @@ function AdminScreen({ navigation, route }) {
 
         {!seccion && (
           <View style={[styles.gruposContainer, columnasAdmin >= 2 && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
-            {Object.keys(SECCIONES_ADMIN).map((clave, i, todas) => (
+                        {seccionesPermitidas.map((clave, i, todas) => (
               <TarjetaMenu key={clave} icono={SECCIONES_ADMIN[clave].icono} titulo={SECCIONES_ADMIN[clave].titulo} subtitulo={SECCIONES_ADMIN[clave].subtitulo} categoria={SECCIONES_ADMIN[clave].categoria} isDark={isDark} columnas={columnasAdmin} esUltima={i === todas.length - 1} total={todas.length} onPress={() => navigation.push('Admin', { seccion: clave })} />
             ))}
           </View>
@@ -6808,29 +7038,21 @@ function AdminScreen({ navigation, route }) {
                 <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Ej. 8123456789" placeholderTextColor={colors.textSub} value={telefono} onChangeText={setTelefono} keyboardType="numeric" />
               </View>
 
-              <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                <Text style={[styles.label, { color: colors.textSub }]}>Es Administrador</Text>
-                <Switch trackColor={{ false: colors.cardBorder, true: '#EFBC68' }} thumbColor={'#FFFFFF'} onValueChange={setEsAdmin} value={esAdmin} />
-              </View>
-
-              <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Clases de niños</Text>
-                <Switch trackColor={{ false: colors.cardBorder, true: '#5FA8A0' }} thumbColor={'#FFFFFF'} onValueChange={setElegibleClases} value={elegibleClases} />
-              </View>
-
-              <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                <Text style={[styles.label, { color: colors.textSub }]}>Elegible: Predicaciones y Clases</Text>
-                <Switch trackColor={{ false: colors.cardBorder, true: '#7EA0D8' }} thumbColor={'#FFFFFF'} onValueChange={setElegiblePredicaciones} value={elegiblePredicaciones} />
-              </View>
-
-              <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                <Text style={[styles.label, { color: colors.textSub }]}>Cena del Señor: presidir</Text>
-                <Switch trackColor={{ false: colors.cardBorder, true: '#B98E8E' }} thumbColor={'#FFFFFF'} onValueChange={setElegiblePresidir} value={elegiblePresidir} />
-              </View>
-
-              <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                <Text style={[styles.label, { color: colors.textSub }]}>Cena del Señor: servir la mesa</Text>
-                <Switch trackColor={{ false: colors.cardBorder, true: '#B98E8E' }} thumbColor={'#FFFFFF'} onValueChange={setElegibleMesa} value={elegibleMesa} />
+                            <View style={styles.formGroup}>
+                <OpcionesAcceso
+                  isDark={isDark}
+                  esAdmin={esAdmin}
+                  onEsAdmin={setEsAdmin}
+                  encargado={encargadoAlta}
+                  onEncargado={setEncargadoAlta}
+                  elegibles={[
+                    ['Elegible: Clases de niños', 'Clases de niños', elegibleClases, setElegibleClases],
+                    ['Elegible: Predicaciones y Clases', 'Predicaciones', elegiblePredicaciones, setElegiblePredicaciones],
+                    ['Elegible: Clases en el anexo', 'Anexo', elegibleAnexo, setElegibleAnexo],
+                    ['Cena del Señor: presidir', 'Cena', elegiblePresidir, setElegiblePresidir],
+                    ['Cena del Señor: servir la mesa', 'Cena', elegibleMesa, setElegibleMesa],
+                  ]}
+                />
               </View>
 
               {usuarioGenerado !== '' && (
@@ -7006,9 +7228,11 @@ function AdminScreen({ navigation, route }) {
 
         {seccion === 'clases' && (
           <>
-            <OpcionAdmin {...opc('contenidoClases')} icono="file-text" titulo="Subir contenido de clases" subtitulo="Word con la clase y PDF de actividad e ilustraciones">
-              <SubirContenidoClases isDark={isDark} />
-            </OpcionAdmin>
+                        {esAdminGeneral && (
+              <OpcionAdmin {...opc('contenidoClases')} icono="file-text" titulo="Subir contenido de clases" subtitulo="Word con la clase y PDF de actividad e ilustraciones">
+                <SubirContenidoClases isDark={isDark} />
+              </OpcionAdmin>
+            )}
             <OpcionAdmin {...opc('subirClases')} icono="upload" titulo="Subir o actualizar rol de clases" subtitulo="Archivo CSV con equipos, coordinadores y grupos">
               <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el CSV con equipo, mes, coordinador y grupos. Se crea una clase por cada domingo del mes. Si esos meses ya tienen rol, no se borra nada: solo se aplican los cambios y se avisa a quienes les cambió algo.</Text>
 
@@ -7116,11 +7340,13 @@ function AdminScreen({ navigation, route }) {
                 </View>
               )}
             </OpcionAdmin>
-            <OpcionAdmin {...opc('resumenClases')} icono="bar-chart-2" titulo="Resumen de clases" subtitulo="Clases por maestro, apoyos y lo que falta cubrir" onPress={() => navigation.navigate('ResumenClases')} />
-            <OpcionAdmin {...opc('resumenAsistencia')} icono="bar-chart-2" titulo="Resumen de asistencia" subtitulo="Gráficas por mes y por grupo" onPress={() => navigation.navigate('ResumenAsistencia')} />
+            {esAdminGeneral && <OpcionAdmin {...opc('resumenClases')} icono="bar-chart-2" titulo="Resumen de clases" subtitulo="Clases por maestro, apoyos y lo que falta cubrir" onPress={() => navigation.navigate('ResumenClases')} />}
+            {esAdminGeneral && <OpcionAdmin {...opc('resumenAsistencia')} icono="bar-chart-2" titulo="Resumen de asistencia" subtitulo="Gráficas por mes y por grupo" onPress={() => navigation.navigate('ResumenAsistencia')} />}
             <OpcionAdmin {...opc('ninos')} icono="edit-3" titulo="Niños" subtitulo="Corregir nombres y grupos, juntar repetidos o borrar">
               <ListaNinosAdmin isDark={isDark} />
             </OpcionAdmin>
+                        {esAdminGeneral && (
+            <>
             <OpcionAdmin {...opc('asistencia')} icono="download" titulo="Descargar asistencia" subtitulo="En CSV, de un grupo o de todos juntos">
               <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Descarga la asistencia en CSV: de un grupo o de todos juntos.</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
@@ -7147,8 +7373,10 @@ function AdminScreen({ navigation, route }) {
               <FormCorito isDark={isDark} onGuardado={() => setAlerta({ visible: true, titulo: 'Corito guardado', mensaje: 'Ya aparece en la sección Coritos.', textoConfirmar: 'Aceptar', onConfirmar: cerrarAlerta, isDark })} />
             </OpcionAdmin>
             <OpcionAdmin {...opc('editarCoritos')} icono="edit-3" titulo="Editar o borrar coritos" subtitulo="Corrige título, letra, grupos o audio">
-              <ListaCoritosAdmin isDark={isDark} />
+                            <ListaCoritosAdmin isDark={isDark} />
             </OpcionAdmin>
+            </>
+            )}
           </>
         )}
       </ScrollView>
@@ -7420,7 +7648,7 @@ const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado 
   const interruptor = (texto, valor, onCambiar) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}>
       <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: colors.textMain }}>{texto}</Text>
-      <Switch value={valor} onValueChange={onCambiar} trackColor={{ false: colors.cardBorder, true: VERDE_CALENDARIO }} thumbColor="#FFFFFF" activeThumbColor="#FFFFFF" />
+      <Interruptor value={valor} onValueChange={onCambiar} color={VERDE_CALENDARIO} isDark={isDark} />
     </View>
   );
 
@@ -7520,15 +7748,15 @@ const CATEGORIAS_PETICION = [
 ];
 const LARGO_PETICION = 600;
 
-function PeticionesScreen({ navigation }) {
+function PeticionesScreen({ navigation, route }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const columnas = useColumnas();
-  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const esAdmin = puedeArea('peticiones');
   const yo = (usuarioActivoGlobal || '').toLowerCase();
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Petición'];
   const tono = (c) => (isDark ? c.oscuro : c.claro);
-  const [vista, setVista] = useState('enviar');
+    const [vista, setVista] = useState(esAdmin && route?.params?.vista === 'recibidas' ? 'recibidas' : 'enviar');
   const [categoria, setCategoria] = useState(null);
   const [texto, setTexto] = useState('');
   const [editando, setEditando] = useState(null); // la petición propia que se está editando
@@ -7687,7 +7915,7 @@ function PeticionesScreen({ navigation }) {
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, justifyContent: 'center' }}>
         <Feather name="lock" size={12} color={colors.textSub} />
-        <Text style={{ fontSize: 12, color: colors.textSub }}>Solo los administradores pueden verla.</Text>
+        <Text style={{ fontSize: 12, color: colors.textSub }}>Solo el encargado de peticiones puede verla.</Text>
       </View>
     </View>
   );
@@ -9224,8 +9452,8 @@ export default function App() {
         if (session) {
           const { data } = await supabase.from('maestros').select('*').eq('user_id', session.user.id).single();
           if (data) {
-            usuarioActivoGlobal = data.nombre_usuario;
-            rolUsuarioActivoGlobal = data.rol;
+                        usuarioActivoGlobal = data.nombre_usuario;
+            guardarAccesoGlobal(data);
             vincularOneSignal(data.nombre_usuario);
             setRutaInicial('MenuPrincipal');
           }
