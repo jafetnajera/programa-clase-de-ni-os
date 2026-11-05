@@ -6290,12 +6290,6 @@ function AdminScreen({ navigation, route }) {
   const [eliminandoRol, setEliminandoRol] = useState(false);
   const [previaClases, setPreviaClases] = useState(null);
   const [subiendoClases, setSubiendoClases] = useState(false);
-  const [mesBuscarClases, setMesBuscarClases] = useState('');
-  const [anioBuscarClases, setAnioBuscarClases] = useState('');
-  const [resultadosClases, setResultadosClases] = useState([]);
-  const [seleccionadasClases, setSeleccionadasClases] = useState([]);
-  const [buscandoClases, setBuscandoClases] = useState(false);
-  const [eliminandoClases, setEliminandoClases] = useState(false);
   const [grupoAsistencia, setGrupoAsistencia] = useState('Todos');
   const [mesAsistencia, setMesAsistencia] = useState('');
   const [descargandoAsistencia, setDescargandoAsistencia] = useState(false);
@@ -6820,66 +6814,6 @@ function AdminScreen({ navigation, route }) {
     setSubiendoClases(false);
   };
 
-  const buscarClases = async () => {
-    const mesNum = parseInt(mesBuscarClases);
-    const anioNum = parseInt(anioBuscarClases);
-    if (!mesNum || mesNum < 1 || mesNum > 12 || !anioNum) {
-      return setAlerta({ visible: true, titulo: 'Aviso', mensaje: 'Escribe un mes (1-12) y un año válidos.', onConfirmar: cerrarAlerta, isDark: isDark });
-    }
-    setBuscandoClases(true);
-    const desde = fechaISO(new Date(anioNum, mesNum - 1, 1));
-    const hasta = fechaISO(new Date(anioNum, mesNum, 0));
-    const { data, error } = await supabase.from('clases_asignadas').select('*').gte('fecha', desde).lte('fecha', hasta).order('fecha', { ascending: true }).order('grupo', { ascending: true }).range(0, 999);
-    setBuscandoClases(false);
-    if (error) {
-      return setAlerta({ visible: true, titulo: 'Error', mensaje: 'No se pudo buscar: ' + error.message, onConfirmar: cerrarAlerta, isDark: isDark });
-    }
-    setResultadosClases(data || []);
-    setSeleccionadasClases([]);
-  };
-
-  const toggleSeleccionClase = (id) => {
-    setSeleccionadasClases((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
-
-  const seleccionarTodoClases = () => {
-    setSeleccionadasClases(seleccionadasClases.length === resultadosClases.length ? [] : resultadosClases.map((r) => r.id));
-  };
-
-  const confirmarEliminarSeleccionadasClases = () => {
-    if (seleccionadasClases.length === 0) return;
-    setAlerta({
-      visible: true,
-      titulo: 'Eliminar clases',
-      mensaje: `¿Eliminar ${seleccionadasClases.length} clase(s)? Esta acción no se puede deshacer.`,
-      textoConfirmar: 'Eliminar',
-      onCancelar: cerrarAlerta,
-      isDark: isDark,
-      themeColor: '#C97A7A',
-      onConfirmar: async () => {
-        cerrarAlerta();
-        setEliminandoClases(true);
-        const { data, error } = await supabase.from('clases_asignadas').delete().in('id', seleccionadasClases).select('id');
-        setEliminandoClases(false);
-        if (error) {
-          setTimeout(() => setAlerta({ visible: true, titulo: 'Error', mensaje: 'No se pudo eliminar: ' + error.message, onConfirmar: cerrarAlerta, isDark: isDark }), 500);
-          return;
-        }
-        const idsBorrados = (data || []).map((r) => r.id);
-        const hoyBorrado = fechaISO(new Date());
-        avisarRolActualizado(
-          resultadosClases.filter((r) => idsBorrados.includes(r.id) && r.fecha >= hoyBorrado).flatMap((r) => [r.nombre_usuario, r.usuario_original]),
-          'clases',
-        );
-        setResultadosClases((prev) => prev.filter((r) => !idsBorrados.includes(r.id)));
-        setSeleccionadasClases([]);
-        if (idsBorrados.length < seleccionadasClases.length) {
-          setTimeout(() => setAlerta({ visible: true, titulo: 'No se borraron todas', mensaje: `Se eliminaron ${idsBorrados.length} de ${seleccionadasClases.length}. Las demás probablemente están bloqueadas por una regla de seguridad (RLS) en Supabase.`, onConfirmar: cerrarAlerta, isDark: isDark }), 500);
-        }
-      },
-    });
-  };
-
   const descargarAsistenciaCSV = async () => {
     let desde = null;
     let hasta = null;
@@ -7306,37 +7240,6 @@ function AdminScreen({ navigation, route }) {
                       {subiendoClases ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>{previaClases.cambios ? 'Aplicar cambios' : 'Confirmar y subir'}</Text>}
                     </TouchableOpacity>
                   )}
-                </View>
-              )}
-            </OpcionAdmin>
-            <OpcionAdmin {...opc('borrarClases')} icono="search" titulo="Buscar y borrar clases" subtitulo="Para quitar clases sueltas (se avisa a quien la tenía)">
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Mes (1-12)" placeholderTextColor={colors.textSub} value={mesBuscarClases} onChangeText={(t) => setMesBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={2} />
-                <TextInput style={[styles.input, { flex: 1, minWidth: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} placeholder="Año (ej. 2027)" placeholderTextColor={colors.textSub} value={anioBuscarClases} onChangeText={(t) => setAnioBuscarClases(t.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={4} />
-              </View>
-              <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={buscarClases}>
-                {buscandoClases ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Buscar</Text>}
-              </TouchableOpacity>
-
-              {resultadosClases.length > 0 && (
-                <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder, marginTop: 15 }]}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>{resultadosClases.length} clase(s) encontradas</Text>
-                    <TouchableOpacity onPress={seleccionarTodoClases}>
-                      <Text style={{ color: '#7EA0D8', fontSize: 12, fontWeight: '600' }}>{seleccionadasClases.length === resultadosClases.length ? 'Quitar selección' : 'Seleccionar todo'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {resultadosClases.map((item) => (
-                    <TouchableOpacity key={item.id} onPress={() => toggleSeleccionClase(item.id)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
-                      <Feather name={seleccionadasClases.includes(item.id) ? 'check-square' : 'square'} size={18} color={seleccionadasClases.includes(item.id) ? '#7EA0D8' : colors.textSub} />
-                      <Text style={{ color: colors.textMain, fontSize: 13, marginLeft: 10, flex: 1 }}>
-                        {item.fecha} • {item.grupo} • {item.nombre_usuario}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity style={[styles.primaryButton, { marginTop: 15, backgroundColor: '#C97A7A' }]} onPress={confirmarEliminarSeleccionadasClases} disabled={seleccionadasClases.length === 0}>
-                    {eliminandoClases ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Eliminar seleccionadas ({seleccionadasClases.length})</Text>}
-                  </TouchableOpacity>
                 </View>
               )}
             </OpcionAdmin>
@@ -8112,8 +8015,7 @@ function CalendarioScreen({ navigation }) {
   };
   cambiarMesRef.current = cambiarMes;
   const tocarDia = (f) => {
-        setSel(f);
-    if (!horizontal && !tabletVertical) setAbierta(true);
+                setSel(f);
   };
   const alternarRecordatorio = async (id) => {
     const tengo = mios.includes(id);
@@ -8127,8 +8029,7 @@ function CalendarioScreen({ navigation }) {
     if (fecha) {
       const d = new Date(fecha + 'T00:00:00');
       setMes(new Date(d.getFullYear(), d.getMonth(), 1));
-            setSel(fecha);
-      if (!horizontal && !tabletVertical) setAbierta(true);
+                        setSel(fecha);
     }
   };
 
@@ -8259,7 +8160,7 @@ function CalendarioScreen({ navigation }) {
       }}
     >
       {tam ? (
-        <Animated.View {...gestos.panHandlers} style={{ width: anchoRejilla, touchAction: 'pan-y', transform: [{ translateX: deslizar }], opacity: deslizar.interpolate({ inputRange: [-60, 0, 60], outputRange: [0.35, 1, 0.35] }) }}>
+        <Animated.View style={{ width: anchoRejilla, transform: [{ translateX: deslizar }], opacity: deslizar.interpolate({ inputRange: [-60, 0, 60], outputRange: [0.35, 1, 0.35] }) }}>
           <View style={{ flexDirection: 'row', gap: separacion, marginBottom: 8 }}>
             {DIAS_SEMANA_CORTOS.map((d) => (
               <Text key={d} style={{ width: tam, textAlign: 'center', fontSize: horizontal ? 12.5 : 11, color: colors.textSub }}>
@@ -8306,7 +8207,7 @@ function CalendarioScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
-            <View style={{ width: '95%', maxWidth: horizontal ? 1400 : tabletVertical ? 900 : 600, flex: 1 }}>
+                        <View {...gestos.panHandlers} style={{ width: '95%', maxWidth: horizontal ? 1400 : tabletVertical ? 900 : 600, flex: 1, touchAction: 'pan-y' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal'))} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -8330,35 +8231,14 @@ function CalendarioScreen({ navigation }) {
             </ScrollView>
             {cuadricula}
           </View>
-                ) : tabletVertical ? (
+                                ) : (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
             {fecha}
             {cuadricula}
             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain, marginTop: 26, marginBottom: 10 }}>{tituloDia}</Text>
             <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingVertical: 6 }}>{listaActividades}</View>
             {botonAgregar ? <View style={{ marginTop: 10 }}>{botonAgregar}</View> : null}
-                    </ScrollView>
-        ) : (
-          <View style={{ flex: 1 }} onLayout={(e) => setAltoZona(e.nativeEvent.layout.height)}>
-            {fecha}
-            {cuadricula}
-            {abierta ? (
-              // Sube desde abajo y solo tapa la cuadrícula si las actividades no caben en el espacio libre
-              <Animated.View style={{ position: 'absolute', left: -4, right: -4, bottom: 10, maxHeight: Math.max(220, altoZona - arribaCuadricula - 4), backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, opacity: subir, transform: [{ translateY: subir.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) }], shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 18 }}>
-                <View style={{ width: 44, height: 5, borderRadius: 3, backgroundColor: colors.cardBorder, alignSelf: 'center', marginBottom: 10 }} />
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                  <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: colors.textMain }}>{tituloDia}</Text>
-                  <TouchableOpacity onPress={() => setAbierta(false)} accessibilityLabel="Cerrar" style={{ padding: 6 }}>
-                    <Feather name="x" size={20} color={colors.textSub} />
-                  </TouchableOpacity>
-                </View>
-                <ScrollView style={{ flexGrow: 0, flexShrink: 1 }}>
-                  {listaActividades}
-                  {botonAgregar}
-                </ScrollView>
-              </Animated.View>
-            ) : null}
-          </View>
+       </ScrollView>
         )}
       </View>
       {editando ? <ModalActividad actividad={editando === 'nueva' ? null : editando} fechaInicial={sel} isDark={isDark} onCerrar={() => setEditando(null)} onGuardado={alGuardar} /> : null}
