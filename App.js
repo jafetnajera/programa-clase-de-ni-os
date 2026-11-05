@@ -27,8 +27,8 @@ let encargadoGlobal = []; // áreas que administra: 'ninos', 'anexo', 'peticione
 let avisosApagadosGlobal = []; // áreas que el admin general silenció
 // ¿Puede administrar esta área? El administrador general puede todo
 const puedeArea = (area) => rolUsuarioActivoGlobal === 'administrador' || (encargadoGlobal || []).includes(area);
-// ¿Ve la opción «Administración»? (por ahora solo hay sección para el encargado de clases de niños)
-const puedeAdministrar = () => puedeArea('ninos');
+// ¿Ve la opción «Administración»? Admin general, encargado de clases de niños o de peticiones
+const puedeAdministrar = () => puedeArea('ninos') || puedeArea('peticiones');
 // ¿Le llegan los avisos de esta área? Admin general: si no la apagó. Encargado: siempre los de su área
 const recibeAvisosArea = (area) => (rolUsuarioActivoGlobal === 'administrador' && !(avisosApagadosGlobal || []).includes(area)) || (encargadoGlobal || []).includes(area);
 // Guarda en memoria los datos de acceso de quien inició sesión
@@ -329,7 +329,8 @@ const linking = {
       ResumenAsistencia: 'resumen-asistencia',
       ResumenCena: 'resumen-cena',
       ResumenClases: 'resumen-clases',
-      ResumenPredicaciones: 'resumen-predicaciones',
+            ResumenPredicaciones: 'resumen-predicaciones',
+      ResumenPeticiones: 'resumen-peticiones',
       Calendario: 'calendario',
       Peticiones: 'peticiones',
     },
@@ -1225,8 +1226,14 @@ const descargarTablaCSV = (nombreArchivo, encabezados, filas) => {
   enlace.download = nombreArchivo;
   document.body.appendChild(enlace);
   enlace.click();
-  document.body.removeChild(enlace);
+    document.body.removeChild(enlace);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+// Fecha y hora corta: "jue 5 nov · 5:23 pm"
+const fechaHoraCorta = (iso) => {
+  const d = new Date(iso);
+  return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()} · ${horaBonita(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`)}`;
 };
 
 // Tarjeta de un usuario en Administración: nombre arriba y, abajo, usuario, PIN y botones chicos
@@ -1461,10 +1468,14 @@ const obtenerNotificaciones = async () => {
       const faltan = 7 - new Set((turnosCena || []).filter((t) => t.fecha === domingoCena && t.estado === 'confirmado').map((t) => t.posicion)).size;
             if (faltan > 0) items.unshift({ clave: `cena-faltan:${domingoCena}:${faltan}`, accion: true, destino: { pantalla: 'Cena' }, mensaje: `Faltan ${faltan} lugar(es) para la Cena del Señor`, detalle: 'Toca para asignarlos' });
     }
-    // ---- PETICIONES: las que faltan por orar (admin con el aviso encendido, o encargado de peticiones) ----
+        // ---- PETICIONES: por aprobar y por orar (admin con el aviso encendido, o encargado de peticiones) ----
     if (recibeAvisosArea('peticiones')) {
-      const { count } = await supabase.from('peticiones_oracion').select('id', { count: 'exact', head: true }).eq('estado', 'Pendiente');
-      if (count > 0) items.unshift({ clave: `pet-pend:${count}`, accion: false, abierta: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas' } }, mensaje: count === 1 ? 'Hay 1 petición de oración por orar' : `Hay ${count} peticiones de oración por orar`, detalle: 'Toca para verlas' });
+      const [{ count: porAprobar }, { count: porOrar }] = await Promise.all([
+        supabase.from('peticiones_oracion').select('id', { count: 'exact', head: true }).eq('visibilidad', 'publica').eq('publicacion', 'Por aprobar'),
+        supabase.from('peticiones_oracion').select('id', { count: 'exact', head: true }).eq('estado', 'Pendiente').or('visibilidad.eq.encargado,publicacion.eq.Publicada'),
+      ]);
+      if (porOrar > 0) items.unshift({ clave: `pet-pend:${porOrar}`, accion: false, abierta: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas', filtro: 'orar' } }, mensaje: porOrar === 1 ? 'Hay 1 petición de oración por orar' : `Hay ${porOrar} peticiones de oración por orar`, detalle: 'Toca para verlas' });
+      if (porAprobar > 0) items.unshift({ clave: `pet-aprobar:${porAprobar}`, accion: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas', filtro: 'aprobar' } }, mensaje: porAprobar === 1 ? 'Hay 1 petición de oración por aprobar' : `Hay ${porAprobar} peticiones de oración por aprobar`, detalle: 'Toca para revisarlas' });
     }
     // ---- Área de cada aviso, para su etiqueta de color ----
     const solPorId = {};
@@ -1962,7 +1973,8 @@ const TarjetaLista = ({ icono, numero, titulo, subtitulo, detalle, asignado, eti
 const SECCIONES_ADMIN = {
   usuarios: { titulo: 'Usuarios', subtitulo: 'Altas, cambios y administradores', categoria: 'Usuarios', icono: 'users' },
   predicaciones: { titulo: 'Predicaciones', subtitulo: 'Subir y corregir el rol', categoria: 'Predicaciones', icono: 'calendar' },
-  clases: { titulo: 'Clases de niños', subtitulo: 'Clases, asistencia y coritos', categoria: 'Clases de niños', icono: 'smile' },
+    clases: { titulo: 'Clases de niños', subtitulo: 'Clases, asistencia y coritos', categoria: 'Clases de niños', icono: 'smile' },
+  peticiones: { titulo: 'Peticiones', subtitulo: 'Resumen de peticiones de oración', categoria: 'Petición', icono: 'heart' },
 };
 
 // Opción plegable del panel de administración: se abre al tocarla y se cierra al tocarla otra vez
@@ -3665,7 +3677,7 @@ function MenuPrincipalScreen({ navigation }) {
   const [avisosPush, setAvisosPush] = useState(estadoAvisos());
   const columnas = useColumnas();
   const esTablet = columnas >= 2;
-  const tarjetas = [tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Petición de oración', categoria: 'Petición', onPress: () => navigation.navigate('Peticiones') }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
+  const tarjetas = [tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Peticiones de oración', categoria: 'Petición', onPress: () => navigation.navigate('Peticiones') }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -6135,7 +6147,8 @@ function TablonScreen({ navigation, route }) {
                       <Text style={[styles.topicTitle, { color: colors.textMain }]}>{nombreBonito(solicitud.maestro_solicitante)} pide apoyo</Text>
                       <Text style={[styles.topicSubtitle, { color: theme.textDark, fontWeight: 'bold' }]}>Grupo: {solicitud.grupo_clase}</Text>
                       <Text style={[styles.topicSubtitle, { color: colors.textSub }]}>{solicitud.mes_anio}</Text>
-                      <Text style={[styles.topicSubtitle, { color: colors.textMain }]}>{solicitud.titulo_tema}</Text>
+                                            <Text style={[styles.topicSubtitle, { color: colors.textMain }]}>{solicitud.titulo_tema}</Text>
+                      {solicitud.creado_en ? <Text style={[styles.topicSubtitle, { color: colors.textSub, fontSize: 12.5, marginTop: 4 }]}>Enviada: {fechaHoraCorta(solicitud.creado_en)}</Text> : null}
                       {solicitud.maestro_destino && (
                         <Text style={[styles.topicSubtitle, { color: colors.textSub, fontStyle: 'italic' }]}>
                           Para: {nombreBonito(solicitud.maestro_destino)}
@@ -6254,7 +6267,7 @@ function AdminScreen({ navigation, route }) {
     // Sin "seccion" se ven las tarjetas; con "seccion" se abre esa categoría con sus opciones plegadas
   // El admin general ve todas; el encargado de niños solo «Clases de niños» y entra directo
   const esAdminGeneral = rolUsuarioActivoGlobal === 'administrador';
-  const seccionesPermitidas = Object.keys(SECCIONES_ADMIN).filter((k) => esAdminGeneral || (k === 'clases' && puedeArea('ninos')));
+  const seccionesPermitidas = Object.keys(SECCIONES_ADMIN).filter((k) => esAdminGeneral || (k === 'clases' && puedeArea('ninos')) || (k === 'peticiones' && puedeArea('peticiones')));
   const seccionPedida = route?.params?.seccion;
   const seccion = seccionesPermitidas.includes(seccionPedida) ? seccionPedida : seccionesPermitidas.length === 1 ? seccionesPermitidas[0] : null;
   const columnasAdmin = useColumnas();
@@ -7196,6 +7209,10 @@ function AdminScreen({ navigation, route }) {
           </>
         )}
 
+                {seccion === 'peticiones' && (
+          <OpcionAdmin {...opc('resumenPeticiones')} icono="bar-chart-2" titulo="Resumen de peticiones" subtitulo="Recibidas, aprobadas y oradas, con descarga en Excel" onPress={() => navigation.navigate('ResumenPeticiones')} />
+        )}
+
         {seccion === 'clases' && (
           <>
                         {esAdminGeneral && (
@@ -7676,8 +7693,8 @@ const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado 
 };
 
 // ==========================================
-// PANTALLA: PETICIÓN DE ORACIÓN
-// Cualquiera envía; solo los administradores ven las peticiones recibidas
+// PANTALLA: PETICIONES DE ORACIÓN
+// Cualquiera envía; todos ven las publicadas (2 semanas); el encargado de peticiones las aprueba y las marca como oradas
 // ==========================================
 const CATEGORIAS_PETICION = [
   { valor: 'Acción de gracias', icono: 'sun', claro: { fondo: '#F3D9A4', texto: '#6B4A0E' }, oscuro: { fondo: '#C9A55E', texto: '#2E2106' } },
@@ -7687,6 +7704,15 @@ const CATEGORIAS_PETICION = [
 ];
 const LARGO_PETICION = 600;
 
+// Palabras que activan el recordatorio (no bloquean): bienes materiales y mascotas
+const PALABRAS_NO_ADMITIDAS = /\b(mascotas?|perr[oa]s?|perrit[oa]s?|gat[oa]s?|gatit[oa]s?|animal(es|ito|itos)?|casas?|departamentos?|terrenos?|carros?|coches?|autos?|camionetas?|motos?|dinero|creditos?|prestamos?|negocios?|ventas?|vender|comprar|loteria)\b/;
+const tocaNoAdmitido = (t) => PALABRAS_NO_ADMITIDAS.test(sinAcentos(t).toLowerCase());
+const DIAS_PUBLICADA = 14;
+const MOTIVOS_NO_PUBLICAR = ['Bienes materiales o mascotas', 'Otro motivo'];
+// Fecha hasta la que se ve una petición publicada (2 semanas desde que se aprobó)
+const publicadaHasta = (p) => (p.publicada_en ? new Date(new Date(p.publicada_en).getTime() + DIAS_PUBLICADA * 86400000) : null);
+const sigueVisible = (p) => p.visibilidad !== 'encargado' && p.publicacion === 'Publicada' && publicadaHasta(p) > new Date();
+
 function PeticionesScreen({ navigation, route }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
@@ -7695,31 +7721,33 @@ function PeticionesScreen({ navigation, route }) {
   const yo = (usuarioActivoGlobal || '').toLowerCase();
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Petición'];
   const tono = (c) => (isDark ? c.oscuro : c.claro);
-    const [vista, setVista] = useState(esAdmin && route?.params?.vista === 'recibidas' ? 'recibidas' : 'enviar');
+  const [vista, setVista] = useState(esAdmin && route?.params?.vista === 'recibidas' ? 'recibidas' : route?.params?.vista === 'enviar' ? 'enviar' : 'todas');
   const [categoria, setCategoria] = useState(null);
+  const [visibilidad, setVisibilidad] = useState('publica');
   const [texto, setTexto] = useState('');
   const [editando, setEditando] = useState(null); // la petición propia que se está editando
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [peticiones, setPeticiones] = useState(null);
-  const [filtroEstado, setFiltroEstado] = useState('Pendiente');
+  const [filtroEstado, setFiltroEstado] = useState(route?.params?.filtro === 'orar' ? 'orar' : 'aprobar');
   const [filtro, setFiltro] = useState('Todas');
-  const [mapaNombres, setMapaNombres] = useState({});
+  const [rechazando, setRechazando] = useState(null); // petición que el encargado no va a publicar
+  const [motivo, setMotivo] = useState(MOTIVOS_NO_PUBLICAR[0]);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '' });
   const cerrarAlerta = () => setAlerta((a) => ({ ...a, visible: false }));
 
-  // El admin recibe todas; cada hermano solo las suyas (lo controla la base de datos)
+  // La base de datos decide qué llega: las públicas vigentes y las propias; el encargado y el admin, todas
   const cargar = async () => {
-    const { data, error } = await supabase.from('peticiones_oracion').select('id, creado_en, nombre_usuario, categoria, texto, estado, orada_en, editado_en').order('creado_en', { ascending: false }).limit(300);
+    const { data, error } = await supabase.from('peticiones_oracion').select('id, creado_en, nombre_usuario, categoria, texto, estado, orada_en, editado_en, visibilidad, publicacion, publicada_en, motivo').order('creado_en', { ascending: false }).limit(500);
     setPeticiones(error ? [] : data || []);
   };
   useEffect(() => {
     cargar();
-    if (esAdmin) cargarMapaNombres().then(setMapaNombres);
   }, []);
 
   const limpiar = () => {
     setCategoria(null);
+    setVisibilidad('publica');
     setTexto('');
     setEditando(null);
     setMensaje('');
@@ -7730,20 +7758,30 @@ function PeticionesScreen({ navigation, route }) {
     setMensaje('');
     setEnviando(true);
     const { error } = editando
-      ? await supabase.from('peticiones_oracion').update({ categoria, texto: texto.trim() }).eq('id', editando.id)
-      : await supabase.from('peticiones_oracion').insert([{ nombre_usuario: usuarioActivoGlobal, categoria, texto: texto.trim() }]);
+      ? await supabase.from('peticiones_oracion').update({ categoria, texto: texto.trim(), visibilidad }).eq('id', editando.id)
+      : await supabase.from('peticiones_oracion').insert([{ nombre_usuario: usuarioActivoGlobal, categoria, texto: texto.trim(), visibilidad }]);
     setEnviando(false);
     if (error) return setMensaje('No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
     const eraEdicion = !!editando;
+    const publica = visibilidad === 'publica';
     limpiar();
-    setAlerta({ visible: true, titulo: eraEdicion ? 'Petición actualizada' : 'Petición enviada', mensaje: eraEdicion ? 'Guardamos tus cambios.' : 'Gracias por compartirla. Estaremos orando por ti.', onConfirmar: cerrarAlerta, isDark, themeColor: paleta.fondo });
+    setAlerta({
+      visible: true,
+      titulo: eraEdicion ? 'Petición actualizada' : 'Petición enviada',
+      mensaje: publica ? 'Gracias por compartirla. Se publicará cuando el encargado de peticiones la apruebe.' : 'Gracias por compartirla. Solo el encargado de peticiones la verá.',
+      onConfirmar: cerrarAlerta,
+      isDark,
+      themeColor: paleta.fondo,
+    });
     cargar();
   };
   const editar = (p) => {
     setEditando(p);
     setCategoria(p.categoria);
+    setVisibilidad(p.visibilidad || 'publica');
     setTexto(p.texto);
     setMensaje('');
+    setVista('enviar');
   };
   const borrar = (p) =>
     setAlerta({
@@ -7767,18 +7805,34 @@ function PeticionesScreen({ navigation, route }) {
     const { error } = await supabase.from('peticiones_oracion').update({ estado: orada ? 'Orada' : 'Pendiente' }).eq('id', p.id);
     if (error) cargar();
   };
-
-  const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u);
-  const fechaPeticion = (iso) => {
-    const d = new Date(iso);
-    return `${DIAS_SEMANA_CORTOS[d.getDay()]} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()} ${d.getFullYear()} · ${horaBonita(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`)}`;
+  const aprobar = async (p) => {
+    setPeticiones((lista) => lista.map((x) => (x.id === p.id ? { ...x, publicacion: 'Publicada', publicada_en: new Date().toISOString(), motivo: null } : x)));
+    const { error } = await supabase.from('peticiones_oracion').update({ publicacion: 'Publicada' }).eq('id', p.id);
+    if (error) cargar();
   };
-  const mias = (peticiones || []).filter((p) => (p.nombre_usuario || '').toLowerCase() === yo);
-  const recibidas = esAdmin ? peticiones || [] : [];
-  const pendientes = recibidas.filter((p) => p.estado !== 'Orada').length;
-  const lista = recibidas.filter((p) => (filtroEstado === 'Todas' || (filtroEstado === 'Orada' ? p.estado === 'Orada' : p.estado !== 'Orada')) && (filtro === 'Todas' || p.categoria === filtro));
+  const noPublicar = async () => {
+    const p = rechazando;
+    setRechazando(null);
+    setPeticiones((lista) => lista.map((x) => (x.id === p.id ? { ...x, publicacion: 'No publicada', motivo } : x)));
+    const { error } = await supabase.from('peticiones_oracion').update({ publicacion: 'No publicada', motivo }).eq('id', p.id);
+    if (error) cargar();
+  };
+
+  const nombreDe = (u) => ponerMayusculas(u || '');
+  const fechaPeticion = fechaHoraCorta;
+  const diaCorto = (d) => `${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()}`;
+  const todas = peticiones || [];
+  const mias = todas.filter((p) => (p.nombre_usuario || '').toLowerCase() === yo);
+  const publicas = todas.filter(sigueVisible).sort((a, b) => (a.publicada_en < b.publicada_en ? 1 : -1));
+  const recibidas = esAdmin ? todas : [];
+  const porAprobar = recibidas.filter((p) => p.visibilidad !== 'encargado' && p.publicacion === 'Por aprobar');
+  const porOrar = recibidas.filter((p) => p.estado !== 'Orada' && (p.visibilidad === 'encargado' || p.publicacion === 'Publicada'));
+  const oradas = recibidas.filter((p) => p.estado === 'Orada');
+  const noPublicadas = recibidas.filter((p) => p.publicacion === 'No publicada');
+  const grupos = { aprobar: porAprobar, orar: porOrar, oradas, no: noPublicadas, todas: recibidas };
+  const lista = (grupos[filtroEstado] || recibidas).filter((p) => filtro === 'Todas' || p.categoria === filtro);
   const ancha = columnas >= 2;
-  const base = columnas >= 3 ? '31%' : columnas === 2 ? '45%' : '100%';
+  const base = columnas >= 3 ? '32.2%' : columnas === 2 ? '48.9%' : '100%';
   const etiquetaCategoria = (p) => {
     const c = CATEGORIAS_PETICION.find((x) => x.valor === p.categoria) || CATEGORIAS_PETICION[3];
     const t = tono(c);
@@ -7786,6 +7840,28 @@ function PeticionesScreen({ navigation, route }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: t.fondo, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
         <Feather name={c.icono} size={12} color={t.texto} />
         <Text style={{ fontSize: 12, fontWeight: '800', color: t.texto }}>{p.categoria}</Text>
+      </View>
+    );
+  };
+  // Estado de una petición (para el dueño y para el encargado)
+  const COLORES_ESTADO = {
+    aprobar: isDark ? { fondo: '#C9A55E', texto: '#2E2106' } : { fondo: '#F3D9A4', texto: '#6B4A0E' },
+    publicada: isDark ? { fondo: '#7FB3A6', texto: '#10302A' } : { fondo: '#BFDCD3', texto: '#1F5546' },
+    no: isDark ? { fondo: '#C98A80', texto: '#3A1410' } : { fondo: '#F0C6BE', texto: '#6E2A20' },
+    gris: isDark ? { fondo: '#A39E95', texto: '#24221E' } : { fondo: '#DCD8D1', texto: '#46433D' },
+  };
+  const estadoDe = (p) => {
+    if (p.visibilidad === 'encargado') return { icono: 'lock', texto: 'Solo el encargado', c: COLORES_ESTADO.gris };
+    if (p.publicacion === 'No publicada') return { icono: 'x-circle', texto: 'No se publicó', c: COLORES_ESTADO.no };
+    if (p.publicacion === 'Publicada') return sigueVisible(p) ? { icono: 'eye', texto: `Publicada hasta el ${diaCorto(publicadaHasta(p))}`, c: COLORES_ESTADO.publicada } : { icono: 'eye-off', texto: 'Ya no se muestra', c: COLORES_ESTADO.gris };
+    return { icono: 'clock', texto: 'Por aprobar', c: COLORES_ESTADO.aprobar };
+  };
+  const pastillaEstado = (p) => {
+    const e = estadoDe(p);
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: e.c.fondo, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+        <Feather name={e.icono} size={11} color={e.c.texto} />
+        <Text style={{ fontSize: 11.5, fontWeight: '700', color: e.c.texto }}>{e.texto}</Text>
       </View>
     );
   };
@@ -7801,11 +7877,33 @@ function PeticionesScreen({ navigation, route }) {
       <Text style={{ fontSize: 12.5, fontWeight: '700', color: isDark ? '#9FD3BF' : '#2F6E5E' }}>Ya oramos por esta petición</Text>
     </View>
   );
+  const tarjeta = (p, contenido) => (
+    <View key={p.id} style={{ width: base, minWidth: 0, backgroundColor: colors.cardBg, borderRadius: 24, borderWidth: 1, borderColor: colors.cardBorder, padding: 16 }}>
+      {contenido}
+    </View>
+  );
+  const cuadricula = (hijos) => <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>{hijos}</View>;
+  const vacio = (t) => <Text style={{ fontSize: 14, color: colors.textSub, paddingVertical: 24, textAlign: 'center' }}>{t}</Text>;
 
+  // ---------- Enviar ----------
+  const opcionVisibilidad = (valor, icono, titulo, detalle) => {
+    const activa = visibilidad === valor;
+    return (
+      <TouchableOpacity key={valor} onPress={() => setVisibilidad(valor)} style={{ flexGrow: 1, flexBasis: '45%', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 2, borderColor: activa ? paleta.texto : 'transparent', backgroundColor: activa ? paleta.fondo : colors.background }}>
+        <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: activa ? 'rgba(255,255,255,0.55)' : paleta.fondo }}>
+          <Feather name={icono} size={17} color={paleta.texto} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14.5, fontWeight: '700', color: activa ? paleta.texto : colors.textMain }}>{titulo}</Text>
+          <Text style={{ fontSize: 12, color: activa ? paleta.texto : colors.textSub, marginTop: 2 }}>{detalle}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
   const formulario = (
     <View style={{ backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: 1, borderColor: editando ? paleta.fondo : colors.cardBorder, padding: 20 }}>
       <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textMain }}>{editando ? 'Editar tu petición' : '¿Por qué quieres que oremos?'}</Text>
-      <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 4 }}>{editando ? 'Cambia lo que necesites y guarda.' : 'Elige una categoría y cuéntanos tu petición.'}</Text>
+      <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 4 }}>{editando ? 'Cambia lo que necesites y vuelve a enviarla.' : 'Elige una categoría y cuéntanos tu petición.'}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
         {CATEGORIAS_PETICION.map((c) => {
           const activa = categoria === c.valor;
@@ -7836,14 +7934,27 @@ function PeticionesScreen({ navigation, route }) {
       <Text style={{ fontSize: 11.5, color: colors.textSub, textAlign: 'right', marginTop: 4 }}>
         {texto.length}/{LARGO_PETICION}
       </Text>
-      {mensaje ? <Text style={{ fontSize: 13, color: '#E0806A', marginTop: 6 }}>{mensaje}</Text> : null}
-      <TouchableOpacity onPress={enviar} disabled={enviando} style={{ marginTop: 12, height: 52, borderRadius: 999, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: categoria && texto.trim() ? 1 : 0.55 }}>
+      {tocaNoAdmitido(texto) ? (
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', backgroundColor: COLORES_ESTADO.aprobar.fondo, borderRadius: 18, padding: 12, marginTop: 8 }}>
+          <Feather name="info" size={16} color={COLORES_ESTADO.aprobar.texto} style={{ marginTop: 1 }} />
+          <Text style={{ flex: 1, fontSize: 13, lineHeight: 18, color: COLORES_ESTADO.aprobar.texto }}>
+            <Text style={{ fontWeight: '800' }}>Recuerda: </Text>no se publican peticiones por bienes materiales o mascotas.
+          </Text>
+        </View>
+      ) : null}
+      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, marginTop: 18, marginBottom: 8 }}>¿Quién puede verla?</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        {opcionVisibilidad('publica', 'users', 'Todos', 'Cuando el encargado la apruebe')}
+        {opcionVisibilidad('encargado', 'lock', 'Solo el encargado', 'Nadie más la verá')}
+      </View>
+      {mensaje ? <Text style={{ fontSize: 13, color: '#E0806A', marginTop: 10 }}>{mensaje}</Text> : null}
+      <TouchableOpacity onPress={enviar} disabled={enviando} style={{ marginTop: 16, height: 52, borderRadius: 999, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: categoria && texto.trim() ? 1 : 0.55 }}>
         {enviando ? (
           <ActivityIndicator color={paleta.texto} />
         ) : (
           <>
             <Feather name={editando ? 'check' : 'send'} size={17} color={paleta.texto} />
-            <Text style={{ fontSize: 15.5, fontWeight: '800', color: paleta.texto }}>{editando ? 'Guardar cambios' : 'Enviar petición'}</Text>
+            <Text style={{ fontSize: 15.5, fontWeight: '800', color: paleta.texto }}>{editando ? 'Volver a enviar' : 'Enviar petición'}</Text>
           </>
         )}
       </TouchableOpacity>
@@ -7852,9 +7963,9 @@ function PeticionesScreen({ navigation, route }) {
           <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSub }}>Cancelar edición</Text>
         </TouchableOpacity>
       ) : null}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, justifyContent: 'center' }}>
-        <Feather name="lock" size={12} color={colors.textSub} />
-        <Text style={{ fontSize: 12, color: colors.textSub }}>Solo el encargado de peticiones puede verla.</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, justifyContent: 'center', paddingHorizontal: 10 }}>
+        <Feather name={visibilidad === 'publica' ? 'eye' : 'lock'} size={12} color={colors.textSub} />
+        <Text style={{ fontSize: 12, color: colors.textSub, textAlign: 'center' }}>{visibilidad === 'publica' ? `Se verá ${DIAS_PUBLICADA / 7} semanas con tu nombre de usuario.` : 'Solo el encargado de peticiones puede verla.'}</Text>
       </View>
     </View>
   );
@@ -7868,11 +7979,13 @@ function PeticionesScreen({ navigation, route }) {
             <View key={p.id} style={{ backgroundColor: colors.cardBg, borderRadius: 24, borderWidth: 1, borderColor: colors.cardBorder, padding: 16, opacity: editando && editando.id === p.id ? 0.5 : 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {etiquetaCategoria(p)}
-                <Text style={{ flex: 1, textAlign: 'right', fontSize: 12, color: colors.textSub }}>{fechaPeticion(p.creado_en)}</Text>
+                {pastillaEstado(p)}
               </View>
               <Text style={{ fontSize: 14.5, lineHeight: 21, color: colors.textMain, marginTop: 10 }}>{p.texto}</Text>
+              {p.publicacion === 'No publicada' && p.visibilidad !== 'encargado' ? <Text style={{ fontSize: 12.5, lineHeight: 18, color: COLORES_ESTADO.no.texto, backgroundColor: COLORES_ESTADO.no.fondo, borderRadius: 14, padding: 10, marginTop: 10, overflow: 'hidden' }}>Motivo: {p.motivo || 'Otro motivo'}. Puedes editarla y volver a enviarla.</Text> : null}
               {p.estado === 'Orada' ? sello : null}
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                <Text style={{ flex: 1, fontSize: 12, color: colors.textSub }}>{fechaPeticion(p.creado_en)}</Text>
                 {botonChico('trash-2', 'Borrar', () => borrar(p))}
                 {botonChico('edit-2', 'Editar', () => editar(p))}
               </View>
@@ -7882,13 +7995,42 @@ function PeticionesScreen({ navigation, route }) {
       </View>
     );
 
+  // ---------- Peticiones (todos) ----------
+  const todasVista = (
+    <View>
+      <Text style={{ fontSize: 13, color: colors.textSub, marginBottom: 12, marginLeft: 4 }}>Peticiones de las últimas {DIAS_PUBLICADA / 7} semanas. Oremos unos por otros.</Text>
+      {peticiones === null
+        ? <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+        : publicas.length === 0
+          ? vacio('No hay peticiones publicadas por ahora.')
+          : cuadricula(
+              publicas.map((p) =>
+                tarjeta(
+                  p,
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {etiquetaCategoria(p)}
+                      <Text style={{ flex: 1, textAlign: 'right', fontSize: 12, color: colors.textSub }}>{fechaPeticion(p.publicada_en)}</Text>
+                    </View>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain, marginTop: 12 }}>{nombreDe(p.nombre_usuario)}</Text>
+                    <Text style={{ fontSize: 14.5, lineHeight: 21, color: colors.textMain, marginTop: 6 }}>{p.texto}</Text>
+                  </>,
+                ),
+              ),
+            )}
+    </View>
+  );
+
+  // ---------- Recibidas (encargado y admin) ----------
   const recibidasVista = (
     <View>
       <PildorasResumen
         opciones={[
-          { valor: 'Pendiente', texto: `Pendientes (${pendientes})` },
-          { valor: 'Orada', texto: `Oradas (${recibidas.length - pendientes})` },
-          { valor: 'Todas', texto: `Todas (${recibidas.length})` },
+          { valor: 'aprobar', texto: `Por aprobar (${porAprobar.length})` },
+          { valor: 'orar', texto: `Por orar (${porOrar.length})` },
+          { valor: 'oradas', texto: `Oradas (${oradas.length})` },
+          { valor: 'no', texto: `No publicadas (${noPublicadas.length})` },
+          { valor: 'todas', texto: `Todas (${recibidas.length})` },
         ]}
         valor={filtroEstado}
         onCambiar={setFiltroEstado}
@@ -7896,70 +8038,221 @@ function PeticionesScreen({ navigation, route }) {
         isDark={isDark}
       />
       <PildorasResumen opciones={['Todas', ...CATEGORIAS_PETICION.map((c) => c.valor)].map((v) => ({ valor: v, texto: v === 'Todas' ? 'Todas las categorías' : v }))} valor={filtro} onCambiar={setFiltro} categoria="Petición" isDark={isDark} />
-      {peticiones === null ? (
-        <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
-      ) : lista.length === 0 ? (
-        <Text style={{ fontSize: 14, color: colors.textSub, paddingVertical: 20, textAlign: 'center' }}>No hay peticiones aquí.</Text>
-      ) : (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-          {lista.map((p) => {
-            const orada = p.estado === 'Orada';
-            return (
-              <View key={p.id} style={{ flexGrow: 1, flexBasis: base, minWidth: 0, backgroundColor: colors.cardBg, borderRadius: 24, borderWidth: 1, borderColor: colors.cardBorder, padding: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  {etiquetaCategoria(p)}
-                  <Text style={{ flex: 1, textAlign: 'right', fontSize: 12, color: colors.textSub }}>{fechaPeticion(p.creado_en)}</Text>
-                </View>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain, marginTop: 12 }}>{nombreDe(p.nombre_usuario)}</Text>
-                <Text style={{ fontSize: 14.5, lineHeight: 21, color: colors.textMain, marginTop: 6 }}>{p.texto}</Text>
-                {p.editado_en ? <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 6, fontStyle: 'italic' }}>Editada {fechaPeticion(p.editado_en)}</Text> : null}
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>{orada ? botonChico('rotate-ccw', 'Orada · Desmarcar', () => marcar(p)) : botonChico('check', 'Marcar como orada', () => marcar(p), true)}</View>
-              </View>
-            );
-          })}
-        </View>
-      )}
+      {peticiones === null
+        ? <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+        : lista.length === 0
+          ? vacio(filtroEstado === 'aprobar' ? 'No hay peticiones por aprobar.' : 'No hay peticiones aquí.')
+          : cuadricula(
+              lista.map((p) => {
+                const pendiente = p.visibilidad !== 'encargado' && p.publicacion === 'Por aprobar';
+                const noPub = p.publicacion === 'No publicada' && p.visibilidad !== 'encargado';
+                return tarjeta(
+                  p,
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {etiquetaCategoria(p)}
+                      {pastillaEstado(p)}
+                    </View>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain, marginTop: 12 }}>{nombreDe(p.nombre_usuario)}</Text>
+                    <Text style={{ fontSize: 14.5, lineHeight: 21, color: colors.textMain, marginTop: 6 }}>{p.texto}</Text>
+                    {p.editado_en ? <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 6, fontStyle: 'italic' }}>Editada {fechaPeticion(p.editado_en)}</Text> : null}
+                    {noPub ? <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 8 }}>Motivo: {p.motivo || 'Otro motivo'}</Text> : null}
+                    <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 10 }}>{fechaPeticion(p.creado_en)}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                      {pendiente ? (
+                        <>
+                          {botonChico('x', 'No publicar', () => {
+                            setMotivo(MOTIVOS_NO_PUBLICAR[0]);
+                            setRechazando(p);
+                          })}
+                          {botonChico('check', 'Aprobar', () => aprobar(p), true)}
+                        </>
+                      ) : noPub ? null : p.estado === 'Orada' ? (
+                        botonChico('rotate-ccw', 'Orada · Desmarcar', () => marcar(p))
+                      ) : (
+                        botonChico('check', 'Marcar como orada', () => marcar(p), true)
+                      )}
+                    </View>
+                  </>,
+                );
+              }),
+            )}
     </View>
   );
 
+  const pestanas = [
+    { valor: 'todas', texto: 'Peticiones' },
+    { valor: 'enviar', texto: 'Enviar' },
+    ...(esAdmin ? [{ valor: 'recibidas', texto: `Recibidas${peticiones && porAprobar.length ? ` (${porAprobar.length})` : ''}` }] : []),
+  ];
+  const vistaAncha = ancha && vista !== 'enviar';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
-      <View style={{ width: '95%', maxWidth: ancha && esAdmin && vista === 'recibidas' ? 1100 : 640, flex: 1 }}>
+      <View style={{ width: '95%', maxWidth: vistaAncha ? 1100 : 640, flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal'))} style={{ padding: 8, marginLeft: -8, marginRight: 4 }} accessibilityLabel="Regresar">
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
           <View style={[styles.headerSoloText, { flex: 1 }]}>
-            <Text style={[styles.titleMini, { color: colors.textMain }]}>PETICIÓN DE ORACIÓN</Text>
+            <Text style={[styles.titleMini, { color: colors.textMain }]}>PETICIONES DE ORACIÓN</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
           </TouchableOpacity>
         </View>
-        {esAdmin ? (
-          <View style={{ flexDirection: 'row', backgroundColor: colors.cardBg, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder, padding: 4, marginVertical: 10, alignSelf: 'center', width: '100%', maxWidth: 420 }}>
-            {[
-              { valor: 'enviar', texto: 'Enviar' },
-              { valor: 'recibidas', texto: `Recibidas${peticiones ? ` (${pendientes})` : ''}` },
-            ].map((o) => (
-              <TouchableOpacity key={o.valor} onPress={() => setVista(o.valor)} style={{ flex: 1, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: vista === o.valor ? paleta.fondo : 'transparent' }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: vista === o.valor ? paleta.texto : colors.textSub }}>{o.texto}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
-        <ScrollView contentContainerStyle={{ paddingTop: esAdmin ? 4 : 12, paddingBottom: 30 }} keyboardShouldPersistTaps="handled">
-          {esAdmin && vista === 'recibidas' ? (
+        <View style={{ flexDirection: 'row', backgroundColor: colors.cardBg, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder, padding: 4, marginVertical: 10, alignSelf: 'center', width: '100%', maxWidth: esAdmin ? 520 : 420 }}>
+          {pestanas.map((o) => (
+            <TouchableOpacity key={o.valor} onPress={() => setVista(o.valor)} style={{ flex: 1, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: vista === o.valor ? paleta.fondo : 'transparent' }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: vista === o.valor ? paleta.texto : colors.textSub }}>{o.texto}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <ScrollView contentContainerStyle={{ paddingTop: 4, paddingBottom: 30 }} keyboardShouldPersistTaps="handled">
+          {vista === 'recibidas' && esAdmin ? (
             recibidasVista
-          ) : (
+          ) : vista === 'enviar' ? (
             <>
               {formulario}
               {misPeticiones}
             </>
+          ) : (
+            todasVista
           )}
         </ScrollView>
       </View>
+      <Modal visible={!!rechazando} transparent animationType="fade" onRequestClose={() => setRechazando(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{ width: '100%', maxWidth: 420, backgroundColor: colors.cardBg, borderRadius: 28, padding: 22 }}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textMain }}>No publicar</Text>
+            <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 4, marginBottom: 14 }}>{rechazando ? `${nombreDe(rechazando.nombre_usuario)} verá el motivo y podrá editarla para volver a enviarla.` : ''}</Text>
+            {MOTIVOS_NO_PUBLICAR.map((m) => {
+              const activo = motivo === m;
+              return (
+                <TouchableOpacity key={m} onPress={() => setMotivo(m)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 18, borderWidth: 2, borderColor: activo ? paleta.texto : 'transparent', backgroundColor: activo ? paleta.fondo : colors.background, marginBottom: 8 }}>
+                  <Feather name={activo ? 'check-circle' : 'circle'} size={18} color={activo ? paleta.texto : colors.textSub} />
+                  <Text style={{ fontSize: 14.5, fontWeight: '700', color: activo ? paleta.texto : colors.textMain }}>{m}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <TouchableOpacity onPress={() => setRechazando(null)} style={{ flex: 1, height: 48, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textSub }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={noPublicar} style={{ flex: 1, height: 48, borderRadius: 999, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: paleta.texto }}>No publicar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <AlertaPersonalizada {...alerta} />
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// RESUMEN DE PETICIONES (admin y encargado de peticiones)
+// ==========================================
+function ResumenPeticionesScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const permitido = puedeArea('peticiones');
+  const [filas, setFilas] = useState(null);
+  const [error, setError] = useState(false);
+  const [periodo, setPeriodo] = useState('mes');
+  useEffect(() => {
+    if (!permitido) return;
+    traerTodo(() => supabase.from('peticiones_oracion').select('id, creado_en, nombre_usuario, categoria, texto, estado, orada_en, orada_por, editado_en, visibilidad, publicacion, publicada_en, motivo').order('creado_en', { ascending: true }).order('id', { ascending: true }))
+      .then(setFilas)
+      .catch(() => setError(true));
+  }, []);
+  const hoy = fechaISO(new Date());
+  const desde = inicioPeriodo(periodo);
+  const delPeriodo = (filas || []).filter((p) => fechaISO(new Date(p.creado_en)) >= desde);
+  const cuenta = (f) => delPeriodo.filter(f).length;
+  const total = delPeriodo.length;
+  const privadas = cuenta((p) => p.visibilidad === 'encargado');
+  const aprobadas = cuenta((p) => p.visibilidad !== 'encargado' && p.publicacion === 'Publicada');
+  const noPublicadas = cuenta((p) => p.visibilidad !== 'encargado' && p.publicacion === 'No publicada');
+  const porAprobar = cuenta((p) => p.visibilidad !== 'encargado' && p.publicacion === 'Por aprobar');
+  const oradas = cuenta((p) => p.estado === 'Orada');
+  const porCategoria = CATEGORIAS_PETICION.map((c) => ({ ...c, n: cuenta((p) => p.categoria === c.valor) }));
+  const motivos = MOTIVOS_NO_PUBLICAR.map((m) => ({ motivo: m, valor: cuenta((p) => p.publicacion === 'No publicada' && (p.motivo || 'Otro motivo') === m) }));
+  const ahora = new Date();
+  const seisMeses = [5, 4, 3, 2, 1, 0].map((k) => {
+    const d = new Date(ahora.getFullYear(), ahora.getMonth() - k, 1);
+    return { etiqueta: MESES_CORTOS[d.getMonth()], valor: (filas || []).filter((p) => claveMes(new Date(p.creado_en)) === claveMes(d)).length };
+  });
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Petición'];
+  const fila = (etiqueta, valor, color) => (
+    <View key={etiqueta} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 6 }}>
+      <Text style={{ width: 132, fontSize: 13, fontWeight: '600', color: colors.textMain }}>{etiqueta}</Text>
+      <View style={{ flex: 1, height: 12, borderRadius: 99, backgroundColor: colors.background, overflow: 'hidden' }}>
+        <View style={{ width: `${(valor / Math.max(1, total)) * 100}%`, height: '100%', borderRadius: 99, backgroundColor: color }} />
+      </View>
+      <Text style={{ width: 30, textAlign: 'right', fontSize: 13, fontWeight: '700', color: colors.textMain }}>{valor}</Text>
+    </View>
+  );
+  const fechaHora = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${fechaISO(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  const descargar = () =>
+    descargarTablaCSV(
+      `resumen-peticiones_${nombreArchivoPeriodo(periodo)}_${hoy}.csv`,
+      ['Fecha', 'Usuario', 'Categoría', 'Quién la ve', 'Publicación', 'Motivo', 'Publicada el', 'Orada', 'Orada el', 'Petición'],
+      delPeriodo.map((x) => [fechaHora(x.creado_en), x.nombre_usuario, x.categoria, x.visibilidad === 'encargado' ? 'Solo el encargado' : 'Todos', x.visibilidad === 'encargado' ? '' : x.publicacion, x.publicacion === 'No publicada' ? x.motivo || 'Otro motivo' : '', fechaHora(x.publicada_en), x.estado === 'Orada' ? 'Sí' : 'No', fechaHora(x.orada_en), x.texto]),
+    );
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <EncabezadoResumen titulo="Peticiones" subtitulo="Peticiones de oración" categoria="Petición" navigation={navigation} isDark={isDark} columnas={columnas} onDescargar={permitido && filas ? descargar : null} />
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
+        <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, marginTop: 8 }}>
+          {!permitido ? (
+            <SinDatosResumen texto="Esta sección es solo para el encargado de peticiones." isDark={isDark} />
+          ) : (
+            <>
+              <PildorasResumen opciones={PERIODOS_RESUMEN} valor={periodo} onCambiar={setPeriodo} categoria="Petición" isDark={isDark} />
+              {error ? (
+                <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
+              ) : !filas ? (
+                <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                    <DatoResumen valor={total} etiqueta="Recibidas" detalle={`${total - privadas} para todos · ${privadas} solo encargado`} categoria="Petición" isDark={isDark} />
+                    <DatoResumen valor={porAprobar} etiqueta="Por aprobar" detalle={`${aprobadas} aprobadas · ${noPublicadas} no publicadas`} categoria="Calendario" isDark={isDark} />
+                    <DatoResumen valor={oradas} etiqueta="Oradas" detalle={`de ${total} recibidas`} categoria="Clases de niños" isDark={isDark} />
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    <TarjetaResumen titulo="Por categoría" subtitulo="Peticiones recibidas en el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {total === 0 ? <SinDatosResumen texto="Todavía no hay peticiones en este periodo." isDark={isDark} /> : porCategoria.map((c) => fila(c.valor, c.n, (isDark ? c.oscuro : c.claro).fondo))}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Publicación" subtitulo="Las que eligieron «Todos»" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {total - privadas === 0 ? (
+                        <SinDatosResumen texto="No hay peticiones para todos en este periodo." isDark={isDark} />
+                      ) : (
+                        <>
+                          {fila('Aprobadas', aprobadas, isDark ? '#7FB3A6' : '#BFDCD3')}
+                          {fila('Por aprobar', porAprobar, isDark ? '#C9A55E' : '#F3D9A4')}
+                          {fila('No publicadas', noPublicadas, isDark ? '#C98A80' : '#F0C6BE')}
+                          {noPublicadas > 0 ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 8 }}>{motivos.filter((m) => m.valor > 0).map((m) => `${m.motivo}: ${m.valor}`).join(' · ')}</Text> : null}
+                        </>
+                      )}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Por mes" subtitulo="Peticiones recibidas, últimos 6 meses" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <LineaResumen puntos={seisMeses} color={p.fondo} isDark={isDark} />
+                    </TarjetaResumen>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -9440,6 +9733,7 @@ export default function App() {
             <Stack.Screen name="ResumenCena" component={ResumenCenaScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenClases" component={ResumenClasesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenPredicaciones" component={ResumenPredicacionesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ResumenPeticiones" component={ResumenPeticionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Calendario" component={CalendarioScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Peticiones" component={PeticionesScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
