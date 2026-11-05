@@ -590,7 +590,10 @@ const activarAvisos = async () => {
 // Panel de Ajustes: se desliza desde la izquierda y cubre solo una parte de la pantalla
 const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, onAdmin, onAyuda }) => {
   const colors = getColors(isDark);
-  const anim = useRef(new Animated.Value(0)).current;
+    const anim = useRef(new Animated.Value(0)).current;
+  // En horizontal el panel no cabe: se limita al alto de la pantalla y se desliza por dentro
+  const { height: altoPantalla } = useWindowDimensions();
+  const arribaPanel = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 16 : 48;
     const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
   const [encargos, setEncargos] = useState(encargadoGlobal || []);
   const [apagados, setApagados] = useState(avisosApagadosGlobal || []);
@@ -676,7 +679,8 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
       <TouchableOpacity activeOpacity={1} onPress={onCerrar} style={StyleSheet.absoluteFill}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: overlayOpacity }]} />
       </TouchableOpacity>
-      <Animated.View style={{ position: 'absolute', top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 16 : 48, left: 0, width: '72%', maxWidth: 300, backgroundColor: colors.background, borderTopRightRadius: 36, borderBottomRightRadius: 36, overflow: 'hidden', transform: [{ translateX }], paddingTop: 26, paddingBottom: 12, paddingHorizontal: 20 }}>
+      <Animated.View style={{ position: 'absolute', top: arribaPanel, maxHeight: altoPantalla - arribaPanel - 16, left: 0, width: '72%', maxWidth: 300, backgroundColor: colors.background, borderTopRightRadius: 36, borderBottomRightRadius: 36, overflow: 'hidden', transform: [{ translateX }] }}>
+        <ScrollView contentContainerStyle={{ paddingTop: 26, paddingBottom: 12, paddingHorizontal: 20 }} showsVerticalScrollIndicator={false}>
                 <Text style={{ color: colors.textMain, fontSize: 20, fontWeight: '700', marginBottom: rolUsuarioActivoGlobal !== 'administrador' && encargos.length > 0 ? 4 : 18 }}>Hola, {nombreVisible}</Text>
         {rolUsuarioActivoGlobal !== 'administrador' && encargos.length > 0 ? (
           <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 18 }}>
@@ -801,8 +805,9 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
           style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}
         >
           <Feather name="log-out" size={20} color={colors.textSub} />
-          <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>Cerrar sesión</Text>
+                    <Text style={{ marginLeft: 14, fontSize: 15, color: colors.textMain }}>Cerrar sesión</Text>
         </TouchableOpacity>
+        </ScrollView>
       </Animated.View>
     </View>
   );
@@ -6930,8 +6935,9 @@ function AdminScreen({ navigation, route }) {
     .sort((a, b) => {
       if (a === 'Administradores') return -1;
       if (b === 'Administradores') return 1;
-      return a.localeCompare(b);
+            return a.localeCompare(b);
     });
+  const encargados = maestros.filter((m) => (m.encargado || []).length > 0);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -7012,7 +7018,7 @@ function AdminScreen({ navigation, route }) {
                 {guardando ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Guardar</Text>}
               </TouchableOpacity>
             </OpcionAdmin>
-            <OpcionAdmin {...opc('buscarUsuarios')} icono="search" titulo="Buscar usuarios" subtitulo="Editar, compartir accesos y ver administradores">
+            <OpcionAdmin {...opc('buscarUsuarios')} icono="search" titulo="Buscar usuarios" subtitulo="Editar, compartir accesos y ver administradores y encargados">
               <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 15 }]} placeholder="Buscar usuario por nombre..." placeholderTextColor={colors.textSub} value={busquedaUsuario} onChangeText={setBusquedaUsuario} />
 
               {busquedaUsuario.trim() === '' && (
@@ -7044,7 +7050,7 @@ function AdminScreen({ navigation, route }) {
                 </View>
               ) : !equipoSeleccionadoAdmin ? (
                 <View>
-                  <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Toca la tarjeta para ver a los administradores.</Text>
+                  <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Toca una tarjeta para ver a los administradores o a los encargados.</Text>
                   {listaEquipos.map((equipo, index) => (
                     <TouchableOpacity key={index} style={[styles.equipoFolder, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => setEquipoSeleccionadoAdmin(equipo)}>
                       {equipo === 'Administradores' ? <Feather name="shield" size={24} color={colors.textSub} /> : <IconoGrupoGrande size={24} color={colors.textSub} />}
@@ -7052,9 +7058,17 @@ function AdminScreen({ navigation, route }) {
                         <Text style={[styles.equipoFolderTitle, { color: colors.textMain }]}>{equipo}</Text>
                         <Text style={[styles.equipoFolderSub, { color: colors.textSub }]}>{maestrosPorEquipo[equipo].length} miembro(s)</Text>
                       </View>
-                      <Feather name="chevron-right" size={20} color={colors.textSub} />
+                                            <Feather name="chevron-right" size={20} color={colors.textSub} />
                     </TouchableOpacity>
                   ))}
+                  <TouchableOpacity style={[styles.equipoFolder, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => setEquipoSeleccionadoAdmin('Encargados')}>
+                    <Feather name="user-check" size={24} color={colors.textSub} />
+                    <View style={{ marginLeft: 15, flex: 1 }}>
+                      <Text style={[styles.equipoFolderTitle, { color: colors.textMain }]}>Encargados</Text>
+                      <Text style={[styles.equipoFolderSub, { color: colors.textSub }]}>{encargados.length} miembro(s)</Text>
+                    </View>
+                    <Feather name="chevron-right" size={20} color={colors.textSub} />
+                  </TouchableOpacity>
                 </View>
               ) : (
                 <View>
@@ -7063,9 +7077,31 @@ function AdminScreen({ navigation, route }) {
                     <Text style={[styles.backToEquiposText, { color: colors.textSub }]}>Volver</Text>
                   </TouchableOpacity>
                   <Text style={[styles.topicTitle, { color: '#EFBC68', marginTop: 10 }]}>{equipoSeleccionadoAdmin}</Text>
-                  {(maestrosPorEquipo[equipoSeleccionadoAdmin] || []).map((maestro) => (
-                    <FilaUsuarioAdmin key={maestro.id} maestro={maestro} isDark={isDark} onAbrir={() => navigation.navigate('DetalleUsuario', { maestro })} onCompartir={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)} onCopiar={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)} onEditar={() => setMaestroEditando(maestro)} onEliminar={() => confirmarEliminacion(maestro)} />
-                  ))}
+                                    {equipoSeleccionadoAdmin === 'Encargados' ? (
+                    encargados.length === 0 ? (
+                      <Text style={[styles.topicSubtitle, { color: colors.textSub, marginTop: 10 }]}>Todavía no hay encargados. Para nombrar uno, abre su ficha y toca «Editar».</Text>
+                    ) : (
+                      AREAS_ENCARGADO.map((a) => {
+                        const lista = encargados.filter((m) => m.encargado.includes(a.clave));
+                        if (lista.length === 0) return null;
+                        const p = PALETA_MENU[isDark ? 'oscuro' : 'claro'][a.categoria];
+                        return (
+                          <View key={a.clave} style={{ marginTop: 14 }}>
+                            <View style={{ alignSelf: 'flex-start', backgroundColor: p.fondo, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4, marginBottom: 8 }}>
+                              <Text style={{ fontSize: 12.5, fontWeight: '800', color: p.texto }}>{a.texto}</Text>
+                            </View>
+                            {lista.map((maestro) => (
+                              <FilaUsuarioAdmin key={maestro.id} maestro={maestro} isDark={isDark} onAbrir={() => navigation.navigate('DetalleUsuario', { maestro })} onCompartir={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)} onCopiar={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)} onEditar={() => setMaestroEditando(maestro)} onEliminar={() => confirmarEliminacion(maestro)} />
+                            ))}
+                          </View>
+                        );
+                      })
+                    )
+                  ) : (
+                    (maestrosPorEquipo[equipoSeleccionadoAdmin] || []).map((maestro) => (
+                      <FilaUsuarioAdmin key={maestro.id} maestro={maestro} isDark={isDark} onAbrir={() => navigation.navigate('DetalleUsuario', { maestro })} onCompartir={() => compartirWhatsApp(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo, maestro.telefono)} onCopiar={() => copiarInfo(maestro.nombre_usuario, maestro.pin_acceso, maestro.equipo)} onEditar={() => setMaestroEditando(maestro)} onEliminar={() => confirmarEliminacion(maestro)} />
+                    ))
+                  )}
                 </View>
               )}
             </OpcionAdmin>
