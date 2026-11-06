@@ -7710,7 +7710,7 @@ const CATEGORIAS_PETICION = [
 const LARGO_PETICION = 600;
 
 // Palabras que activan el recordatorio (no bloquean): bienes materiales y mascotas
-const PALABRAS_NO_ADMITIDAS = /\b(mascotas?|perr[oa]s?|perrit[oa]s?|gat[oa]s?|gatit[oa]s?|animal(es|ito|itos)?|casas?|departamentos?|terrenos?|carros?|coches?|autos?|camionetas?|motos?|dinero|creditos?|prestamos?|negocios?|ventas?|vender|comprar|loteria)\b/;
+const PALABRAS_NO_ADMITIDAS = /\b(mascotas?|animal(es|ito|itos)?|perr[oa]s?|perrit[oa]s?|cachorr[oa]s?|lomitos?|gat[oa]s?|gatit[oa]s?|michis?|pajar(o|os|ito|itos)|aves?|periquit[oa]s?|pericos?|loros?|canarios?|pez|peces|pececitos?|pescaditos?|tortugas?|tortuguitas?|conej[oa]s?|conejit[oa]s?|hamsters?|cuy(o|os|es)?|caball[oa]s?|vacas?|borreg[oa]s?|chiv[oa]s?|gallinas?|pollit[oa]s?|patit[oa]s?|iguanas?|serpientes?|culebras?|casas?|departamentos?|terrenos?|carros?|coches?|autos?|camionetas?|motos?|dinero|creditos?|prestamos?|negocios?|ventas?|vender|comprar|loteria)\b/;
 const tocaNoAdmitido = (t) => PALABRAS_NO_ADMITIDAS.test(sinAcentos(t).toLowerCase());
 const DIAS_PUBLICADA = 14;
 const MOTIVOS_NO_PUBLICAR = ['Bienes materiales o mascotas', 'Otro motivo'];
