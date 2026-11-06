@@ -1477,6 +1477,11 @@ const obtenerNotificaciones = async () => {
       if (porOrar > 0) items.unshift({ clave: `pet-pend:${porOrar}`, accion: false, abierta: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas', filtro: 'orar' } }, mensaje: porOrar === 1 ? 'Hay 1 petición de oración por orar' : `Hay ${porOrar} peticiones de oración por orar`, detalle: 'Toca para verlas' });
       if (porAprobar > 0) items.unshift({ clave: `pet-aprobar:${porAprobar}`, accion: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas', filtro: 'aprobar' } }, mensaje: porAprobar === 1 ? 'Hay 1 petición de oración por aprobar' : `Hay ${porAprobar} peticiones de oración por aprobar`, detalle: 'Toca para revisarlas' });
     }
+    // ---- PETICIONES: al hermano, cuando una suya no se publicó (con el motivo) ----
+    const { data: noPublicadas } = await supabase.from('peticiones_oracion').select('id, nombre_usuario, motivo, revisada_en').eq('publicacion', 'No publicada');
+    (noPublicadas || [])
+      .filter((p) => (p.nombre_usuario || '').toLowerCase() === (usuarioActivoGlobal || '').toLowerCase())
+      .forEach((p) => items.unshift({ clave: `pet-nopub:${p.id}:${p.revisada_en}`, fecha: p.revisada_en, accion: false, destino: { pantalla: 'Peticiones', params: { vista: 'enviar' } }, mensaje: 'Tu petición de oración no se publicó', detalle: `Motivo: ${p.motivo || 'Otro motivo'} · Toca para editarla` }));
     // ---- Área de cada aviso, para su etiqueta de color ----
     const solPorId = {};
     solicitudes.forEach((s) => (solPorId[s.id] = s));
@@ -7732,6 +7737,10 @@ function PeticionesScreen({ navigation, route }) {
   const [filtroEstado, setFiltroEstado] = useState(route?.params?.filtro === 'orar' ? 'orar' : 'aprobar');
   const [filtro, setFiltro] = useState('Todas');
   const [rechazando, setRechazando] = useState(null); // petición que el encargado no va a publicar
+  const [mapaNombres, setMapaNombres] = useState({}); // usuario → nombre completo
+  const [motivoTexto, setMotivoTexto] = useState(''); // lo que escribe el encargado en «Otro motivo»
+  const [corrigiendo, setCorrigiendo] = useState(null); // petición que el encargado está corrigiendo
+  const [textoCorregido, setTextoCorregido] = useState('');
   const [motivo, setMotivo] = useState(MOTIVOS_NO_PUBLICAR[0]);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '' });
   const cerrarAlerta = () => setAlerta((a) => ({ ...a, visible: false }));
@@ -7741,8 +7750,9 @@ function PeticionesScreen({ navigation, route }) {
     const { data, error } = await supabase.from('peticiones_oracion').select('id, creado_en, nombre_usuario, categoria, texto, estado, orada_en, editado_en, visibilidad, publicacion, publicada_en, motivo').order('creado_en', { ascending: false }).limit(500);
     setPeticiones(error ? [] : data || []);
   };
-  useEffect(() => {
+    useEffect(() => {
     cargar();
+    cargarMapaNombres().then(setMapaNombres);
   }, []);
 
   const limpiar = () => {
@@ -7810,15 +7820,26 @@ function PeticionesScreen({ navigation, route }) {
     const { error } = await supabase.from('peticiones_oracion').update({ publicacion: 'Publicada' }).eq('id', p.id);
     if (error) cargar();
   };
-  const noPublicar = async () => {
+    const noPublicar = async () => {
     const p = rechazando;
+    const elegido = motivo === 'Otro motivo' ? motivoTexto.trim() : motivo;
     setRechazando(null);
-    setPeticiones((lista) => lista.map((x) => (x.id === p.id ? { ...x, publicacion: 'No publicada', motivo } : x)));
-    const { error } = await supabase.from('peticiones_oracion').update({ publicacion: 'No publicada', motivo }).eq('id', p.id);
+    setPeticiones((lista) => lista.map((x) => (x.id === p.id ? { ...x, publicacion: 'No publicada', motivo: elegido } : x)));
+    const { error } = await supabase.from('peticiones_oracion').update({ publicacion: 'No publicada', motivo: elegido }).eq('id', p.id);
+    if (error) cargar();
+  };
+  // El encargado corrige ortografía o palabras pegadas antes de aprobar
+  const guardarCorreccion = async () => {
+    const p = corrigiendo;
+    const nuevo = textoCorregido.trim();
+    setCorrigiendo(null);
+    if (!nuevo || nuevo === p.texto) return;
+    setPeticiones((lista) => lista.map((x) => (x.id === p.id ? { ...x, texto: nuevo } : x)));
+    const { error } = await supabase.from('peticiones_oracion').update({ texto: nuevo }).eq('id', p.id);
     if (error) cargar();
   };
 
-  const nombreDe = (u) => ponerMayusculas(u || '');
+  const nombreDe = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u || '');
   const fechaPeticion = fechaHoraCorta;
   const diaCorto = (d) => `${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()}`;
   const todas = peticiones || [];
@@ -7963,10 +7984,12 @@ function PeticionesScreen({ navigation, route }) {
           <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSub }}>Cancelar edición</Text>
         </TouchableOpacity>
       ) : null}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, justifyContent: 'center', paddingHorizontal: 10 }}>
-        <Feather name={visibilidad === 'publica' ? 'eye' : 'lock'} size={12} color={colors.textSub} />
-        <Text style={{ fontSize: 12, color: colors.textSub, textAlign: 'center' }}>{visibilidad === 'publica' ? `Se verá ${DIAS_PUBLICADA / 7} semanas con tu nombre de usuario.` : 'Solo el encargado de peticiones puede verla.'}</Text>
-      </View>
+            {visibilidad === 'encargado' ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, justifyContent: 'center', paddingHorizontal: 10 }}>
+          <Feather name="lock" size={12} color={colors.textSub} />
+          <Text style={{ fontSize: 12, color: colors.textSub, textAlign: 'center' }}>Solo el encargado de peticiones puede verla.</Text>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -7982,7 +8005,7 @@ function PeticionesScreen({ navigation, route }) {
                 {pastillaEstado(p)}
               </View>
               <Text style={{ fontSize: 14.5, lineHeight: 21, color: colors.textMain, marginTop: 10 }}>{p.texto}</Text>
-              {p.publicacion === 'No publicada' && p.visibilidad !== 'encargado' ? <Text style={{ fontSize: 12.5, lineHeight: 18, color: COLORES_ESTADO.no.texto, backgroundColor: COLORES_ESTADO.no.fondo, borderRadius: 14, padding: 10, marginTop: 10, overflow: 'hidden' }}>Motivo: {p.motivo || 'Otro motivo'}. Puedes editarla y volver a enviarla.</Text> : null}
+              {p.publicacion === 'No publicada' && p.visibilidad !== 'encargado' ? <Text style={{ fontSize: 12.5, lineHeight: 18, color: COLORES_ESTADO.no.texto, backgroundColor: COLORES_ESTADO.no.fondo, borderRadius: 14, padding: 10, marginTop: 10, overflow: 'hidden' }}>Motivo: {(p.motivo || 'Otro motivo').replace(/[.\s]+$/, '')}. Puedes editarla y volver a enviarla.</Text> : null}
               {p.estado === 'Orada' ? sello : null}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
                 <Text style={{ flex: 1, fontSize: 12, color: colors.textSub }}>{fechaPeticion(p.creado_en)}</Text>
@@ -8061,8 +8084,13 @@ function PeticionesScreen({ navigation, route }) {
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                       {pendiente ? (
                         <>
+                          {botonChico('edit-2', 'Corregir', () => {
+                            setTextoCorregido(p.texto);
+                            setCorrigiendo(p);
+                          })}
                           {botonChico('x', 'No publicar', () => {
                             setMotivo(MOTIVOS_NO_PUBLICAR[0]);
+                            setMotivoTexto('');
                             setRechazando(p);
                           })}
                           {botonChico('check', 'Aprobar', () => aprobar(p), true)}
@@ -8135,12 +8163,46 @@ function PeticionesScreen({ navigation, route }) {
                 </TouchableOpacity>
               );
             })}
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+            {motivo === 'Otro motivo' ? (
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, minHeight: 90, paddingTop: 12, textAlignVertical: 'top', marginBottom: 0, marginTop: 2 }]}
+                value={motivoTexto}
+                onChangeText={(t) => setMotivoTexto(t.slice(0, 200))}
+                placeholder="Escribe el motivo para que sepa qué corregir…"
+                placeholderTextColor={colors.textSub}
+                multiline
+                autoFocus
+              />
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
               <TouchableOpacity onPress={() => setRechazando(null)} style={{ flex: 1, height: 48, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textSub }}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={noPublicar} style={{ flex: 1, height: 48, borderRadius: 999, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center' }}>
+              <TouchableOpacity onPress={noPublicar} disabled={motivo === 'Otro motivo' && motivoTexto.trim().length < 3} style={{ flex: 1, height: 48, borderRadius: 999, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center', opacity: motivo === 'Otro motivo' && motivoTexto.trim().length < 3 ? 0.5 : 1 }}>
                 <Text style={{ fontSize: 15, fontWeight: '800', color: paleta.texto }}>No publicar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={!!corrigiendo} transparent animationType="fade" onRequestClose={() => setCorrigiendo(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{ width: '100%', maxWidth: 480, backgroundColor: colors.cardBg, borderRadius: 28, padding: 22 }}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textMain }}>Corregir petición</Text>
+            <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 4, marginBottom: 14 }}>{corrigiendo ? `De ${nombreDe(corrigiendo.nombre_usuario)}. Corrige ortografía o palabras pegadas; después podrás aprobarla.` : ''}</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, minHeight: 140, paddingTop: 12, textAlignVertical: 'top', marginBottom: 0 }]}
+              value={textoCorregido}
+              onChangeText={(t) => setTextoCorregido(t.slice(0, LARGO_PETICION))}
+              multiline
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+              <TouchableOpacity onPress={() => setCorrigiendo(null)} style={{ flex: 1, height: 48, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textSub }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={guardarCorreccion} disabled={textoCorregido.trim().length < 3} style={{ flex: 1, height: 48, borderRadius: 999, backgroundColor: paleta.fondo, alignItems: 'center', justifyContent: 'center', opacity: textoCorregido.trim().length < 3 ? 0.5 : 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: paleta.texto }}>Guardar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -8161,9 +8223,11 @@ function ResumenPeticionesScreen({ navigation }) {
   const permitido = puedeArea('peticiones');
   const [filas, setFilas] = useState(null);
   const [error, setError] = useState(false);
-  const [periodo, setPeriodo] = useState('mes');
+    const [periodo, setPeriodo] = useState('mes');
+  const [mapaNombres, setMapaNombres] = useState({});
   useEffect(() => {
     if (!permitido) return;
+    cargarMapaNombres().then(setMapaNombres);
     traerTodo(() => supabase.from('peticiones_oracion').select('id, creado_en, nombre_usuario, categoria, texto, estado, orada_en, orada_por, editado_en, visibilidad, publicacion, publicada_en, motivo').order('creado_en', { ascending: true }).order('id', { ascending: true }))
       .then(setFilas)
       .catch(() => setError(true));
@@ -8179,7 +8243,7 @@ function ResumenPeticionesScreen({ navigation }) {
   const porAprobar = cuenta((p) => p.visibilidad !== 'encargado' && p.publicacion === 'Por aprobar');
   const oradas = cuenta((p) => p.estado === 'Orada');
   const porCategoria = CATEGORIAS_PETICION.map((c) => ({ ...c, n: cuenta((p) => p.categoria === c.valor) }));
-  const motivos = MOTIVOS_NO_PUBLICAR.map((m) => ({ motivo: m, valor: cuenta((p) => p.publicacion === 'No publicada' && (p.motivo || 'Otro motivo') === m) }));
+  const motivos = MOTIVOS_NO_PUBLICAR.map((m) => ({ motivo: m, valor: cuenta((p) => p.publicacion === 'No publicada' && (p.motivo === MOTIVOS_NO_PUBLICAR[0]) === (m === MOTIVOS_NO_PUBLICAR[0])) }));
   const ahora = new Date();
   const seisMeses = [5, 4, 3, 2, 1, 0].map((k) => {
     const d = new Date(ahora.getFullYear(), ahora.getMonth() - k, 1);
@@ -8203,8 +8267,8 @@ function ResumenPeticionesScreen({ navigation }) {
   const descargar = () =>
     descargarTablaCSV(
       `resumen-peticiones_${nombreArchivoPeriodo(periodo)}_${hoy}.csv`,
-      ['Fecha', 'Usuario', 'Categoría', 'Quién la ve', 'Publicación', 'Motivo', 'Publicada el', 'Orada', 'Orada el', 'Petición'],
-      delPeriodo.map((x) => [fechaHora(x.creado_en), x.nombre_usuario, x.categoria, x.visibilidad === 'encargado' ? 'Solo el encargado' : 'Todos', x.visibilidad === 'encargado' ? '' : x.publicacion, x.publicacion === 'No publicada' ? x.motivo || 'Otro motivo' : '', fechaHora(x.publicada_en), x.estado === 'Orada' ? 'Sí' : 'No', fechaHora(x.orada_en), x.texto]),
+      ['Fecha', 'Usuario', 'Nombre', 'Categoría', 'Quién la ve', 'Publicación', 'Motivo', 'Publicada el', 'Orada', 'Orada el', 'Petición'],
+      delPeriodo.map((x) => [fechaHora(x.creado_en), x.nombre_usuario, ponerMayusculas(mapaNombres[(x.nombre_usuario || '').toLowerCase()] || x.nombre_usuario || ''), x.categoria, x.visibilidad === 'encargado' ? 'Solo el encargado' : 'Todos', x.visibilidad === 'encargado' ? '' : x.publicacion, x.publicacion === 'No publicada' ? x.motivo || 'Otro motivo' : '', fechaHora(x.publicada_en), x.estado === 'Orada' ? 'Sí' : 'No', fechaHora(x.orada_en), x.texto]),
     );
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
