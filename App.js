@@ -74,6 +74,7 @@ const PALETA_MENU = {
     'Anexo': { fondo: '#F4B27C', texto: '#6B330C' },
     'Jóvenes': { fondo: '#C9CE8E', texto: '#44481A' },
     'Visitas': { fondo: '#E6C3A0', texto: '#5A3A1A' },
+    'Respaldo': { fondo: '#CFCAC0', texto: '#3E3A33' },
   },
   oscuro: {
     'Clases de niños': { fondo: '#8FB9B1', texto: '#173B37' },
@@ -94,6 +95,7 @@ const PALETA_MENU = {
     'Anexo': { fondo: '#E39A5E', texto: '#4A2006' },
     'Jóvenes': { fondo: '#B2B873', texto: '#33370F' },
     'Visitas': { fondo: '#D2AC86', texto: '#45290F' },
+    'Respaldo': { fondo: '#B5AFA4', texto: '#2B2823' },
   },
 };
 
@@ -1483,6 +1485,15 @@ const obtenerNotificaciones = async () => {
       if (porOrar > 0) items.unshift({ clave: `pet-pend:${porOrar}`, accion: false, abierta: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas', filtro: 'orar' } }, mensaje: porOrar === 1 ? 'Hay 1 petición de oración por orar' : `Hay ${porOrar} peticiones de oración por orar`, detalle: 'Toca para verlas' });
       if (porAprobar > 0) items.unshift({ clave: `pet-aprobar:${porAprobar}`, accion: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas', filtro: 'aprobar' } }, mensaje: porAprobar === 1 ? 'Hay 1 petición de oración por aprobar' : `Hay ${porAprobar} peticiones de oración por aprobar`, detalle: 'Toca para revisarlas' });
     }
+    // ---- RESPALDO: del 1 al 5 de enero, recordar a los admins descargar el respaldo del año que terminó ----
+    {
+      const h = new Date();
+      const temporada = h.getMonth() === 0 && h.getDate() <= 5;
+      if (temporada && rolUsuarioActivoGlobal === 'administrador') {
+        const anio = h.getFullYear() - 1;
+        items.push({ clave: `respaldo:${anio}`, fecha: h.toISOString(), accion: false, destino: { pantalla: 'Admin', params: { seccion: 'respaldo' } }, mensaje: `Fin de año: descarga el respaldo de ${anio}`, detalle: 'Administración → Respaldo. Guárdalo en tu Drive.' });
+      }
+    }
     // ---- PETICIONES: al hermano, cuando una suya no se publicó (con el motivo) ----
     const { data: noPublicadas } = await supabase.from('peticiones_oracion').select('id, nombre_usuario, motivo, revisada_en').eq('publicacion', 'No publicada');
     (noPublicadas || [])
@@ -1987,6 +1998,7 @@ const SECCIONES_ADMIN = {
     clases: { titulo: 'Clases de niños', subtitulo: 'Clases, asistencia y coritos', categoria: 'Clases de niños', icono: 'smile' },
   peticiones: { titulo: 'Peticiones', subtitulo: 'Resumen de peticiones de oración', categoria: 'Petición', icono: 'heart' },
   jovenes: { titulo: 'Jóvenes', subtitulo: 'Resumen de asistencia y lista de jóvenes', categoria: 'Jóvenes', icono: 'user-check' },
+  respaldo: { titulo: 'Respaldo', subtitulo: 'Descargar toda la información en Excel', categoria: 'Respaldo', icono: 'download' },
 };
 
 // Opción plegable del panel de administración: se abre al tocarla y se cierra al tocarla otra vez
@@ -4085,6 +4097,102 @@ const ListaJovenesAdmin = ({ isDark }) => {
 };
 
 // ==========================================
+// RESPALDO COMPLETO (solo administradores): un Excel con una hoja por cada parte de la app
+// ==========================================
+const TABLAS_RESPALDO = [
+  { tabla: 'maestros', hoja: 'Hermanos', quitar: ['pin_acceso', 'user_id'] },
+  { tabla: 'clases_asignadas', hoja: 'Rol de clases' },
+  { tabla: 'programa_servicios', hoja: 'Rol de predicaciones' },
+  { tabla: 'cena_turnos', hoja: 'Cena del Señor' },
+  { tabla: 'solicitudes_sustitucion', hoja: 'Solicitudes de apoyo' },
+  { tabla: 'ofertas_intercambio', hoja: 'Ofertas de intercambio' },
+  { tabla: 'ninos', hoja: 'Niños' },
+  { tabla: 'asistencia_clases', hoja: 'Asistencia de niños' },
+  { tabla: 'jovenes', hoja: 'Jóvenes' },
+  { tabla: 'asistencia_jovenes', hoja: 'Asistencia de jóvenes' },
+  { tabla: 'peticiones_oracion', hoja: 'Peticiones', quitar: ['user_id'] },
+  { tabla: 'actividades', hoja: 'Calendario' },
+  { tabla: 'temas_mensuales', hoja: 'Temas del mes' },
+  { tabla: 'clases', hoja: 'Contenido de clases' },
+  { tabla: 'clases_detalle', hoja: 'Detalle de clases' },
+  { tabla: 'coritos', hoja: 'Coritos' },
+];
+// La librería de Excel se carga solo al descargar, para no hacer más pesada la app
+const cargarLibreriaExcel = () =>
+  new Promise((resolver, fallar) => {
+    if (window.XLSX) return resolver(window.XLSX);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => (window.XLSX ? resolver(window.XLSX) : fallar(new Error('sin XLSX')));
+    s.onerror = fallar;
+    document.head.appendChild(s);
+  });
+const RespaldoAdmin = ({ isDark }) => {
+  const colors = getColors(isDark);
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Usuarios'];
+  const [estado, setEstado] = useState('');
+  const [trabajando, setTrabajando] = useState(false);
+  const descargar = async () => {
+    setTrabajando(true);
+    setEstado('Preparando…');
+    try {
+      const XLSX = await cargarLibreriaExcel();
+      const libro = XLSX.utils.book_new();
+      const resumen = [];
+      for (const t of TABLAS_RESPALDO) {
+        setEstado(`Leyendo ${t.hoja.toLowerCase()}…`);
+        let filas;
+        try {
+          filas = await traerTodo(() => supabase.from(t.tabla).select('*').order('id', { ascending: true }));
+        } catch (e) {
+          try {
+            filas = await traerTodo(() => supabase.from(t.tabla).select('*'));
+          } catch (e2) {
+            filas = null;
+          }
+        }
+        const limpias = (filas || []).map((f) => {
+          const fila = {};
+          Object.keys(f).forEach((k) => {
+            if ((t.quitar || []).includes(k)) return;
+            const v = f[k];
+            fila[k] = v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : v;
+          });
+          return fila;
+        });
+        const hoja = filas === null ? XLSX.utils.aoa_to_sheet([['No se pudo leer esta parte.']]) : limpias.length ? XLSX.utils.json_to_sheet(limpias) : XLSX.utils.aoa_to_sheet([['Sin registros']]);
+        XLSX.utils.book_append_sheet(libro, hoja, t.hoja.slice(0, 31));
+        resumen.push([t.hoja, filas === null ? 'No se pudo leer' : limpias.length]);
+      }
+      const portada = XLSX.utils.aoa_to_sheet([['Respaldo de Indus app'], ['Fecha', fechaISO(new Date())], ['Descargado por', usuarioActivoGlobal || ''], [], ['Parte', 'Registros'], ...resumen]);
+      XLSX.utils.book_append_sheet(libro, portada, 'Resumen');
+      libro.SheetNames.unshift(libro.SheetNames.pop()); // la portada va primero
+      XLSX.writeFile(libro, `respaldo-indus-app_${fechaISO(new Date())}.xlsx`);
+      setEstado(`Listo: se descargaron ${resumen.length} hojas. Guárdalo en tu Drive o en un lugar seguro.`);
+    } catch (e) {
+      setEstado('No se pudo preparar el respaldo. Revisa tu conexión e intenta de nuevo.');
+    }
+    setTrabajando(false);
+  };
+  return (
+    <View>
+      <Text style={{ fontSize: 13.5, lineHeight: 20, color: colors.textSub, marginBottom: 14 }}>
+        Descarga un archivo de Excel con todo lo capturado en la app: hermanos (sin PIN), roles, Cena del Señor, solicitudes, niños y jóvenes con su asistencia, peticiones, calendario, temas, contenido de clases y coritos (sin audios). Guárdalo en tu Drive o en un lugar seguro.
+      </Text>
+      <TouchableOpacity onPress={descargar} disabled={trabajando} style={{ height: 50, borderRadius: 999, backgroundColor: p.fondo, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, opacity: trabajando ? 0.7 : 1 }}>
+        {trabajando ? <ActivityIndicator color={p.texto} /> : <Feather name="download" size={17} color={p.texto} />}
+        <Text style={{ fontSize: 15, fontWeight: '800', color: p.texto }}>{trabajando ? 'Preparando respaldo…' : 'Descargar respaldo completo'}</Text>
+      </TouchableOpacity>
+      {estado ? <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 10, textAlign: 'center' }}>{estado}</Text> : null}
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginTop: 14 }}>
+        <Feather name="lock" size={13} color={colors.textSub} style={{ marginTop: 2 }} />
+        <Text style={{ flex: 1, fontSize: 12, lineHeight: 17, color: colors.textSub }}>Incluye nombres, teléfonos y peticiones. Compártelo solo con quien deba tenerlo.</Text>
+      </View>
+    </View>
+  );
+};
+
+// ==========================================
 // PANTALLA 0: LOGIN
 // ==========================================
 function LoginScreen({ navigation }) {
@@ -4661,7 +4769,7 @@ function GruposScreen({ navigation, route }) {
     }
   });
   tarjetas.sort((x, y) => (x.fecha < y.fecha ? -1 : x.fecha > y.fecha ? 1 : 0));
-  if (puedeArea('jovenes')) tarjetas.unshift({ clave: 'jovenes', icono: 'user-check', titulo: 'Clase de jóvenes', subtitulo: 'Domingos por la mañana', detalle: 'Toca para tomar lista', categoria: 'Jóvenes', onPress: () => setListaJovenes(true) });
+  if (puedeArea('jovenes')) tarjetas.push({ clave: 'jovenes', icono: 'user-check', titulo: 'Clase de jóvenes', subtitulo: 'Toma de lista de asistencia', categoria: 'Jóvenes', onPress: () => setListaJovenes(true) });
 
   // Vista de un mes: cada grupo con quién está asignado
   const asignadosA = (g) => {
@@ -7705,6 +7813,12 @@ function AdminScreen({ navigation, route }) {
           </>
         )}
 
+                {seccion === 'respaldo' && (
+          <OpcionAdmin {...opc('respaldo')} icono="download" titulo="Respaldo completo" subtitulo="Un Excel con toda la información de la app">
+            <RespaldoAdmin isDark={isDark} />
+          </OpcionAdmin>
+        )}
+
                 {seccion === 'jovenes' && (
           <>
             <OpcionAdmin {...opc('resumenJovenes')} icono="bar-chart-2" titulo="Resumen de asistencia" subtitulo="Jóvenes y visitas por domingo, con descarga en Excel" onPress={() => navigation.navigate('ResumenJovenes')} />
@@ -8733,8 +8847,8 @@ function ResumenPeticionesScreen({ navigation }) {
       .catch(() => setError(true));
   }, []);
   const hoy = fechaISO(new Date());
-  const desde = inicioPeriodo(periodo);
-  const delPeriodo = (filas || []).filter((p) => fechaISO(new Date(p.creado_en)) >= desde);
+  const { desde, hasta } = rangoPeriodo(periodo);
+  const delPeriodo = (filas || []).filter((p) => fechaISO(new Date(p.creado_en)) >= desde && fechaISO(new Date(p.creado_en)) <= hasta);
   const cuenta = (f) => delPeriodo.filter(f).length;
   const total = delPeriodo.length;
   const privadas = cuenta((p) => p.visibilidad === 'encargado');
@@ -8744,7 +8858,8 @@ function ResumenPeticionesScreen({ navigation }) {
   const oradas = cuenta((p) => p.estado === 'Orada');
   const porCategoria = CATEGORIAS_PETICION.map((c) => ({ ...c, n: cuenta((p) => p.categoria === c.valor) }));
   const motivos = MOTIVOS_NO_PUBLICAR.map((m) => ({ motivo: m, valor: cuenta((p) => p.publicacion === 'No publicada' && (p.motivo === MOTIVOS_NO_PUBLICAR[0]) === (m === MOTIVOS_NO_PUBLICAR[0])) }));
-  const ahora = new Date();
+  // Si se eligió un año, los 6 meses son los últimos de ese año
+  const ahora = /^\d{4}$/.test(periodo) ? new Date(Number(periodo), 11, 1) : new Date();
   const seisMeses = [5, 4, 3, 2, 1, 0].map((k) => {
     const d = new Date(ahora.getFullYear(), ahora.getMonth() - k, 1);
     return { etiqueta: MESES_CORTOS[d.getMonth()], valor: (filas || []).filter((p) => claveMes(new Date(p.creado_en)) === claveMes(d)).length };
@@ -8779,7 +8894,7 @@ function ResumenPeticionesScreen({ navigation }) {
             <SinDatosResumen texto="Esta sección es solo para el encargado de peticiones." isDark={isDark} />
           ) : (
             <>
-              <PildorasResumen opciones={PERIODOS_RESUMEN} valor={periodo} onCambiar={setPeriodo} categoria="Petición" isDark={isDark} />
+              <PildorasResumen opciones={opcionesPeriodo((filas || []).map((p) => p.creado_en))} valor={periodo} onCambiar={setPeriodo} categoria="Petición" isDark={isDark} />
               {error ? (
                 <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
               ) : !filas ? (
@@ -9819,14 +9934,13 @@ function ResumenCenaScreen({ navigation }) {
       .catch(() => setError(true));
   }, []);
   const esAdmin = rolUsuarioActivoGlobal === 'administrador';
-  const ahora = new Date();
-  const desde = fechaISO(periodo === 'mes' ? new Date(ahora.getFullYear(), ahora.getMonth(), 1) : periodo === 'tres' ? new Date(ahora.getFullYear(), ahora.getMonth() - 2, 1) : new Date(ahora.getFullYear(), 0, 1));
-  const d = datos ? calcularCena(datos.turnos, datos.maestros, desde, proximoDomingo()) : null;
+  const { desde, hasta } = rangoPeriodo(periodo, proximoDomingo());
+  const d = datos ? calcularCena(datos.turnos, datos.maestros, desde, hasta) : null;
   const descargar = () => {
     if (!datos) return;
     const nombreDe = mapaNombresDe(datos.maestros);
     const estados = { confirmado: 'Confirmó', declinado: 'No pudo', sin_respuesta: 'Sin respuesta', reemplazado: 'Reemplazado', invitado: 'Invitado' };
-    const lista = datos.turnos.filter((t) => t.fecha >= desde && t.fecha <= proximoDomingo());
+    const lista = datos.turnos.filter((t) => t.fecha >= desde && t.fecha <= hasta);
     descargarTablaCSV(
       `cena-del-senor_${nombreArchivoPeriodo(periodo)}_${fechaISO(new Date())}.csv`,
       ['Fecha', 'Lugar', 'Hermano', 'Estado', 'Asignado por'],
@@ -9884,7 +9998,7 @@ function ResumenCenaScreen({ navigation }) {
             <SinDatosResumen texto="Esta sección es solo para administradores." isDark={isDark} />
           ) : (
             <>
-              <PildorasResumen opciones={PERIODOS_RESUMEN} valor={periodo} onCambiar={setPeriodo} categoria="Cena" isDark={isDark} />
+              <PildorasResumen opciones={opcionesPeriodo(datos ? datos.turnos.map((t) => t.fecha) : [])} valor={periodo} onCambiar={setPeriodo} categoria="Cena" isDark={isDark} />
               {error ? (
                 <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
               ) : !d ? (
@@ -9994,6 +10108,14 @@ const BarrasPorPersona = ({ filas, leyenda, limite = 12, isDark }) => {
   );
 };
 
+// Periodo elegido → { desde, hasta }. Un año ('2025') va del 1 de enero al 31 de diciembre
+const rangoPeriodo = (periodo, hastaNormal = fechaISO(new Date())) => (/^\d{4}$/.test(periodo) ? { desde: `${periodo}-01-01`, hasta: `${periodo}-12-31` } : { desde: inicioPeriodo(periodo), hasta: hastaNormal });
+// Opciones de periodo más los años anteriores que tienen datos (2025 · 2024 …)
+const opcionesPeriodo = (fechas) => {
+  const actual = new Date().getFullYear();
+  const anios = [...new Set((fechas || []).map((f) => Number(String(f || '').slice(0, 4))).filter((a) => a && a < actual))].sort((a, b) => b - a);
+  return [...PERIODOS_RESUMEN, ...anios.map((a) => ({ valor: String(a), texto: String(a) }))];
+};
 // Periodo de los resúmenes de clases, predicaciones y Cena
 const PERIODOS_RESUMEN = [
   { valor: 'mes', texto: 'Este mes' },
@@ -10132,14 +10254,14 @@ function ResumenClasesScreen({ navigation }) {
   const [error, setError] = useState(false);
   const [periodo, setPeriodo] = useState('mes');
   useEffect(() => {
-    const desdeAnio = fechaISO(new Date(new Date().getFullYear() - 1, 0, 1));
-    Promise.all([traerTodo(() => supabase.from('clases_asignadas').select('id, fecha, grupo, nombre_usuario').gte('fecha', desdeAnio).order('fecha', { ascending: true }).order('id', { ascending: true })), traerTodo(() => supabase.from('solicitudes_sustitucion').select('id, maestro_solicitante, maestro_suplente, estado, grupo_clase, fecha_referencia, clase_asignada_id, creado_en').order('id', { ascending: true })), supabase.from('maestros').select('nombre_usuario, nombre_completo')])
+    Promise.all([traerTodo(() => supabase.from('clases_asignadas').select('id, fecha, grupo, nombre_usuario').order('fecha', { ascending: true }).order('id', { ascending: true })), traerTodo(() => supabase.from('solicitudes_sustitucion').select('id, maestro_solicitante, maestro_suplente, estado, grupo_clase, fecha_referencia, clase_asignada_id, creado_en').order('id', { ascending: true })), supabase.from('maestros').select('nombre_usuario, nombre_completo')])
       .then(([clases, solicitudes, { data }]) => setDatos({ clases, solicitudes, maestros: data || [] }))
       .catch(() => setError(true));
   }, []);
   const esAdmin = rolUsuarioActivoGlobal === 'administrador';
   const hoy = fechaISO(new Date());
-  const d = datos ? calcularClases(datos.clases, datos.solicitudes, datos.maestros, inicioPeriodo(periodo), hoy) : null;
+  const { desde, hasta } = rangoPeriodo(periodo);
+  const d = datos ? calcularClases(datos.clases, datos.solicitudes, datos.maestros, desde, hasta) : null;
   const colorClase = paleta['Clases de niños'].fondo;
   const descargar = () => {
     if (!d) return;
@@ -10167,7 +10289,7 @@ function ResumenClasesScreen({ navigation }) {
             <SinDatosResumen texto="Esta sección es solo para administradores." isDark={isDark} />
           ) : (
             <>
-              <PildorasResumen opciones={PERIODOS_RESUMEN} valor={periodo} onCambiar={setPeriodo} categoria="Clases de niños" isDark={isDark} />
+              <PildorasResumen opciones={opcionesPeriodo(datos ? datos.clases.map((c) => c.fecha) : [])} valor={periodo} onCambiar={setPeriodo} categoria="Clases de niños" isDark={isDark} />
               {error ? (
                 <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
               ) : !d ? (
@@ -10230,14 +10352,14 @@ function ResumenPredicacionesScreen({ navigation }) {
   const [error, setError] = useState(false);
   const [periodo, setPeriodo] = useState('mes');
   useEffect(() => {
-    const desdeAnio = fechaISO(new Date(new Date().getFullYear() - 1, 0, 1));
-    Promise.all([traerTodo(() => supabase.from('programa_servicios').select('id, fecha, horario, nombre_usuario, estado_confirmacion').gte('fecha', desdeAnio).order('fecha', { ascending: true }).order('id', { ascending: true })), traerTodo(() => supabase.from('solicitudes_sustitucion').select('id, maestro_solicitante, maestro_suplente, estado, grupo_clase, fecha_referencia, clase_asignada_id, creado_en').eq('grupo_clase', 'Predicaciones').order('id', { ascending: true })), supabase.from('maestros').select('nombre_usuario, nombre_completo')])
+    Promise.all([traerTodo(() => supabase.from('programa_servicios').select('id, fecha, horario, nombre_usuario, estado_confirmacion').order('fecha', { ascending: true }).order('id', { ascending: true })), traerTodo(() => supabase.from('solicitudes_sustitucion').select('id, maestro_solicitante, maestro_suplente, estado, grupo_clase, fecha_referencia, clase_asignada_id, creado_en').eq('grupo_clase', 'Predicaciones').order('id', { ascending: true })), supabase.from('maestros').select('nombre_usuario, nombre_completo')])
       .then(([rol, solicitudes, { data }]) => setDatos({ rol, solicitudes, maestros: data || [] }))
       .catch(() => setError(true));
   }, []);
   const esAdmin = rolUsuarioActivoGlobal === 'administrador';
   const hoy = fechaISO(new Date());
-  const d = datos ? calcularPredicaciones(datos.rol, datos.solicitudes, datos.maestros, inicioPeriodo(periodo), hoy) : null;
+  const { desde, hasta } = rangoPeriodo(periodo);
+  const d = datos ? calcularPredicaciones(datos.rol, datos.solicitudes, datos.maestros, desde, hasta) : null;
   const colorConfirmada = paleta['Predicaciones'].fondo;
   const colorSin = isDark ? '#6B6862' : '#C9C6BF';
   const descargar = () => {
@@ -10257,7 +10379,7 @@ function ResumenPredicacionesScreen({ navigation }) {
             <SinDatosResumen texto="Esta sección es solo para administradores." isDark={isDark} />
           ) : (
             <>
-              <PildorasResumen opciones={PERIODOS_RESUMEN} valor={periodo} onCambiar={setPeriodo} categoria="Predicaciones" isDark={isDark} />
+              <PildorasResumen opciones={opcionesPeriodo(datos ? datos.rol.map((r) => r.fecha) : [])} valor={periodo} onCambiar={setPeriodo} categoria="Predicaciones" isDark={isDark} />
               {error ? (
                 <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
               ) : !d ? (
