@@ -27,8 +27,8 @@ let encargadoGlobal = []; // áreas que administra: 'ninos', 'anexo', 'peticione
 let avisosApagadosGlobal = []; // áreas que el admin general silenció
 // ¿Puede administrar esta área? El administrador general puede todo
 const puedeArea = (area) => rolUsuarioActivoGlobal === 'administrador' || (encargadoGlobal || []).includes(area);
-// ¿Ve la opción «Administración»? Admin general, encargado de clases de niños o de peticiones
-const puedeAdministrar = () => puedeArea('ninos') || puedeArea('peticiones');
+// ¿Ve la opción «Administración»? Admin general, encargado de clases de niños, de peticiones o de jóvenes
+const puedeAdministrar = () => puedeArea('ninos') || puedeArea('peticiones') || puedeArea('jovenes');
 // ¿Le llegan los avisos de esta área? Admin general: si no la apagó. Encargado: siempre los de su área
 const recibeAvisosArea = (area) => (rolUsuarioActivoGlobal === 'administrador' && !(avisosApagadosGlobal || []).includes(area)) || (encargadoGlobal || []).includes(area);
 // Guarda en memoria los datos de acceso de quien inició sesión
@@ -72,6 +72,8 @@ const PALETA_MENU = {
     'Usuarios': { fondo: '#F3D9A8', texto: '#6B4A12' },
         'Cena': { fondo: '#CFA7A7', texto: '#5A2626' },
     'Anexo': { fondo: '#F4B27C', texto: '#6B330C' },
+    'Jóvenes': { fondo: '#C9CE8E', texto: '#44481A' },
+    'Visitas': { fondo: '#E6C3A0', texto: '#5A3A1A' },
   },
   oscuro: {
     'Clases de niños': { fondo: '#8FB9B1', texto: '#173B37' },
@@ -90,6 +92,8 @@ const PALETA_MENU = {
     'Usuarios': { fondo: '#DFC18C', texto: '#4A3208' },
         'Cena': { fondo: '#B98E8E', texto: '#3E1717' },
     'Anexo': { fondo: '#E39A5E', texto: '#4A2006' },
+    'Jóvenes': { fondo: '#B2B873', texto: '#33370F' },
+    'Visitas': { fondo: '#D2AC86', texto: '#45290F' },
   },
 };
 
@@ -331,6 +335,7 @@ const linking = {
       ResumenClases: 'resumen-clases',
             ResumenPredicaciones: 'resumen-predicaciones',
       ResumenPeticiones: 'resumen-peticiones',
+      ResumenJovenes: 'resumen-jovenes',
       Calendario: 'calendario',
       Peticiones: 'peticiones',
     },
@@ -394,6 +399,7 @@ const AREAS_ENCARGADO = [
   { clave: 'ninos', texto: 'Clases de niños', categoria: 'Clases de niños', cargo: 'Encargado de clases de niños' },
   { clave: 'anexo', texto: 'Anexo', categoria: 'Anexo', cargo: 'Encargado del anexo' },
   { clave: 'peticiones', texto: 'Peticiones', categoria: 'Petición', cargo: 'Encargado de peticiones' },
+  { clave: 'jovenes', texto: 'Jóvenes', categoria: 'Jóvenes', cargo: 'Encargado de jóvenes' },
 ];
 
 // Acceso y elegibilidad de un hermano (alta y edición)
@@ -1980,6 +1986,7 @@ const SECCIONES_ADMIN = {
   predicaciones: { titulo: 'Predicaciones', subtitulo: 'Subir y corregir el rol', categoria: 'Predicaciones', icono: 'calendar' },
     clases: { titulo: 'Clases de niños', subtitulo: 'Clases, asistencia y coritos', categoria: 'Clases de niños', icono: 'smile' },
   peticiones: { titulo: 'Peticiones', subtitulo: 'Resumen de peticiones de oración', categoria: 'Petición', icono: 'heart' },
+  jovenes: { titulo: 'Jóvenes', subtitulo: 'Resumen de asistencia y lista de jóvenes', categoria: 'Jóvenes', icono: 'user-check' },
 };
 
 // Opción plegable del panel de administración: se abre al tocarla y se cierra al tocarla otra vez
@@ -3597,6 +3604,487 @@ const ModalAsistencia = ({ visible, onCerrar, fecha, grupo, isDark, usuario }) =
 };
 
 // ==========================================
+// CLASE DE JÓVENES: tomar lista (encargado de jóvenes y admin general)
+// ==========================================
+// Domingo de hoy, o el último domingo si hoy es otro día
+const ultimoDomingo = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - d.getDay());
+  return fechaISO(d);
+};
+const ModalAsistenciaJovenes = ({ visible, onCerrar, isDark }) => {
+  const colors = getColors(isDark);
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Jóvenes'];
+  const [fecha, setFecha] = useState(ultimoDomingo());
+  const [paso, setPaso] = useState('inicio');
+  const [texto, setTexto] = useState('');
+  const [esVisita, setEsVisita] = useState(false);
+  const [resultados, setResultados] = useState([]);
+  const [asistentes, setAsistentes] = useState([]);
+  const [mensaje, setMensaje] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const cargarAsistentes = async (f = fecha) => {
+    const { data } = await supabase.from('asistencia_jovenes').select('id, joven_id, visita, jovenes(nombre_completo)').eq('fecha', f).order('created_at', { ascending: true });
+    setAsistentes(data || []);
+  };
+  useEffect(() => {
+    if (visible) {
+      const f = ultimoDomingo();
+      setFecha(f);
+      setPaso('inicio');
+      setTexto('');
+      setResultados([]);
+      setMensaje('');
+      cargarAsistentes(f);
+    }
+  }, [visible]);
+  const cambiarDomingo = (n) => {
+    const nueva = sumarDiasISO(fecha, n * 7);
+    if (nueva > ultimoDomingo()) return;
+    setFecha(nueva);
+    setMensaje('');
+    cargarAsistentes(nueva);
+  };
+  useEffect(() => {
+    if (paso !== 'buscar' || texto.trim().length < 2) {
+      setResultados([]);
+      return;
+    }
+    let cancelado = false;
+    const espera = setTimeout(async () => {
+      const { data } = await supabase.rpc('buscar_jovenes', { p_texto: texto.trim(), p_exacto: false });
+      if (!cancelado) setResultados(data || []);
+    }, 250);
+    return () => {
+      cancelado = true;
+      clearTimeout(espera);
+    };
+  }, [texto, paso]);
+
+  const registrar = async (joven) => {
+    if (asistentes.some((a) => a.joven_id === joven.id)) {
+      setMensaje(`${joven.nombre_completo} ya está en la lista.`);
+      return false;
+    }
+    const { error } = await supabase.from('asistencia_jovenes').insert([{ fecha, joven_id: joven.id }]);
+    if (error) {
+      setMensaje(error.code === '23505' ? `${joven.nombre_completo} ya está en la lista.` : 'No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
+      return false;
+    }
+    await cargarAsistentes();
+    return true;
+  };
+  const marcar = async (joven) => {
+    setGuardando(true);
+    const ok = await registrar(joven);
+    setGuardando(false);
+    if (ok) {
+      setMensaje(`Registrado: ${joven.nombre_completo}`);
+      setTexto('');
+      setResultados([]);
+    }
+  };
+  const agregarYMarcar = async () => {
+    const nombre = nombrePropio(texto);
+    if (nombre.length < 3) return setMensaje('Escribe el nombre completo.');
+    setGuardando(true);
+    const { data: existente } = await supabase.rpc('buscar_jovenes', { p_texto: nombre, p_exacto: true });
+    if (existente && existente.length > 0) {
+      setGuardando(false);
+      return setMensaje(`Ya existe "${existente[0].nombre_completo}". Búscalo y márcalo.`);
+    }
+    const { data: nuevo, error } = await supabase.from('jovenes').insert([{ nombre_completo: nombre, es_visita: esVisita }]).select('id, nombre_completo, es_visita').single();
+    if (error) {
+      setGuardando(false);
+      return setMensaje('No se pudo agregar. Revisa tu conexión e intenta de nuevo.');
+    }
+    const ok = await registrar(nuevo);
+    setGuardando(false);
+    if (ok) {
+      setMensaje(`Registrado: ${nuevo.nombre_completo}${nuevo.es_visita ? ' (visita)' : ''}`);
+      setTexto('');
+      setEsVisita(false);
+      setPaso('inicio');
+    }
+  };
+  const quitar = async (id) => {
+    const { data } = await supabase.from('asistencia_jovenes').delete().eq('id', id).select('id');
+    if (!data || data.length === 0) setMensaje('No se pudo quitar de la lista.');
+    await cargarAsistentes();
+  };
+
+  const d = new Date(fecha + 'T00:00:00');
+  const fechaBonita = `Dom ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()}${d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''}`;
+  const esHoy = fecha === ultimoDomingo();
+  const jovenes = asistentes.filter((a) => !a.visita);
+  const visitas = asistentes.filter((a) => a.visita);
+  const estiloInput = { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 10 };
+  const flecha = (activa) => ({ width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.cardBg, alignItems: 'center', justifyContent: 'center', opacity: activa ? 1 : 0.35 });
+  const nombreDe = (a) => (a.jovenes ? a.jovenes.nombre_completo : '—');
+  const bloque = (titulo, lista, vacio) => (
+    <>
+      <Text style={{ color: colors.textMain, fontWeight: '700', marginTop: 16, marginBottom: 6 }}>
+        {titulo} ({lista.length})
+      </Text>
+      {lista.length === 0 ? (
+        <Text style={{ color: colors.textSub, fontSize: 13 }}>{vacio}</Text>
+      ) : (
+        lista.map((a) => (
+          <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+            <Text style={{ flex: 1, color: colors.textMain, fontSize: 14 }}>{nombreDe(a)}</Text>
+            <TouchableOpacity onPress={() => quitar(a.id)} style={{ padding: 6 }} accessibilityLabel={`Quitar a ${nombreDe(a)}`}>
+              <Feather name="x" size={16} color={colors.textSub} />
+            </TouchableOpacity>
+          </View>
+        ))
+      )}
+    </>
+  );
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
+      <View style={[styles.modalOverlay, { justifyContent: 'flex-start', paddingTop: 40 }]}>
+        <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.cardBorder, maxHeight: '88%' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Tomar lista</Text>
+            <TouchableOpacity onPress={onCerrar} style={{ padding: 6 }}>
+              <Feather name="x" size={22} color={colors.textSub} />
+            </TouchableOpacity>
+          </View>
+          <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 12 }}>Clase de jóvenes</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 16 }}>
+            <TouchableOpacity onPress={() => cambiarDomingo(-1)} style={flecha(true)} accessibilityLabel="Domingo anterior">
+              <Feather name="chevron-left" size={18} color={colors.textSub} />
+            </TouchableOpacity>
+            <View style={{ minWidth: 150, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: p.fondo }}>
+              <Text style={{ fontSize: 15.5, fontWeight: '800', color: p.texto }}>{fechaBonita}</Text>
+              {esHoy ? null : <Text style={{ fontSize: 11, fontWeight: '600', color: p.texto, opacity: 0.8 }}>Domingo anterior</Text>}
+            </View>
+            <TouchableOpacity onPress={() => cambiarDomingo(1)} disabled={esHoy} style={flecha(!esHoy)} accessibilityLabel="Domingo siguiente">
+              <Feather name="chevron-right" size={18} color={colors.textSub} />
+            </TouchableOpacity>
+          </View>
+
+          {paso === 'inicio' && (
+            <>
+              <TouchableOpacity
+                style={[styles.primaryButton, { marginTop: 0, backgroundColor: isDark ? p.fondo : p.texto }]}
+                onPress={() => {
+                  setMensaje('');
+                  setTexto('');
+                  setPaso('buscar');
+                }}
+              >
+                <Feather name="search" size={16} color={isDark ? p.texto : '#FFFFFF'} />
+                <Text style={[styles.primaryButtonText, { marginLeft: 8, color: isDark ? p.texto : '#FFFFFF' }]}>Buscar joven</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder }]}
+                onPress={() => {
+                  setMensaje('');
+                  setTexto('');
+                  setEsVisita(false);
+                  setPaso('agregar');
+                }}
+              >
+                <Feather name="user-plus" size={16} color={colors.textMain} />
+                <Text style={[styles.primaryButtonText, { color: colors.textMain, marginLeft: 8 }]}>Agregar joven</Text>
+              </TouchableOpacity>
+              {mensaje ? <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 12 }}>{mensaje}</Text> : null}
+              <Text style={{ color: colors.textSub, fontSize: 13, marginTop: 16 }}>
+                {jovenes.length} {jovenes.length === 1 ? 'joven' : 'jóvenes'} · {visitas.length} visita{visitas.length === 1 ? '' : 's'} · {asistentes.length} en total
+              </Text>
+              <ScrollView style={{ maxHeight: 300 }}>
+                {bloque('Jóvenes', jovenes, 'Todavía no hay jóvenes registrados este domingo.')}
+                {bloque('Visitas', visitas, 'Sin visitas este domingo.')}
+              </ScrollView>
+            </>
+          )}
+
+          {paso === 'buscar' && (
+            <>
+              <TextInput
+                style={[styles.input, estiloInput]}
+                placeholder="Nombre del joven..."
+                placeholderTextColor={colors.textSub}
+                value={texto}
+                onChangeText={(t) => {
+                  setTexto(t);
+                  setMensaje('');
+                }}
+                autoFocus
+              />
+              {mensaje ? <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 8 }}>{mensaje}</Text> : null}
+              <ScrollView style={{ maxHeight: 220 }}>
+                {resultados.map((j) => (
+                  <TouchableOpacity key={j.id} onPress={() => marcar(j)} disabled={guardando} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.textMain, fontSize: 14 }}>{j.nombre_completo}</Text>
+                      {j.es_visita ? <Text style={{ color: colors.textSub, fontSize: 12 }}>Visita</Text> : null}
+                    </View>
+                    {asistentes.some((a) => a.joven_id === j.id) ? <Feather name="check-circle" size={18} color={colors.textSub} /> : <Feather name="plus-circle" size={18} color={colors.textMain} />}
+                  </TouchableOpacity>
+                ))}
+                {texto.trim().length >= 2 && resultados.length === 0 && (
+                  <View style={{ paddingVertical: 10 }}>
+                    <Text style={{ color: colors.textSub, fontSize: 13 }}>No encontré a "{texto.trim()}".</Text>
+                    <TouchableOpacity style={[styles.primaryButton, { marginTop: 12, backgroundColor: isDark ? p.fondo : p.texto }]} onPress={() => setPaso('agregar')}>
+                      <Feather name="user-plus" size={16} color={isDark ? p.texto : '#FFFFFF'} />
+                      <Text style={[styles.primaryButtonText, { marginLeft: 8, fontSize: 14, color: isDark ? p.texto : '#FFFFFF' }]}>Agregarlo como nuevo</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+              <TouchableOpacity
+                onPress={() => {
+                  setPaso('inicio');
+                  setTexto('');
+                  setMensaje('');
+                }}
+                style={{ marginTop: 16, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.textSub, fontSize: 14 }}>Listo, volver a la lista</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {paso === 'agregar' && (
+            <>
+              <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 8 }}>Nombre completo:</Text>
+              <TextInput
+                style={[styles.input, estiloInput]}
+                placeholder="Nombre y apellido"
+                placeholderTextColor={colors.textSub}
+                value={texto}
+                onChangeText={(t) => {
+                  setTexto(t);
+                  setMensaje('');
+                }}
+                autoFocus
+              />
+              <TouchableOpacity onPress={() => setEsVisita(!esVisita)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, marginBottom: 6 }}>
+                <Interruptor value={esVisita} onValueChange={setEsVisita} color={p.fondo} isDark={isDark} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14.5, fontWeight: '700', color: colors.textMain }}>Es visita</Text>
+                  <Text style={{ fontSize: 12, color: colors.textSub }}>Se muestra aparte en la lista y en el resumen</Text>
+                </View>
+              </TouchableOpacity>
+              {mensaje ? <Text style={{ color: colors.textSub, fontSize: 13, marginBottom: 8 }}>{mensaje}</Text> : null}
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 4, backgroundColor: isDark ? p.fondo : p.texto }]} onPress={agregarYMarcar} disabled={guardando}>
+                {guardando ? <ActivityIndicator color={isDark ? p.texto : '#FFFFFF'} /> : <Text style={[styles.primaryButtonText, { color: isDark ? p.texto : '#FFFFFF' }]}>Guardar y marcar asistencia</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setPaso('inicio');
+                  setTexto('');
+                  setMensaje('');
+                }}
+                style={{ marginTop: 16, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.textSub, fontSize: 14 }}>Cancelar</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Jóvenes (encargado de jóvenes y admin general): buscar, corregir nombre, marcar visita, juntar repetidos o borrar
+const ListaJovenesAdmin = ({ isDark }) => {
+  const colors = getColors(isDark);
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Jóvenes'];
+  const [texto, setTexto] = useState('');
+  const [resultados, setResultados] = useState([]);
+  const [asistencias, setAsistencias] = useState({});
+  const [abierto, setAbierto] = useState(null);
+  const [nombre, setNombre] = useState('');
+  const [esVisita, setEsVisita] = useState(false);
+  const [modo, setModo] = useState('editar'); // 'editar' o 'juntar'
+  const [textoOtro, setTextoOtro] = useState('');
+  const [otros, setOtros] = useState([]);
+  const [mensaje, setMensaje] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '' });
+  const cerrarAlerta = () => setAlerta((a) => ({ ...a, visible: false }));
+  const campo = [styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, marginBottom: 0 }];
+
+  const contar = async (lista) => {
+    if (!lista.length) return;
+    const { data } = await supabase.from('asistencia_jovenes').select('joven_id').in('joven_id', lista.map((j) => j.id));
+    const cuenta = {};
+    (data || []).forEach((a) => (cuenta[a.joven_id] = (cuenta[a.joven_id] || 0) + 1));
+    setAsistencias((prev) => ({ ...prev, ...Object.fromEntries(lista.map((j) => [j.id, cuenta[j.id] || 0])) }));
+  };
+  const buscar = async (t) => {
+    if (t.trim().length < 2) return setResultados([]);
+    const { data } = await supabase.rpc('buscar_jovenes', { p_texto: t.trim(), p_exacto: false });
+    setResultados(data || []);
+    contar(data || []);
+  };
+  useEffect(() => {
+    const espera = setTimeout(() => buscar(texto), 250);
+    return () => clearTimeout(espera);
+  }, [texto]);
+  useEffect(() => {
+    if (modo !== 'juntar' || textoOtro.trim().length < 2) return setOtros([]);
+    const espera = setTimeout(async () => {
+      const { data } = await supabase.rpc('buscar_jovenes', { p_texto: textoOtro.trim(), p_exacto: false });
+      const lista = (data || []).filter((j) => !abierto || j.id !== abierto.id);
+      setOtros(lista);
+      contar(lista);
+    }, 250);
+    return () => clearTimeout(espera);
+  }, [textoOtro, modo]);
+
+  const abrir = (j) => {
+    if (abierto && abierto.id === j.id) return setAbierto(null);
+    setAbierto(j);
+    setNombre(j.nombre_completo || '');
+    setEsVisita(!!j.es_visita);
+    setModo('editar');
+    setTextoOtro('');
+    setMensaje('');
+  };
+  const guardar = async () => {
+    const limpio = nombrePropio(nombre);
+    if (limpio.length < 3) return setMensaje('Escribe el nombre completo.');
+    const { data: iguales } = await supabase.rpc('buscar_jovenes', { p_texto: limpio, p_exacto: true });
+    const otro = (iguales || []).find((x) => x.id !== abierto.id);
+    if (otro) return setMensaje(`Ya existe "${otro.nombre_completo}". Si es la misma persona, usa «Juntar con otro».`);
+    setGuardando(true);
+    const { error } = await supabase.from('jovenes').update({ nombre_completo: limpio, es_visita: esVisita }).eq('id', abierto.id);
+    setGuardando(false);
+    if (error) return setMensaje('No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
+    setAbierto(null);
+    buscar(texto);
+  };
+  const juntar = (queda, quita) =>
+    setAlerta({
+      visible: true,
+      titulo: 'Juntar jóvenes',
+      mensaje: `Se queda «${queda.nombre_completo}» y se borra «${quita.nombre_completo}». Su asistencia (${asistencias[quita.id] || 0}) pasa al que se queda. ¿Continuar?`,
+      textoConfirmar: 'Sí, juntar',
+      onCancelar: cerrarAlerta,
+      isDark,
+      onConfirmar: async () => {
+        cerrarAlerta();
+        const { data: motivo, error } = await supabase.rpc('juntar_jovenes', { p_queda: queda.id, p_quita: quita.id });
+        if (error || motivo) return setMensaje(motivo || 'No se pudo juntar. Revisa tu conexión e intenta de nuevo.');
+        setAbierto(null);
+        setTexto(queda.nombre_completo);
+        buscar(queda.nombre_completo);
+      },
+    });
+  const borrar = (j) =>
+    setAlerta({
+      visible: true,
+      titulo: 'Borrar joven',
+      mensaje: `¿Borrar a «${j.nombre_completo}»?`,
+      textoConfirmar: 'Sí, borrar',
+      onCancelar: cerrarAlerta,
+      isDark,
+      onConfirmar: async () => {
+        cerrarAlerta();
+        const { error } = await supabase.from('jovenes').delete().eq('id', j.id);
+        if (error) return setMensaje('No se pudo borrar.');
+        setAbierto(null);
+        buscar(texto);
+      },
+    });
+  const pildora = (activa) => ({ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: activa ? p.fondo : colors.cardBorder, backgroundColor: activa ? p.fondo : 'transparent' });
+
+  return (
+    <View>
+      <TextInput style={campo} value={texto} onChangeText={setTexto} placeholder="Buscar joven por nombre…" placeholderTextColor={colors.textSub} />
+      {texto.trim().length >= 2 && resultados.length === 0 ? <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 10 }}>No encontré a nadie con ese nombre.</Text> : null}
+      {resultados.map((j) => {
+        const abiertoAqui = abierto && abierto.id === j.id;
+        const total = asistencias[j.id];
+        return (
+          <View key={j.id} style={{ marginTop: 10, borderRadius: 20, borderWidth: 1, borderColor: abiertoAqui ? p.fondo : colors.cardBorder, backgroundColor: colors.cardBg, overflow: 'hidden' }}>
+            <TouchableOpacity onPress={() => abrir(j)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{j.nombre_completo}</Text>
+                <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>
+                  {j.es_visita ? 'Visita' : 'Joven'}
+                  {total !== undefined ? ` · ${total} asistencia${total === 1 ? '' : 's'}` : ''}
+                </Text>
+              </View>
+              <Feather name={abiertoAqui ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSub} />
+            </TouchableOpacity>
+            {abiertoAqui ? (
+              <View style={{ paddingHorizontal: 14, paddingBottom: 14 }}>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  {[
+                    { valor: 'editar', texto: 'Editar' },
+                    { valor: 'juntar', texto: 'Juntar con otro' },
+                  ].map((o) => (
+                    <TouchableOpacity key={o.valor} onPress={() => setModo(o.valor)} style={pildora(modo === o.valor)}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: modo === o.valor ? p.texto : colors.textSub }}>{o.texto}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {modo === 'editar' ? (
+                  <>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, marginBottom: 6 }}>Nombre completo</Text>
+                    <TextInput style={campo} value={nombre} onChangeText={setNombre} placeholderTextColor={colors.textSub} />
+                    <TouchableOpacity onPress={() => setEsVisita(!esVisita)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, marginTop: 6 }}>
+                      <Interruptor value={esVisita} onValueChange={setEsVisita} color={p.fondo} isDark={isDark} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }}>Es visita</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub }}>Si ya viene seguido, quítale la marca: desde el próximo domingo cuenta como joven</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+                      <TouchableOpacity onPress={guardar} disabled={guardando} style={{ flexGrow: 1, height: 46, borderRadius: 999, backgroundColor: p.fondo, alignItems: 'center', justifyContent: 'center' }}>
+                        {guardando ? <ActivityIndicator color={p.texto} /> : <Text style={{ fontSize: 14.5, fontWeight: '800', color: p.texto }}>Guardar</Text>}
+                      </TouchableOpacity>
+                      {total === 0 ? (
+                        <TouchableOpacity onPress={() => borrar(j)} style={{ height: 46, paddingHorizontal: 18, borderRadius: 999, borderWidth: 1, borderColor: '#E0806A', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: '#E0806A' }}>Borrar</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    {total > 0 ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 8 }}>Tiene asistencia registrada, por eso no se puede borrar. Si está repetido, usa «Juntar con otro».</Text> : null}
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 13, color: colors.textSub, marginBottom: 8 }}>Busca el otro registro de la misma persona y elige cuál nombre se queda.</Text>
+                    <TextInput style={campo} value={textoOtro} onChangeText={setTextoOtro} placeholder="Buscar el otro registro…" placeholderTextColor={colors.textSub} />
+                    {otros.map((o) => (
+                      <View key={o.id} style={{ marginTop: 10, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }}>{o.nombre_completo}</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
+                          {o.es_visita ? 'Visita' : 'Joven'}
+                          {asistencias[o.id] !== undefined ? ` · ${asistencias[o.id]} asistencia${asistencias[o.id] === 1 ? '' : 's'}` : ''}
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                          <TouchableOpacity onPress={() => juntar(j, o)} style={pildora(false)}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{j.nombre_completo}»</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => juntar(o, j)} style={pildora(false)}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{o.nombre_completo}»</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )}
+                {mensaje ? <Text style={{ fontSize: 13, color: '#E0806A', marginTop: 10 }}>{mensaje}</Text> : null}
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+      <AlertaPersonalizada {...alerta} />
+    </View>
+  );
+};
+
+// ==========================================
 // PANTALLA 0: LOGIN
 // ==========================================
 function LoginScreen({ navigation }) {
@@ -3682,7 +4170,7 @@ function MenuPrincipalScreen({ navigation }) {
   const [avisosPush, setAvisosPush] = useState(estadoAvisos());
   const columnas = useColumnas();
   const esTablet = columnas >= 2;
-  const tarjetas = [tieneClases && { icono: 'smile', titulo: 'Clases de niños', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Peticiones de oración', categoria: 'Petición', onPress: () => navigation.navigate('Peticiones') }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
+  const tarjetas = [tieneClases && { icono: 'smile', titulo: 'Clases de niños y jóvenes', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Peticiones de oración', categoria: 'Petición', onPress: () => navigation.navigate('Peticiones') }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -3710,7 +4198,7 @@ function MenuPrincipalScreen({ navigation }) {
       })();
       (async () => {
         const { data } = await supabase.from('clases_asignadas').select('id').or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`).gte('fecha', fechaISO(new Date())).limit(1);
-                setTieneClases(puedeArea('ninos') || !!(data && data.length > 0));
+                setTieneClases(puedeArea('ninos') || puedeArea('jovenes') || !!(data && data.length > 0));
       })();
       return () => clearInterval(temporizador);
     }, []),
@@ -4125,6 +4613,7 @@ function GruposScreen({ navigation, route }) {
   const [filasMes, setFilasMes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [mapaNombres, setMapaNombres] = useState({});
+  const [listaJovenes, setListaJovenes] = useState(false);
   useEffect(() => {
     cargarMapaNombres().then(setMapaNombres);
   }, []);
@@ -4172,6 +4661,7 @@ function GruposScreen({ navigation, route }) {
     }
   });
   tarjetas.sort((x, y) => (x.fecha < y.fecha ? -1 : x.fecha > y.fecha ? 1 : 0));
+  if (puedeArea('jovenes')) tarjetas.unshift({ clave: 'jovenes', icono: 'user-check', titulo: 'Clase de jóvenes', subtitulo: 'Domingos por la mañana', detalle: 'Toca para tomar lista', categoria: 'Jóvenes', onPress: () => setListaJovenes(true) });
 
   // Vista de un mes: cada grupo con quién está asignado
   const asignadosA = (g) => {
@@ -4197,7 +4687,7 @@ function GruposScreen({ navigation, route }) {
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 8 }}>
-            <Text style={[styles.title, { color: colors.textMain }]}>{mesVista || 'Clases de niños'}</Text>
+            <Text style={[styles.title, { color: colors.textMain }]}>{mesVista || 'Clases de niños y jóvenes'}</Text>
             <Text style={[styles.subtitle, { color: colors.textSub }]}>{mesVista ? subtituloMes : 'Selecciona el grupo a impartir'}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
@@ -4226,6 +4716,7 @@ function GruposScreen({ navigation, route }) {
           </View>
         )}
       </ScrollView>
+      <ModalAsistenciaJovenes visible={listaJovenes} onCerrar={() => setListaJovenes(false)} isDark={isDark} />
     </SafeAreaView>
   );
 }
@@ -6272,7 +6763,7 @@ function AdminScreen({ navigation, route }) {
     // Sin "seccion" se ven las tarjetas; con "seccion" se abre esa categoría con sus opciones plegadas
   // El admin general ve todas; el encargado de niños solo «Clases de niños» y entra directo
   const esAdminGeneral = rolUsuarioActivoGlobal === 'administrador';
-  const seccionesPermitidas = Object.keys(SECCIONES_ADMIN).filter((k) => esAdminGeneral || (k === 'clases' && puedeArea('ninos')) || (k === 'peticiones' && puedeArea('peticiones')));
+  const seccionesPermitidas = Object.keys(SECCIONES_ADMIN).filter((k) => esAdminGeneral || (k === 'clases' && puedeArea('ninos')) || (k === 'peticiones' && puedeArea('peticiones')) || (k === 'jovenes' && puedeArea('jovenes')));
   const seccionPedida = route?.params?.seccion;
   const seccion = seccionesPermitidas.includes(seccionPedida) ? seccionPedida : seccionesPermitidas.length === 1 ? seccionesPermitidas[0] : null;
   const columnasAdmin = useColumnas();
@@ -7211,6 +7702,15 @@ function AdminScreen({ navigation, route }) {
             </OpcionAdmin>
             <OpcionAdmin {...opc('resumenPredicaciones')} icono="bar-chart-2" titulo="Resumen de predicaciones" subtitulo="Fechas por hermano, confirmaciones y apoyos" onPress={() => navigation.navigate('ResumenPredicaciones')} />
             <OpcionAdmin {...opc('resumenCena')} icono="bar-chart-2" titulo="Resumen de la Cena del Señor" subtitulo="Participación y respuestas a las invitaciones" onPress={() => navigation.navigate('ResumenCena')} />
+          </>
+        )}
+
+                {seccion === 'jovenes' && (
+          <>
+            <OpcionAdmin {...opc('resumenJovenes')} icono="bar-chart-2" titulo="Resumen de asistencia" subtitulo="Jóvenes y visitas por domingo, con descarga en Excel" onPress={() => navigation.navigate('ResumenJovenes')} />
+            <OpcionAdmin {...opc('jovenes')} icono="edit-3" titulo="Jóvenes" subtitulo="Corregir nombres, marcar visitas, juntar repetidos o borrar">
+              <ListaJovenesAdmin isDark={isDark} />
+            </OpcionAdmin>
           </>
         )}
 
@@ -8826,7 +9326,7 @@ const LineaResumen = ({ puntos, color, isDark }) => {
 };
 
 // Cálculos del resumen de asistencia para un mes y un grupo ("Todos" = todos los grupos)
-const calcularAsistencia = (filas, mes, grupo) => {
+const calcularAsistencia = (filas, mes, grupo, orden = ORDEN_GRUPOS) => {
   const delGrupo = grupo === 'Todos' ? filas : filas.filter((f) => f.grupo === grupo);
   const enMes = (f, d) => f.fecha.slice(0, 7) === claveMes(d);
   // Promedio de niños por domingo (solo cuenta los domingos en que se tomó lista)
@@ -8848,7 +9348,7 @@ const calcularAsistencia = (filas, mes, grupo) => {
     .filter((f) => enMes(f, mes) && (grupo === 'Todos' || f.grupo === grupo))
     .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
     .map((f) => ({ nombre: nombreDe(f), grupo: f.grupo, fecha: f.fecha }));
-  const grupos = grupo === 'Todos' ? ORDEN_GRUPOS : [grupo];
+  const grupos = grupo === 'Todos' ? orden : [grupo];
   const fechas = [...new Set(delMes.map((f) => f.fecha))].sort();
   const porDomingo = fechas.map((fe) => ({ fecha: fe, porGrupo: grupos.map((g) => ({ grupo: g, valor: delMes.filter((f) => f.fecha === fe && f.grupo === g).length })) }));
   const porGrupo = grupos.map((g) => ({ grupo: g, valor: Math.round(promedioDe(delMes.filter((f) => f.grupo === g))) })).filter((x) => x.valor > 0 || grupo !== 'Todos');
@@ -9021,6 +9521,180 @@ function ResumenAsistenciaScreen({ navigation }) {
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
                               {vinieronPorGrupo.map((g) => {
                                 const p = paleta[g.grupo] || paleta['Niños'];
+                                return (
+                                  <View key={g.grupo} style={{ flexGrow: 1, flexBasis: columnas === 1 ? '100%' : 260, minWidth: 0, borderRadius: 20, borderWidth: 1, borderColor: colors.cardBorder, padding: 14 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                      <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: p.fondo, marginRight: 8 }} />
+                                      <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: colors.textMain }}>{g.grupo}</Text>
+                                      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub }}>{g.nombres.length}</Text>
+                                    </View>
+                                    {g.nombres.map((n, i) => (
+                                      <Text key={n + i} style={{ fontSize: 13.5, color: colors.textMain, paddingVertical: 5, borderTopWidth: i ? 1 : 0, borderTopColor: colors.cardBorder }}>
+                                        {n}
+                                      </Text>
+                                    ))}
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          )}
+                        </>
+                      )}
+                    </TarjetaResumen>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// Resumen de asistencia de jóvenes (encargado de jóvenes y admin general)
+const ORDEN_JOVENES = ['Jóvenes', 'Visitas'];
+function ResumenJovenesScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'];
+  const [filas, setFilas] = useState(null);
+  const [error, setError] = useState(false);
+  const [mes, setMes] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+    const [grupo, setGrupo] = useState('Todos');
+  const [domingoVista, setDomingoVista] = useState(null);
+  useEffect(() => {
+    // Cada registro se acomoda como los de niños: grupo «Jóvenes» o «Visitas» según cómo vino ese domingo
+    traerTodo(() => supabase.from('asistencia_jovenes').select('id, fecha, visita, joven_id, jovenes(nombre_completo)').order('fecha', { ascending: true }).order('id', { ascending: true }))
+      .then((lista) => setFilas(lista.map((f) => ({ id: f.id, fecha: f.fecha, grupo: f.visita ? 'Visitas' : 'Jóvenes', nino_id: f.joven_id, ninos: f.jovenes }))))
+      .catch(() => setError(true));
+  }, []);
+  const cambiarMes = (n) => setMes(new Date(mes.getFullYear(), mes.getMonth() + n, 1));
+  const esAdmin = puedeArea('jovenes');
+  const d = filas ? calcularAsistencia(filas, mes, grupo, ORDEN_JOVENES) : null;
+  const descargar = () => {
+    if (!filas) return;
+    const lista = filas.filter((f) => f.fecha.slice(0, 7) === claveMes(mes) && (grupo === 'Todos' || f.grupo === grupo));
+    descargarTablaCSV(
+      `asistencia-jovenes_${claveMes(mes)}${grupo === 'Todos' ? '' : '_' + grupo.replace(/\s+/g, '-')}.csv`,
+      ['Fecha', 'Nombre', 'Visita'],
+      lista.map((f) => [f.fecha, ponerMayusculas((f.ninos && f.ninos.nombre_completo) || 'Sin nombre'), f.grupo === 'Visitas' ? 'Sí' : 'No']),
+    );
+  };
+  let comparacion = 'por domingo con lista';
+  if (d && d.promedioAnterior > 0) {
+    const cambio = Math.round(((d.promedio - d.promedioAnterior) / d.promedioAnterior) * 100);
+    const mesAnt = NOMBRES_MESES[d.anterior.getMonth()].toLowerCase();
+    comparacion = cambio === 0 ? `Igual que ${mesAnt}` : `${cambio > 0 ? '▲' : '▼'} ${Math.abs(cambio)}% vs ${mesAnt}`;
+  }
+    const nombreMes = `${NOMBRES_MESES[mes.getMonth()]} ${mes.getFullYear()}`;
+  // Quiénes vinieron: por omisión, el último domingo del mes con lista
+  const domingosLista = d ? d.porDomingo.map((x) => x.fecha) : [];
+  const domingoElegido = domingosLista.includes(domingoVista) ? domingoVista : domingosLista[domingosLista.length - 1];
+  const vinieron = (filas && domingoElegido ? filas.filter((f) => f.fecha === domingoElegido && (grupo === 'Todos' || f.grupo === grupo)) : []).map((f) => ({ grupo: f.grupo, nombre: ponerMayusculas((f.ninos && f.ninos.nombre_completo) || 'Sin nombre') }));
+  const vinieronPorGrupo = (grupo === 'Todos' ? ORDEN_JOVENES : [grupo])
+    .map((g) => ({ grupo: g, nombres: vinieron.filter((v) => v.grupo === g).map((v) => v.nombre).sort((a, b) => a.localeCompare(b)) }))
+    .filter((x) => x.nombres.length > 0);
+  const flecha = { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.cardBg, alignItems: 'center', justifyContent: 'center' };
+  const mostrarLista = (lista, armar) => (
+    <>
+      {lista.slice(0, 8).map(armar)}
+      {lista.length > 8 ? <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 6 }}>y {lista.length - 8} más</Text> : null}
+    </>
+  );
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <EncabezadoResumen titulo="Asistencia" subtitulo="Clase de jóvenes" categoria="Jóvenes" navigation={navigation} isDark={isDark} columnas={columnas} onDescargar={esAdmin && filas ? descargar : null} />
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
+        <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850 }}>
+          {!esAdmin ? (
+            <SinDatosResumen texto="Esta sección es solo para el encargado de jóvenes." isDark={isDark} />
+          ) : (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginVertical: 10 }}>
+                <TouchableOpacity onPress={() => cambiarMes(-1)} style={flecha} accessibilityLabel="Mes anterior">
+                  <Feather name="chevron-left" size={18} color={colors.textSub} />
+                </TouchableOpacity>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: colors.textMain, minWidth: 150, textAlign: 'center' }}>{nombreMes}</Text>
+                <TouchableOpacity onPress={() => cambiarMes(1)} style={flecha} accessibilityLabel="Mes siguiente">
+                  <Feather name="chevron-right" size={18} color={colors.textSub} />
+                </TouchableOpacity>
+              </View>
+              <PildorasResumen opciones={['Todos', ...ORDEN_JOVENES].map((g) => ({ valor: g, texto: g }))} valor={grupo} onCambiar={setGrupo} categoria="Jóvenes" isDark={isDark} />
+              {error ? (
+                <SinDatosResumen texto="No se pudo cargar la asistencia. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
+              ) : !d ? (
+                <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                    <DatoResumen valor={Math.round(d.promedio)} etiqueta="Promedio por domingo" detalle={comparacion} categoria="Jóvenes" isDark={isDark} />
+                    <DatoResumen valor={d.distintos} etiqueta="Personas distintas" detalle="en el mes" categoria="Calendario" isDark={isDark} />
+                    <DatoResumen valor={d.nuevos.length} etiqueta="Llegaron por primera vez" detalle={`llegaron en ${NOMBRES_MESES[mes.getMonth()].toLowerCase()}`} categoria="Usuarios" isDark={isDark} />
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    <TarjetaResumen titulo="Asistencia por domingo" subtitulo="Jóvenes y visitas de cada domingo del mes" ancho={anchoTarjeta(columnas, true)} isDark={isDark}>
+                      {d.porDomingo.length === 0 ? (
+                        <SinDatosResumen texto="Todavía no hay lista tomada en este mes." isDark={isDark} />
+                      ) : (
+                        <>
+                          <BarrasApiladas columnas={d.porDomingo.map((x) => ({ etiqueta: fechaCorta(x.fecha), valores: x.porGrupo.map((g) => ({ valor: g.valor, color: (paleta[g.grupo] || paleta['Jóvenes']).fondo })) }))} isDark={isDark} />
+                          {grupo === 'Todos' ? (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
+                              {ORDEN_JOVENES.map((g) => (
+                                <View key={g} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                  <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: paleta[g].fondo }} />
+                                  <Text style={{ fontSize: 11.5, color: colors.textSub }}>{g}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : null}
+                        </>
+                      )}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Jóvenes y visitas" subtitulo={`Promedio por domingo en ${NOMBRES_MESES[mes.getMonth()].toLowerCase()}`} ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.porGrupo.length === 0 ? (
+                        <SinDatosResumen texto="Sin datos en este mes." isDark={isDark} />
+                      ) : (
+                        d.porGrupo.map((g) => {
+                          const mayor = Math.max(...d.porGrupo.map((x) => x.valor), 1);
+                          return (
+                            <View key={g.grupo} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 6 }}>
+                              <Text style={{ width: 118, fontSize: 13, fontWeight: '600', color: colors.textMain }}>{g.grupo}</Text>
+                              <View style={{ flex: 1, height: 12, borderRadius: 99, backgroundColor: colors.background, overflow: 'hidden' }}>
+                                <View style={{ width: `${(g.valor / mayor) * 100}%`, height: '100%', borderRadius: 99, backgroundColor: (paleta[g.grupo] || paleta['Jóvenes']).fondo }} />
+                              </View>
+                              <Text style={{ width: 30, textAlign: 'right', fontSize: 13, fontWeight: '700', color: colors.textMain }}>{g.valor}</Text>
+                            </View>
+                          );
+                        })
+                      )}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Últimos 6 meses" subtitulo="Promedio de asistencia por domingo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <LineaResumen puntos={d.seisMeses} color={paleta['Jóvenes'].fondo} isDark={isDark} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Dejaron de venir" subtitulo="Venían seguido y faltaron los últimos 3 domingos" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.dejaron.length === 0 ? <SinDatosResumen texto="Nadie por ahora." isDark={isDark} /> : mostrarLista(d.dejaron, (n, i) => <FilaResumen key={n.nombre + i} primera={i === 0} avatar={inicialesDe(n.nombre)} nombre={n.nombre} detalle={n.grupo} etiqueta={`Último: ${fechaCorta(n.ultima)}`} categoria={n.grupo} isDark={isDark} />)}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Llegaron este mes" subtitulo="Primera vez que se registran" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                                            {d.nuevos.length === 0 ? <SinDatosResumen texto="Nadie nuevo este mes." isDark={isDark} /> : mostrarLista(d.nuevos, (n, i) => <FilaResumen key={n.nombre + i} primera={i === 0} avatar={inicialesDe(n.nombre)} nombre={n.nombre} detalle={n.grupo} etiqueta={fechaCorta(n.fecha)} categoria={n.grupo} isDark={isDark} />)}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Quiénes vinieron" subtitulo="Elige un domingo para ver los nombres" ancho="100%" isDark={isDark}>
+                      {domingosLista.length === 0 ? (
+                        <SinDatosResumen texto="Todavía no hay lista tomada en este mes." isDark={isDark} />
+                      ) : (
+                        <>
+                          <PildorasResumen opciones={domingosLista.map((f) => ({ valor: f, texto: fechaCorta(f) }))} valor={domingoElegido} onCambiar={setDomingoVista} categoria="Jóvenes" isDark={isDark} />
+                          {vinieronPorGrupo.length === 0 ? (
+                            <SinDatosResumen texto="Nadie registrado ese domingo." isDark={isDark} />
+                          ) : (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
+                              {vinieronPorGrupo.map((g) => {
+                                const p = paleta[g.grupo] || paleta['Jóvenes'];
                                 return (
                                   <View key={g.grupo} style={{ flexGrow: 1, flexBasis: columnas === 1 ? '100%' : 260, minWidth: 0, borderRadius: 20, borderWidth: 1, borderColor: colors.cardBorder, padding: 14 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
@@ -9798,6 +10472,7 @@ export default function App() {
             <Stack.Screen name="ResumenClases" component={ResumenClasesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenPredicaciones" component={ResumenPredicacionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenPeticiones" component={ResumenPeticionesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ResumenJovenes" component={ResumenJovenesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Calendario" component={CalendarioScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Peticiones" component={PeticionesScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
