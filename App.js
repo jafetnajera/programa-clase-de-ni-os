@@ -28,7 +28,7 @@ let avisosApagadosGlobal = []; // áreas que el admin general silenció
 // ¿Puede administrar esta área? El administrador general puede todo
 const puedeArea = (area) => rolUsuarioActivoGlobal === 'administrador' || (encargadoGlobal || []).includes(area);
 // ¿Ve la opción «Administración»? Admin general, encargado de clases de niños, de peticiones o de jóvenes
-const puedeAdministrar = () => puedeArea('ninos') || puedeArea('peticiones') || puedeArea('jovenes');
+const puedeAdministrar = () => puedeArea('ninos') || puedeArea('peticiones') || puedeArea('jovenes') || puedeArea('anexo');
 // ¿Le llegan los avisos de esta área? Admin general: si no la apagó. Encargado: siempre los de su área
 const recibeAvisosArea = (area) => (rolUsuarioActivoGlobal === 'administrador' && !(avisosApagadosGlobal || []).includes(area)) || (encargadoGlobal || []).includes(area);
 // Guarda en memoria los datos de acceso de quien inició sesión
@@ -338,6 +338,7 @@ const linking = {
             ResumenPredicaciones: 'resumen-predicaciones',
       ResumenPeticiones: 'resumen-peticiones',
       ResumenJovenes: 'resumen-jovenes',
+      RolAnexo: 'anexo',
       Calendario: 'calendario',
       Peticiones: 'peticiones',
     },
@@ -758,6 +759,7 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
               ['ninos', 'Clases de niños', 'Clases de niños'],
               ['predicaciones', 'Predicaciones y Cena', 'Predicaciones'],
               ['peticiones', 'Peticiones', 'Petición'],
+              ['anexo', 'Anexo', 'Anexo'],
             ].map(([area, texto, categoria]) => (
               <View key={area} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 7 }}>
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria].fondo, marginLeft: 5, marginRight: 12 }} />
@@ -828,6 +830,7 @@ const areaDeAviso = (clave, solPorId, ofPorId) => {
   const [tipo, id] = String(clave).split(':');
   if (tipo.startsWith('cena')) return 'Cena';
   if (tipo.startsWith('pet')) return 'Petición';
+  if (tipo.startsWith('anx')) return 'Anexo';
   if (tipo.startsWith('rec-rol') || (tipo === 'rec-mes' && String(clave).endsWith(':rol'))) return 'Predicaciones';
   if (tipo.startsWith('rec')) return 'Clases de niños';
   const s = tipo.includes('oferta') ? solPorId[(ofPorId[id] || {}).solicitud_id] : solPorId[id];
@@ -1461,6 +1464,19 @@ const obtenerNotificaciones = async () => {
       } else if (!confirmada && !porConfirmarLejos) porConfirmarLejos = r;
     });
     if (porConfirmarLejos) recordatorios.push({ clave: 'rec-rol-pend', accion: true, destino: { pantalla: 'MiRol', params: { servicioId: porConfirmarLejos.id } }, mensaje: 'Tienes fechas por confirmar en tu rol', detalle: 'Toca para revisarlas en Mi rol' });
+    // Anexo: 15 días antes en adelante; las que están lejos y sin confirmar, en un solo aviso
+    const { data: miAnexo } = await supabase.from('anexo_rol').select('id, fecha, lugar, estado_confirmacion').gte('fecha', hoy).ilike('nombre_usuario', usuarioActivoGlobal).order('fecha', { ascending: true });
+    let anexoLejos = null;
+    (miAnexo || []).forEach((r) => {
+      const d = diasEntre(hoy, r.fecha);
+      const confirmada = r.estado_confirmacion === 'confirmado';
+      if (d <= 15) {
+        const cuando = d === 0 ? 'hoy' : d === 1 ? 'mañana' : `en ${d} días`;
+        const etapa = d <= 1 ? 'cerca' : d <= 3 ? '3' : d <= 7 ? '7' : '15';
+        recordatorios.push({ clave: `anx-rol:${r.id}:${confirmada ? 'c' : 'p'}:${etapa}`, accion: !confirmada, destino: { pantalla: 'RolAnexo' }, mensaje: `Tienes clase en el anexo de ${r.lugar} ${cuando}`, detalle: confirmada ? `Recordatorio • ${horaAnexo(r.fecha, r.lugar)}` : 'Toca para confirmarla en el rol del anexo' });
+      } else if (!confirmada && !anexoLejos) anexoLejos = r;
+    });
+    if (anexoLejos) recordatorios.push({ clave: 'anx-pend', accion: true, destino: { pantalla: 'RolAnexo' }, mensaje: 'Tienes fechas del anexo por confirmar', detalle: 'Toca para revisarlas en el rol del anexo' });
     items.unshift(...recordatorios);
     // ---- CENA DEL SEÑOR: invitación por responder (con botones), asignación y lugares que faltan ----
     const { data: turnosCena } = await supabase.from('cena_turnos').select('id, fecha, posicion, nombre_usuario, estado, asignado_por, invitado_en, respondido_en').gte('fecha', hoy).in('estado', ['invitado', 'confirmado']);
@@ -1482,7 +1498,7 @@ const obtenerNotificaciones = async () => {
         supabase.from('peticiones_oracion').select('id', { count: 'exact', head: true }).eq('visibilidad', 'publica').eq('publicacion', 'Por aprobar'),
         supabase.from('peticiones_oracion').select('id', { count: 'exact', head: true }).eq('estado', 'Pendiente').or('visibilidad.eq.encargado,publicacion.eq.Publicada'),
       ]);
-      if (porOrar > 0) items.unshift({ clave: `pet-pend:${porOrar}`, accion: false, abierta: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas', filtro: 'orar' } }, mensaje: porOrar === 1 ? 'Hay 1 petición de oración por orar' : `Hay ${porOrar} peticiones de oración por orar`, detalle: 'Toca para verlas' });
+      if (porOrar > 0) items.unshift({ clave: `pet-pend:${porOrar}`, accion: false, abierta: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas', filtro: 'orar' } }, mensaje: porOrar === 1 ? 'Hay 1 petición de oración pendiente' : `Hay ${porOrar} peticiones de oración pendientes`, detalle: 'Toca para verlas' });
       if (porAprobar > 0) items.unshift({ clave: `pet-aprobar:${porAprobar}`, accion: true, destino: { pantalla: 'Peticiones', params: { vista: 'recibidas', filtro: 'aprobar' } }, mensaje: porAprobar === 1 ? 'Hay 1 petición de oración por aprobar' : `Hay ${porAprobar} peticiones de oración por aprobar`, detalle: 'Toca para revisarlas' });
     }
     // ---- RESPALDO: del 1 al 5 de enero, recordar a los admins descargar el respaldo del año que terminó ----
@@ -1998,6 +2014,7 @@ const SECCIONES_ADMIN = {
     clases: { titulo: 'Clases de niños', subtitulo: 'Clases, asistencia y coritos', categoria: 'Clases de niños', icono: 'smile' },
   peticiones: { titulo: 'Peticiones', subtitulo: 'Resumen de peticiones de oración', categoria: 'Petición', icono: 'heart' },
   jovenes: { titulo: 'Jóvenes', subtitulo: 'Resumen de asistencia y lista de jóvenes', categoria: 'Jóvenes', icono: 'user-check' },
+  anexo: { titulo: 'Anexo', subtitulo: 'Rol de los centros de rehabilitación', categoria: 'Anexo', icono: 'map-pin' },
   respaldo: { titulo: 'Respaldo', subtitulo: 'Descargar toda la información en Excel', categoria: 'Respaldo', icono: 'download' },
 };
 
@@ -4116,6 +4133,7 @@ const TABLAS_RESPALDO = [
   { tabla: 'clases', hoja: 'Contenido de clases' },
   { tabla: 'clases_detalle', hoja: 'Detalle de clases' },
   { tabla: 'coritos', hoja: 'Coritos' },
+  { tabla: 'anexo_rol', hoja: 'Rol del anexo' },
 ];
 // La librería de Excel se carga solo al descargar, para no hacer más pesada la app
 const cargarLibreriaExcel = () =>
@@ -4188,6 +4206,577 @@ const RespaldoAdmin = ({ isDark }) => {
         <Feather name="lock" size={13} color={colors.textSub} style={{ marginTop: 2 }} />
         <Text style={{ flex: 1, fontSize: 12, lineHeight: 17, color: colors.textSub }}>Incluye nombres, teléfonos y peticiones. Compártelo solo con quien deba tenerlo.</Text>
       </View>
+    </View>
+  );
+};
+
+// ==========================================
+// ROL DEL ANEXO (centros de rehabilitación: Pesquería y San Nicolás)
+// ==========================================
+const LUGARES_ANEXO = ['Pesquería', 'San Nicolás'];
+// Pesquería en fucsia y San Nicolás en naranja (como en el rol impreso)
+const COLOR_LUGAR_ANEXO = {
+  claro: { 'Pesquería': { fondo: '#E9AED6', texto: '#6A1F55' }, 'San Nicolás': { fondo: '#F4B27C', texto: '#6B330C' } },
+  oscuro: { 'Pesquería': { fondo: '#CB8DB8', texto: '#3D0F30' }, 'San Nicolás': { fondo: '#E39A5E', texto: '#4A2006' } },
+};
+// Las horas son fijas: sábado 9:00 am en los dos; domingo 4:00 pm Pesquería y 5:00 pm San Nicolás
+const horaAnexo = (fecha, lugar) => (new Date(fecha + 'T00:00:00').getDay() === 6 ? '9:00 am' : lugar === 'Pesquería' ? '4:00 pm' : '5:00 pm');
+
+function RolAnexoScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const ancho = columnas >= 2 ? 1000 : 850;
+  const tono = isDark ? 'oscuro' : 'claro';
+  const paleta = PALETA_MENU[tono]['Anexo'];
+  const [rol, setRol] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [mapaNombres, setMapaNombres] = useState({});
+  const [lugar, setLugar] = useState('Todos');
+  const [refrescando, setRefrescando] = useState(false);
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '' });
+  const cerrarAlerta = () => setAlerta((a) => ({ ...a, visible: false }));
+  const yo = (usuarioActivoGlobal || '').toLowerCase();
+  const puedeTodo = puedeArea('anexo');
+
+  const cargar = async () => {
+    const hoy = fechaISO(new Date());
+    const { data } = await supabase.from('anexo_rol').select('*').gte('fecha', hoy).order('fecha', { ascending: true });
+    setRol((data || []).sort((a, b) => (a.fecha !== b.fecha ? a.fecha.localeCompare(b.fecha) : LUGARES_ANEXO.indexOf(a.lugar) - LUGARES_ANEXO.indexOf(b.lugar))));
+    setMapaNombres(await cargarMapaNombres());
+  };
+  useFocusEffect(
+    React.useCallback(() => {
+      cargar().then(() => setCargando(false));
+    }, []),
+  );
+  const onRefresh = async () => {
+    setRefrescando(true);
+    await cargar();
+    setRefrescando(false);
+  };
+  const confirmar = async (item) => {
+    const { data, error } = await supabase.rpc('confirmar_anexo', { p_id: item.id });
+    if (error || data) return setAlerta({ visible: true, titulo: 'No se pudo confirmar', mensaje: data || 'Revisa tu conexión e intenta de nuevo.', onConfirmar: cerrarAlerta, isDark });
+    setRol((prev) => prev.map((x) => (x.id === item.id ? { ...x, estado_confirmacion: 'confirmado' } : x)));
+  };
+  // El encargado del anexo (o el admin) puede confirmar por otro hermano
+  const confirmarPorOtro = (item) =>
+    setAlerta({
+      visible: true,
+      titulo: 'Confirmar por otro',
+      mensaje: `¿Confirmar la clase de ${nombreEnRol(item, mapaNombres)} en ${item.lugar}?`,
+      textoConfirmar: 'Confirmar',
+      onCancelar: cerrarAlerta,
+      onConfirmar: () => {
+        cerrarAlerta();
+        confirmar(item);
+      },
+      isDark,
+    });
+
+  const esMia = (r) => (r.nombre_usuario || '').toLowerCase() === yo;
+  const mias = rol.filter(esMia);
+  const visibles = rol.filter((r) => lugar === 'Todos' || r.lugar === lugar);
+  const diaTexto = (f) => {
+    const d = new Date(f + 'T00:00:00');
+    return { letra: ['D', 'L', 'M', 'M', 'J', 'V', 'S'][d.getDay()], num: `${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()}` };
+  };
+  // Agrupado por mes y por día. Con un solo lugar elegido se separa en sábados y domingos (cada uno lleva su
+  // propio tema general, como en el rol impreso) y una franja marca cuando empieza otro tema general.
+  const agrupar = (lista) => {
+    const meses = [];
+    let temaActual = null;
+    lista.forEach((r) => {
+      const clave = r.fecha.slice(0, 7);
+      let m = meses[meses.length - 1];
+      if (!m || m.clave !== clave) {
+        const d = new Date(r.fecha + 'T00:00:00');
+        m = { clave, nombre: `${NOMBRES_MESES[d.getMonth()].toUpperCase()}${d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''}`, dias: [] };
+        meses.push(m);
+      }
+      let dia = m.dias[m.dias.length - 1];
+      if (!dia || dia.fecha !== r.fecha) {
+        dia = { fecha: r.fecha, items: [], franja: null };
+        m.dias.push(dia);
+      }
+      if (lugar !== 'Todos' && r.tema_general && r.tema_general !== temaActual) {
+        dia.franja = r.tema_general;
+        temaActual = r.tema_general;
+      }
+      dia.items.push(r);
+    });
+    return meses;
+  };
+  const esSabado = (r) => new Date(r.fecha + 'T00:00:00').getDay() === 6;
+  const bloques = (lugar === 'Todos' ? [{ titulo: null, lista: visibles }] : [{ titulo: 'SÁBADOS · 9:00 AM', lista: visibles.filter(esSabado) }, { titulo: `DOMINGOS · ${lugar === 'Pesquería' ? '4:00 PM' : '5:00 PM'}`, lista: visibles.filter((r) => !esSabado(r)) }])
+    .filter((b) => b.lista.length)
+    .map((b) => ({ ...b, meses: agrupar(b.lista) }));
+
+  const pastillaLugar = (r) => {
+    const c = COLOR_LUGAR_ANEXO[tono][r.lugar] || paleta;
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: c.fondo, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+        <Feather name="map-pin" size={11} color={c.texto} />
+        <Text style={{ fontSize: 12, fontWeight: '800', color: c.texto }}>
+          {r.lugar} · {horaAnexo(r.fecha, r.lugar)}
+        </Text>
+      </View>
+    );
+  };
+  const botones = (r) => {
+    const mia = esMia(r);
+    const invitado = !r.nombre_usuario;
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {r.estado_confirmacion === 'confirmado' ? (
+          <Feather name="check-circle" size={17} color={isDark ? '#9FD3BF' : '#2F6E5E'} style={{ padding: 6 }} />
+        ) : mia ? (
+          <TouchableOpacity onPress={() => confirmar(r)} style={{ padding: 6 }} accessibilityLabel="Confirmar">
+            <Feather name="thumbs-up" size={18} color={colors.textSub} />
+          </TouchableOpacity>
+        ) : puedeTodo && !invitado ? (
+          <TouchableOpacity onPress={() => confirmarPorOtro(r)} style={{ padding: 6 }} accessibilityLabel="Confirmar por otro">
+            <Feather name="clock" size={16} color="#C9A227" />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
+  const renglon = (r, idx, total, conNombre = true) => (
+    <View key={r.id} style={{ paddingVertical: 12, borderBottomWidth: idx < total - 1 ? 1 : 0, borderBottomColor: colors.cardBorder }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flex: 1 }}>{pastillaLugar(r)}</View>
+        {botones(r)}
+      </View>
+      {conNombre ? (
+        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain, marginTop: 8 }}>
+          {nombreEnRol(r, mapaNombres)}
+          {esMia(r) ? <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSub }}>  · Tú</Text> : null}
+        </Text>
+      ) : null}
+      <Text style={{ fontSize: 14, color: colors.textMain, marginTop: conNombre ? 2 : 8 }}>{r.tema}</Text>
+      <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>
+        {r.base_biblica}
+        {lugar === 'Todos' && r.tema_general ? `  ·  ${r.tema_general}` : ''}
+      </Text>
+    </View>
+  );
+  const fila = (fecha, contenido, destacada) => {
+    const t = diaTexto(fecha);
+    return (
+      <View key={fecha} style={{ flexDirection: 'row', marginBottom: 14 }}>
+        <View style={{ width: 56, alignItems: 'center', paddingTop: 14 }}>
+          <Text style={{ fontSize: 21, fontWeight: '700', color: colors.textMain }}>{t.letra}</Text>
+          <Text style={{ fontSize: 13, color: colors.textSub }}>{t.num}</Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: destacada ? 2 : 1, borderColor: destacada ? paleta.fondo : colors.cardBorder, paddingHorizontal: 16 }}>{contenido}</View>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 20, alignItems: 'center' }} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
+        <View style={[styles.headerRowSpaceBetween, { width: '95%', maxWidth: ancho, alignItems: 'center', marginBottom: 15 }]}>
+          <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal'))} style={{ padding: 8 }}>
+            <Feather name="arrow-left" size={22} color={colors.textSub} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={[styles.title, { color: colors.textMain }]}>Rol del anexo</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>Centros de rehabilitación</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
+        </View>
+        <View style={{ width: '95%', maxWidth: ancho }}>
+          {cargando ? <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} /> : null}
+          {!cargando && mias.length > 0 ? (
+            <>
+              <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: colors.textMain, marginBottom: 10 }}>MIS FECHAS EN EL ANEXO</Text>
+              {mias.map((r) => fila(r.fecha, renglon(r, 0, 1, false), true))}
+            </>
+          ) : null}
+          {!cargando && rol.length === 0 ? (
+            <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+              <Feather name="map-pin" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
+              <Text style={[styles.emptyTitle, { color: colors.textMain }]}>Sin rol del anexo por ahora</Text>
+              <Text style={[styles.emptyText, { color: colors.textSub }]}>Cuando se suba el rol, aquí aparecerán las fechas de Pesquería y San Nicolás.</Text>
+            </View>
+          ) : null}
+          {!cargando && rol.length > 0 ? (
+            <>
+              <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: colors.textMain, marginTop: mias.length ? 10 : 0, marginBottom: 10 }}>ROL COMPLETO</Text>
+              <PildorasResumen opciones={['Todos', ...LUGARES_ANEXO].map((v) => ({ valor: v, texto: v }))} valor={lugar} onCambiar={setLugar} categoria="Anexo" isDark={isDark} />
+              {visibles.length === 0 ? <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>No hay fechas programadas.</Text> : null}
+              {bloques.map((bl) => (
+                <View key={bl.titulo || 'todos'}>
+                  {bl.titulo ? <Text style={{ fontSize: 15, fontWeight: '800', color: (COLOR_LUGAR_ANEXO[tono][lugar] || paleta).texto, backgroundColor: (COLOR_LUGAR_ANEXO[tono][lugar] || paleta).fondo, alignSelf: 'stretch', textAlign: 'center', borderRadius: 14, paddingVertical: 8, marginTop: 6, marginBottom: 12, overflow: 'hidden' }}>{lugar.toUpperCase()} · {bl.titulo}</Text> : null}
+                  {bl.meses.map((m) => (
+                    <View key={m.clave}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: colors.textMain, marginTop: 4, marginBottom: 10 }}>{m.nombre}</Text>
+                      {m.dias.map((d) => (
+                        <React.Fragment key={d.fecha}>
+                          {d.franja ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: (COLOR_LUGAR_ANEXO[tono][lugar] || paleta).fondo, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 14, marginBottom: 12, alignSelf: 'flex-start', maxWidth: '100%' }}>
+                              <Feather name="book-open" size={14} color={colors.textMain} />
+                              <Text style={{ flexShrink: 1, fontSize: 13, color: colors.textMain }}>
+                                Tema general: <Text style={{ fontWeight: '800' }}>{d.franja}</Text>
+                              </Text>
+                            </View>
+                          ) : null}
+                          {fila(d.fecha, d.items.map((r, i) => renglon(r, i, d.items.length)))}
+                        </React.Fragment>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </>
+          ) : null}
+        </View>
+      </ScrollView>
+      <AlertaPersonalizada {...alerta} />
+    </SafeAreaView>
+  );
+}
+
+// ==========================================
+// ADMINISTRACIÓN → ANEXO: subir o corregir el rol (CSV) y revisar los nombres que la app no reconoce
+// ==========================================
+const SubirRolAnexo = ({ isDark }) => {
+  const colors = getColors(isDark);
+  const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Anexo'];
+  const [filas, setFilas] = useState([]);
+  const [errores, setErrores] = useState([]);
+  const [hermanos, setHermanos] = useState([]);
+  const [recordados, setRecordados] = useState({}); // nombre del archivo (sin acentos) → { nombre_usuario, invitado }
+  const [eleccion, setEleccion] = useState({}); // nombre del archivo → nombre_usuario, o 'invitado'
+  const [buscando, setBuscando] = useState(null);
+  const [busqueda, setBusqueda] = useState('');
+  const [subiendo, setSubiendo] = useState(false);
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '' });
+  const cerrarAlerta = () => setAlerta((a) => ({ ...a, visible: false }));
+  const normal = (t) => sinAcentos(String(t || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+  useEffect(() => {
+    supabase.rpc('nombres_publicos').then(({ data }) => setHermanos(data || []));
+    supabase
+      .from('anexo_nombres')
+      .select('*')
+      .then(({ data }) => {
+        const mapa = {};
+        (data || []).forEach((r) => {
+          mapa[normal(r.nombre)] = r;
+        });
+        setRecordados(mapa);
+      });
+  }, []);
+  const porUsuario = (u) => hermanos.find((h) => (h.nombre_usuario || '').toLowerCase() === (u || '').toLowerCase());
+  // Candidatos: mismo nombre de pila y el apellido empieza igual («Rdz» → Rodríguez, «Hdz» → Hernández)
+  const candidatos = (nombre) => {
+    const exacto = hermanos.filter((h) => normal(h.nombre_completo) === normal(nombre));
+    if (exacto.length === 1) return { exacto: exacto[0], lista: exacto };
+    const partes = normal(nombre).replace(/\bjr\b\.?/, '').trim().split(' ');
+    const lista = hermanos.filter((h) => {
+      const p = normal(h.nombre_completo).split(' ');
+      if (p[0] !== partes[0]) return false;
+      if (partes.length < 2) return true;
+      const ap = partes[partes.length - 1];
+      return p.slice(1).some((x) => x[0] === ap[0] && (ap.length <= 3 ? true : x.startsWith(ap.slice(0, 3))));
+    });
+    return { exacto: null, lista };
+  };
+  const leer = (texto) => {
+    const lineas = texto.replace(/^﻿/, '').replace(/\r/g, '').split('\n').filter((l) => l.trim());
+    if (lineas.length < 2) {
+      setFilas([]);
+      setErrores([]);
+      return setAlerta({ visible: true, titulo: 'Revisa el archivo', mensaje: 'No se encontraron fechas en el archivo.', onConfirmar: cerrarAlerta, isDark });
+    }
+    const separador = (lineas[0].match(/;/g) || []).length > (lineas[0].match(/,/g) || []).length ? ';' : ',';
+    const partir = (l) => {
+      const c = [];
+      let a = '';
+      let q = false;
+      for (const ch of l) {
+        if (ch === '"') q = !q;
+        else if (ch === separador && !q) {
+          c.push(a.trim());
+          a = '';
+        } else a += ch;
+      }
+      c.push(a.trim());
+      return c;
+    };
+    const enc = partir(lineas[0]).map(normalizarEncabezado);
+    const col = (...n) => enc.findIndex((h) => n.includes(h));
+    const i = { fecha: col('fecha'), lugar: col('lugar'), expositor: col('expositor', 'nombre'), tg: col('tema_general', 'serie'), tema: col('tema'), base: col('base_biblica', 'base', 'cita') };
+    if (i.fecha < 0 || i.lugar < 0 || i.expositor < 0) {
+      setFilas([]);
+      setErrores([]);
+      return setAlerta({ visible: true, titulo: 'Revisa el archivo', mensaje: 'El archivo debe tener las columnas Fecha, Lugar, Expositor, Tema general, Tema y Base bíblica.', onConfirmar: cerrarAlerta, isDark });
+    }
+    const lista = [];
+    const errs = [];
+    const vistas = new Set();
+    lineas.slice(1).forEach((l, n) => {
+      const v = partir(l);
+      const t = (v[i.fecha] || '').trim();
+      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const fecha = m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : iso ? t : '';
+      const lugarFila = LUGARES_ANEXO.find((x) => normal(x) === normal(v[i.lugar]));
+      const expositor = (v[i.expositor] || '').trim();
+      if (!fecha || isNaN(new Date(fecha + 'T00:00:00'))) return errs.push(`Fila ${n + 2}: no se entiende la fecha «${t}» (usa día/mes/año).`);
+      if (![0, 6].includes(new Date(fecha + 'T00:00:00').getDay())) return errs.push(`Fila ${n + 2}: ${t} no es sábado ni domingo.`);
+      if (!lugarFila) return errs.push(`Fila ${n + 2}: el lugar debe ser Pesquería o San Nicolás.`);
+      if (!expositor) return errs.push(`Fila ${n + 2}: falta el expositor.`);
+      if (vistas.has(`${fecha}|${lugarFila}`)) return errs.push(`Fila ${n + 2}: ${t} en ${lugarFila} está repetido.`);
+      vistas.add(`${fecha}|${lugarFila}`);
+      lista.push({ fecha, lugar: lugarFila, expositor, tema_general: (v[i.tg] || '').trim() || null, tema: (v[i.tema] || '').trim() || null, base_biblica: (v[i.base] || '').trim() || null });
+    });
+    setErrores(errs);
+    setFilas(lista);
+    setEleccion({});
+    setBuscando(null);
+  };
+  // Cómo queda cada nombre: «Invitado: Juan», recordado de otra vez, igual al de la app, o por revisar
+  const invitadoDe = (n) => n.match(/^invitad[oa]\b\s*[:\-–]?\s*(.*)$/i);
+  const nombres = [...new Set(filas.map((f) => f.expositor).filter((n) => !invitadoDe(n)))];
+  const revisados = nombres.map((n) => {
+    const r = recordados[normal(n)];
+    const c = candidatos(n);
+    return { nombre: n, ...c, recordado: r && (r.invitado || porUsuario(r.nombre_usuario)) ? r : null };
+  });
+  const porRevisar = revisados.filter((x) => !x.exacto && !x.recordado);
+  const reconocidos = nombres.length - porRevisar.length;
+  const elegido = (x) => eleccion[x.nombre] || (x.lista.length === 1 ? x.lista[0].nombre_usuario : null);
+  const faltan = porRevisar.filter((x) => !elegido(x)).length;
+  const titular = (n) => {
+    const inv = invitadoDe(n);
+    if (inv) return { nombre_usuario: null, invitado: inv[1].trim() || 'Invitado' };
+    const x = revisados.find((r) => r.nombre === n);
+    const e = eleccion[n] || (x.exacto ? x.exacto.nombre_usuario : x.recordado ? (x.recordado.invitado ? 'invitado' : x.recordado.nombre_usuario) : elegido(x));
+    return e === 'invitado' ? { nombre_usuario: null, invitado: n } : { nombre_usuario: (porUsuario(e) || {}).nombre_usuario || e, invitado: null };
+  };
+  // Nadie en los dos anexos el mismo día (también se revisa en la base de datos)
+  const choques = () => {
+    const vistos = {};
+    const lista = [];
+    filas.forEach((f) => {
+      const u = titular(f.expositor).nombre_usuario;
+      if (!u) return;
+      const k = `${f.fecha}|${u.toLowerCase()}`;
+      if (vistos[k] && vistos[k] !== f.lugar) lista.push(`${ponerMayusculas((porUsuario(u) || {}).nombre_completo || u)} está en los dos anexos el ${f.fecha.split('-').reverse().join('/')}.`);
+      vistos[k] = f.lugar;
+    });
+    return lista;
+  };
+
+  const revisarYSubir = async () => {
+    const malos = choques();
+    if (malos.length) return setAlerta({ visible: true, titulo: 'Revisa el archivo', mensaje: `${malos.slice(0, 5).join('\n')}\n\nNadie puede estar en los dos anexos el mismo día.`, onConfirmar: cerrarAlerta, isDark });
+    setSubiendo(true);
+    try {
+      const nuevas = filas.map((f) => ({ fecha: f.fecha, lugar: f.lugar, ...titular(f.expositor), tema_general: f.tema_general, tema: f.tema, base_biblica: f.base_biblica }));
+      const fechas = nuevas.map((f) => f.fecha).sort();
+      const actuales = await traerTodo(() => supabase.from('anexo_rol').select('*').gte('fecha', fechas[0]).lte('fecha', fechas[fechas.length - 1]).order('id', { ascending: true }));
+      const clave = (r) => `${r.fecha}|${r.lugar}`;
+      const porClave = new Map(actuales.map((r) => [clave(r), r]));
+      const enArchivo = new Set(nuevas.map(clave));
+      const mismo = (a, b) => (a || null) === (b || null);
+      const agregar = nuevas.filter((n) => !porClave.has(clave(n)));
+      const quitar = actuales.filter((a) => !enArchivo.has(clave(a)));
+      const cambiaPersona = [];
+      const cambiaTema = [];
+      nuevas.forEach((n) => {
+        const a = porClave.get(clave(n));
+        if (!a) return;
+        if ((titularDe(a) || '') !== (n.nombre_usuario || '').toLowerCase() || (!n.nombre_usuario && !mismo(a.invitado, n.invitado))) cambiaPersona.push({ a, n });
+        else if (!mismo(a.tema_general, n.tema_general) || !mismo(a.tema, n.tema) || !mismo(a.base_biblica, n.base_biblica)) cambiaTema.push({ a, n });
+      });
+      setSubiendo(false);
+      if (actuales.length && !agregar.length && !quitar.length && !cambiaPersona.length && !cambiaTema.length) return setAlerta({ visible: true, titulo: 'Sin cambios', mensaje: 'El rol del archivo es igual al que ya está en la app.', onConfirmar: cerrarAlerta, isDark });
+      const resumen = actuales.length
+        ? [agregar.length && `Se agregan ${agregar.length} fecha(s).`, quitar.length && `Se quitan ${quitar.length} fecha(s).`, cambiaPersona.length && `Cambia el expositor en ${cambiaPersona.length} (esas vuelven a quedar por confirmar).`, cambiaTema.length && `Cambia el tema en ${cambiaTema.length} (se conserva la confirmación).`].filter(Boolean).join('\n')
+        : `Se suben ${nuevas.length} fechas: ${LUGARES_ANEXO.map((l) => `${l} ${nuevas.filter((f) => f.lugar === l).length}`).join(' y ')}.`;
+      setAlerta({
+        visible: true,
+        titulo: actuales.length ? 'Actualizar rol del anexo' : 'Subir rol del anexo',
+        mensaje: `${resumen}\n\n${actuales.length ? 'Se avisa a los hermanos que les cambió algo.' : 'Se avisa a cada hermano que está en el rol.'}`,
+        textoConfirmar: 'Subir',
+        textoCancelar: 'Cancelar',
+        onCancelar: cerrarAlerta,
+        onConfirmar: () => {
+          cerrarAlerta();
+          aplicar({ actuales, agregar, quitar, cambiaPersona, cambiaTema });
+        },
+        isDark,
+      });
+    } catch (e) {
+      setSubiendo(false);
+      setAlerta({ visible: true, titulo: 'Error', mensaje: 'No se pudo revisar el rol actual: ' + e.message, onConfirmar: cerrarAlerta, isDark });
+    }
+  };
+
+  const aplicar = async ({ actuales, agregar, quitar, cambiaPersona, cambiaTema }) => {
+    setSubiendo(true);
+    try {
+      const hoy = fechaISO(new Date());
+      await borrarPorIds(
+        'anexo_rol',
+        quitar.map((r) => r.id),
+      );
+      // Primero se liberan las fechas que cambian de expositor (por si alguien pasa de un anexo al otro ese día)
+      for (const { a } of cambiaPersona.filter((c) => c.a.nombre_usuario)) {
+        const { error } = await supabase.from('anexo_rol').update({ nombre_usuario: null }).eq('id', a.id);
+        if (error) throw error;
+      }
+      for (const { a, n } of cambiaPersona) {
+        const { error } = await supabase.from('anexo_rol').update({ nombre_usuario: n.nombre_usuario, invitado: n.invitado, tema_general: n.tema_general, tema: n.tema, base_biblica: n.base_biblica, estado_confirmacion: 'pendiente', usuario_original: null, sustituido_en: null }).eq('id', a.id);
+        if (error) throw error;
+      }
+      for (const { a, n } of cambiaTema) {
+        const { error } = await supabase.from('anexo_rol').update({ tema_general: n.tema_general, tema: n.tema, base_biblica: n.base_biblica }).eq('id', a.id);
+        if (error) throw error;
+      }
+      let subidas = [];
+      if (agregar.length) {
+        const { data, error } = await supabase.from('anexo_rol').insert(agregar).select('id, fecha');
+        if (error) throw error;
+        subidas = data || [];
+      }
+      // Se recuerdan los nombres elegidos para la próxima vez
+      const aRecordar = Object.entries(eleccion).map(([nombre, e]) => ({ nombre, nombre_usuario: e === 'invitado' ? null : e, invitado: e === 'invitado' }));
+      porRevisar.filter((x) => !eleccion[x.nombre] && elegido(x)).forEach((x) => aRecordar.push({ nombre: x.nombre, nombre_usuario: elegido(x), invitado: false }));
+      if (aRecordar.length) await supabase.from('anexo_nombres').upsert(aRecordar);
+      // Avisos: los meses que no tenían rol cuentan como rol nuevo; lo demás, solo a quien le cambió algo
+      const mesesConRol = new Set(actuales.map((r) => r.fecha.slice(0, 7)));
+      const nuevosIds = subidas.filter((r) => !mesesConRol.has(r.fecha.slice(0, 7))).map((r) => r.id);
+      if (nuevosIds.length) supabase.functions.invoke('recordatorios', { body: { accion: 'rol-nuevo', tipo: 'anexo', ids: nuevosIds } }).catch((e) => console.error('No se pudo avisar del rol nuevo:', e));
+      if (actuales.length) {
+        const afectados = [...agregar.filter((r) => r.fecha >= hoy && mesesConRol.has(r.fecha.slice(0, 7))).map((r) => r.nombre_usuario), ...quitar.filter((r) => r.fecha >= hoy).flatMap((r) => [r.nombre_usuario, r.usuario_original]), ...cambiaPersona.filter((c) => c.a.fecha >= hoy).flatMap((c) => [c.a.nombre_usuario, c.a.usuario_original, c.n.nombre_usuario]), ...cambiaTema.filter((c) => c.a.fecha >= hoy).map((c) => c.a.nombre_usuario)];
+        avisarRolActualizado(afectados, 'anexo', true);
+      }
+      setFilas([]);
+      setErrores([]);
+      setEleccion({});
+      setRecordados((r) => {
+        const m = { ...r };
+        aRecordar.forEach((x) => {
+          m[normal(x.nombre)] = x;
+        });
+        return m;
+      });
+      setAlerta({ visible: true, titulo: actuales.length ? 'Rol actualizado' : '¡Listo!', mensaje: actuales.length ? `Se agregaron ${agregar.length}, se quitaron ${quitar.length} y cambiaron ${cambiaPersona.length + cambiaTema.length} fechas.` : `Se subieron ${agregar.length} fechas del anexo. Ya se avisó a los hermanos.`, onConfirmar: cerrarAlerta, isDark });
+    } catch (e) {
+      setAlerta({ visible: true, titulo: 'Error', mensaje: 'No se pudo subir el rol: ' + e.message, onConfirmar: cerrarAlerta, isDark });
+    }
+    setSubiendo(false);
+  };
+
+  const pildora = (activa) => ({ paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: activa ? paleta.fondo : colors.cardBorder, backgroundColor: activa ? paleta.fondo : 'transparent' });
+  const elegir = (nombre, valor) => {
+    setEleccion((e) => ({ ...e, [nombre]: valor }));
+    setBuscando(null);
+  };
+  const encontrados = buscando && normal(busqueda).length >= 2 ? hermanos.filter((h) => normal(h.nombre_completo).includes(normal(busqueda)) || normal(h.nombre_usuario).includes(normal(busqueda))).slice(0, 8) : [];
+  const bloqueado = faltan > 0 || errores.length > 0 || subiendo;
+  return (
+    <View>
+      <Text style={[styles.topicSubtitle, { color: colors.textSub, marginBottom: 15 }]}>Sube el CSV con las columnas Fecha, Lugar, Expositor, Tema general, Tema y Base bíblica. La hora la pone la app. Si un nombre no coincide con nadie de la app, te pregunto a quién corresponde o si es invitado. Para corregir, vuelve a subir el archivo: solo cambia lo que sea diferente.</Text>
+      {Platform.OS === 'web' && (
+        <SelectorArchivo
+          isDark={isDark}
+          etiqueta="Elegir CSV del rol del anexo"
+          onArchivo={(evento) => {
+            const archivo = evento.target.files[0];
+            if (!archivo) return;
+            const lector = new FileReader();
+            // Excel guarda el CSV a veces en UTF-8 y a veces en el formato de Windows: se aceptan los dos
+            lector.onload = (e) => {
+              let texto;
+              try {
+                texto = new TextDecoder('utf-8', { fatal: true }).decode(e.target.result);
+              } catch (errorTexto) {
+                texto = new TextDecoder('windows-1252').decode(e.target.result);
+              }
+              leer(texto);
+            };
+            lector.readAsArrayBuffer(archivo);
+          }}
+        />
+      )}
+      {filas.length > 0 || errores.length > 0 ? (
+        <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+          <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>{filas.length} fechas en el archivo</Text>
+          <Text style={{ color: colors.textMain, fontSize: 13, marginTop: 4 }}>
+            {LUGARES_ANEXO.map((l) => `${l}: ${filas.filter((f) => f.lugar === l).length}`).join(' · ')} · {reconocidos} de {nombres.length} expositores reconocidos
+          </Text>
+          {errores.length ? <Text style={{ color: '#C97A7A', fontSize: 13, fontWeight: '700', marginTop: 10 }}>Corrige estas filas y vuelve a subir el archivo:</Text> : null}
+          {errores.slice(0, 6).map((e) => (
+            <Text key={e} style={{ color: '#C97A7A', fontSize: 12, marginTop: 4 }}>
+              {e}
+            </Text>
+          ))}
+          {errores.length > 6 ? <Text style={{ color: '#C97A7A', fontSize: 12, marginTop: 4 }}>…y {errores.length - 6} más.</Text> : null}
+          {porRevisar.length ? (
+            <>
+              <Text style={{ color: colors.textMain, fontSize: 14, fontWeight: '800', marginTop: 16 }}>Nombres por revisar ({porRevisar.length})</Text>
+              <Text style={{ color: colors.textSub, fontSize: 12.5, marginTop: 2 }}>Elige a quién corresponde cada uno. Se recuerda para la próxima vez.</Text>
+              {porRevisar.map((x) => {
+                const e = elegido(x);
+                const otro = e && e !== 'invitado' && !x.lista.some((h) => h.nombre_usuario === e) ? porUsuario(e) : null;
+                return (
+                  <View key={x.nombre} style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }}>
+                      «{x.nombre}» <Text style={{ fontWeight: '400', color: colors.textSub }}>· {filas.filter((f) => f.expositor === x.nombre).length} fecha(s)</Text>
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                      {[...x.lista, ...(otro ? [otro] : [])].map((h) => (
+                        <TouchableOpacity key={h.nombre_usuario} onPress={() => elegir(x.nombre, h.nombre_usuario)} style={pildora(e === h.nombre_usuario)}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: e === h.nombre_usuario ? paleta.texto : colors.textMain }}>{ponerMayusculas(h.nombre_completo)}</Text>
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity onPress={() => elegir(x.nombre, 'invitado')} style={pildora(e === 'invitado')}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: e === 'invitado' ? paleta.texto : colors.textSub }}>Invitado</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setBuscando(buscando === x.nombre ? null : x.nombre);
+                          setBusqueda('');
+                        }}
+                        style={pildora(buscando === x.nombre)}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: buscando === x.nombre ? paleta.texto : colors.textSub }}>Buscar otro…</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {x.lista.length === 0 && !e && buscando !== x.nombre ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 6 }}>No encontré a nadie parecido en la app.</Text> : null}
+                    {buscando === x.nombre ? (
+                      <View style={{ marginTop: 10 }}>
+                        <TextInput value={busqueda} onChangeText={setBusqueda} autoFocus placeholder="Escribe parte del nombre" placeholderTextColor={colors.textSub} style={{ borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: colors.textMain, backgroundColor: colors.background }} />
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                          {encontrados.map((h) => (
+                            <TouchableOpacity key={h.nombre_usuario} onPress={() => elegir(x.nombre, h.nombre_usuario)} style={pildora(false)}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textMain }}>{ponerMayusculas(h.nombre_completo)}</Text>
+                            </TouchableOpacity>
+                          ))}
+                          {normal(busqueda).length >= 2 && encontrados.length === 0 ? <Text style={{ fontSize: 12, color: colors.textSub }}>Nadie con ese nombre.</Text> : null}
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </>
+          ) : null}
+          <TouchableOpacity onPress={revisarYSubir} disabled={bloqueado} style={[styles.primaryButton, { marginTop: 18, backgroundColor: isDark ? paleta.fondo : paleta.texto, opacity: bloqueado ? 0.5 : 1 }]}>
+            {subiendo ? <ActivityIndicator color={isDark ? paleta.texto : '#FFFFFF'} /> : <Text style={[styles.primaryButtonText, { color: isDark ? paleta.texto : '#FFFFFF' }]}>{errores.length ? 'Corrige el archivo' : faltan > 0 ? `Falta revisar ${faltan} nombre(s)` : 'Revisar y subir'}</Text>}
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      <AlertaPersonalizada {...alerta} />
     </View>
   );
 };
@@ -4270,7 +4859,6 @@ function MenuPrincipalScreen({ navigation }) {
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
   const [tieneRol, setTieneRol] = useState(false);
-  const [tieneClases, setTieneClases] = useState(false);
   const [mostrarAjustes, setMostrarAjustes] = useState(false);
   const [mostrarAyuda, setMostrarAyuda] = useState(false);
   const [mostrarAvisos, setMostrarAvisos] = useState(false);
@@ -4278,7 +4866,7 @@ function MenuPrincipalScreen({ navigation }) {
   const [avisosPush, setAvisosPush] = useState(estadoAvisos());
   const columnas = useColumnas();
   const esTablet = columnas >= 2;
-  const tarjetas = [tieneClases && { icono: 'smile', titulo: 'Clases de niños y jóvenes', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, tieneRol && { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Peticiones de oración', categoria: 'Petición', onPress: () => navigation.navigate('Peticiones') }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
+  const tarjetas = [{ icono: 'smile', titulo: 'Clases de niños y jóvenes', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Peticiones de oración', categoria: 'Petición', onPress: () => navigation.navigate('Peticiones') }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -4290,24 +4878,6 @@ function MenuPrincipalScreen({ navigation }) {
       };
       revisarNotificaciones();
       const temporizador = setInterval(revisarNotificaciones, 30000);
-      if (rolUsuarioActivoGlobal === 'administrador') {
-        setTieneRol(true);
-        setTieneClases(true);
-        return () => clearInterval(temporizador);
-      }
-      (async () => {
-        const hoy = fechaISO(new Date());
-        const rolPropio = async () => {
-          const r = await supabase.from('programa_servicios').select('id').or(`nombre_usuario.ilike.${usuarioActivoGlobal},preside.ilike.${usuarioActivoGlobal}`).gte('fecha', hoy).limit(1);
-          return r.error ? supabase.from('programa_servicios').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).limit(1) : r;
-        };
-        const [{ data }, { data: cena }] = await Promise.all([rolPropio(), supabase.from('cena_turnos').select('id').ilike('nombre_usuario', usuarioActivoGlobal).gte('fecha', hoy).in('estado', ['invitado', 'confirmado']).limit(1)]);
-        setTieneRol((data && data.length > 0) || (cena && cena.length > 0));
-      })();
-      (async () => {
-        const { data } = await supabase.from('clases_asignadas').select('id').or(`nombre_usuario.ilike.${usuarioActivoGlobal},coordinador.ilike.${usuarioActivoGlobal}`).gte('fecha', fechaISO(new Date())).limit(1);
-                setTieneClases(puedeArea('ninos') || puedeArea('jovenes') || !!(data && data.length > 0));
-      })();
       return () => clearInterval(temporizador);
     }, []),
   );
@@ -4573,7 +5143,13 @@ function MiRolScreen({ navigation, route }) {
           }}
         >
           {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
-          {!cargando && fechas.length === 0 && <Text style={{ color: colors.textSub, textAlign: 'center', marginTop: 20 }}>{rolUsuarioActivoGlobal === 'administrador' ? 'No hay fechas programadas.' : 'No tienes fechas próximas.'}</Text>}
+          {!cargando && fechas.length === 0 && (
+            <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
+              <Feather name="calendar" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
+              <Text style={[styles.emptyTitle, { color: colors.textMain }]}>{rolUsuarioActivoGlobal === 'administrador' ? 'Sin fechas programadas' : 'Sin predicaciones por ahora'}</Text>
+              <Text style={[styles.emptyText, { color: colors.textSub }]}>{rolUsuarioActivoGlobal === 'administrador' ? 'Cuando subas el rol, aquí aparecerán todas las fechas.' : 'Todavía no estás en el rol de predicaciones. Cuando te asignen una fecha, aquí aparecerá.'}</Text>
+            </View>
+          )}
           {meses.map((m) => (
             <View
               key={m.clave}
@@ -5040,6 +5616,7 @@ function RolesScreen({ navigation }) {
   const tarjetas = [
     { icono: 'calendar', titulo: 'Rol de predicaciones', categoria: 'Predicaciones', onPress: () => navigation.navigate('MiRol') },
     { icono: 'cena', titulo: 'Rol de la Cena del Señor', categoria: 'Cena', onPress: () => navigation.navigate('Cena') },
+    { icono: 'map-pin', titulo: 'Rol del anexo', categoria: 'Anexo', onPress: () => navigation.navigate('RolAnexo') },
   ];
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -5050,7 +5627,7 @@ function RolesScreen({ navigation }) {
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 8 }}>
             <Text style={[styles.title, { color: colors.textMain }]}>Roles</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>Predicaciones y Cena del Señor</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>Predicaciones, Cena del Señor y anexo</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
@@ -6871,7 +7448,7 @@ function AdminScreen({ navigation, route }) {
     // Sin "seccion" se ven las tarjetas; con "seccion" se abre esa categoría con sus opciones plegadas
   // El admin general ve todas; el encargado de niños solo «Clases de niños» y entra directo
   const esAdminGeneral = rolUsuarioActivoGlobal === 'administrador';
-  const seccionesPermitidas = Object.keys(SECCIONES_ADMIN).filter((k) => esAdminGeneral || (k === 'clases' && puedeArea('ninos')) || (k === 'peticiones' && puedeArea('peticiones')) || (k === 'jovenes' && puedeArea('jovenes')));
+  const seccionesPermitidas = Object.keys(SECCIONES_ADMIN).filter((k) => esAdminGeneral || (k === 'clases' && puedeArea('ninos')) || (k === 'peticiones' && puedeArea('peticiones')) || (k === 'jovenes' && puedeArea('jovenes')) || (k === 'anexo' && puedeArea('anexo')));
   const seccionPedida = route?.params?.seccion;
   const seccion = seccionesPermitidas.includes(seccionPedida) ? seccionPedida : seccionesPermitidas.length === 1 ? seccionesPermitidas[0] : null;
   const columnasAdmin = useColumnas();
@@ -7811,6 +8388,12 @@ function AdminScreen({ navigation, route }) {
             <OpcionAdmin {...opc('resumenPredicaciones')} icono="bar-chart-2" titulo="Resumen de predicaciones" subtitulo="Fechas por hermano, confirmaciones y apoyos" onPress={() => navigation.navigate('ResumenPredicaciones')} />
             <OpcionAdmin {...opc('resumenCena')} icono="bar-chart-2" titulo="Resumen de la Cena del Señor" subtitulo="Participación y respuestas a las invitaciones" onPress={() => navigation.navigate('ResumenCena')} />
           </>
+        )}
+
+                {seccion === 'anexo' && (
+          <OpcionAdmin {...opc('subirAnexo')} icono="upload" titulo="Subir o actualizar rol del anexo" subtitulo="Archivo CSV de Pesquería y San Nicolás">
+            <SubirRolAnexo isDark={isDark} />
+          </OpcionAdmin>
         )}
 
                 {seccion === 'respaldo' && (
@@ -10595,6 +11178,7 @@ export default function App() {
             <Stack.Screen name="ResumenPredicaciones" component={ResumenPredicacionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenPeticiones" component={ResumenPeticionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenJovenes" component={ResumenJovenesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="RolAnexo" component={RolAnexoScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Calendario" component={CalendarioScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Peticiones" component={PeticionesScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
