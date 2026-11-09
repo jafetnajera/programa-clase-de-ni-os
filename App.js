@@ -122,6 +122,8 @@ const getThemeColors = (grupo, isDark) => {
       return { main: '#5FA8A0', textDark: isDark ? '#5FA8A0' : '#2F6E5E', bgLight: isDark ? 'rgba(95, 168, 160, 0.15)' : '#EAF3F0' };
     case 'Predicaciones':
       return { main: '#7EA0D8', textDark: isDark ? '#9FBCE8' : '#2C4A73', bgLight: isDark ? 'rgba(126, 160, 216, 0.18)' : '#EDF2FA' };
+    case 'Anexo':
+      return { main: '#E39A5E', textDark: isDark ? '#F4B27C' : '#8A4512', bgLight: isDark ? 'rgba(244, 178, 124, 0.15)' : '#FDF1E7' };
     case 'Anuncios':
       return { main: '#E0935A', textDark: isDark ? '#E0935A' : '#8A4F1E', bgLight: isDark ? 'rgba(224, 147, 90, 0.15)' : '#FBEEDD' };
     case 'Petición':
@@ -835,7 +837,7 @@ const areaDeAviso = (clave, solPorId, ofPorId) => {
   if (tipo.startsWith('rec')) return 'Clases de niños';
   const s = tipo.includes('oferta') ? solPorId[(ofPorId[id] || {}).solicitud_id] : solPorId[id];
   if (!s) return null;
-  return s.grupo_clase === 'Predicaciones' ? 'Predicaciones' : 'Clases de niños';
+  return s.grupo_clase === 'Predicaciones' ? 'Predicaciones' : s.grupo_clase === 'Anexo' ? 'Anexo' : 'Clases de niños';
 };
 
 // Panel de avisos: sale por la derecha, igual que el de ajustes, y mide lo que su contenido (con límite)
@@ -1292,18 +1294,24 @@ const cargarMapaNombres = async () => {
 // Revisa si una persona ya tiene predicación o clase de niños en una fecha.
 // Devuelve un texto (por ejemplo "una clase con Niños ese día") o null si está libre.
 // "ignorar" permite no contar la fecha que esa persona entregaría en un intercambio.
-const buscarConflictoDia = async (usuario, fecha, ignorar = {}) => {
+// Reglas de distancia (función conflicto_dia en la base de datos):
+//  - para la iglesia: predicación, clase, presidir o Cena del Señor ese día; en domingo, también el anexo
+//  - para el anexo: el otro anexo ese día; en domingo, también todo lo de la iglesia
+const buscarConflictoDia = async (usuario, fecha, ignorar = {}, para = 'iglesia') => {
   if (!usuario || !fecha) return null;
-  const [roles, clases] = await Promise.all([supabase.from('programa_servicios').select('id, horario').ilike('nombre_usuario', usuario).eq('fecha', fecha), supabase.from('clases_asignadas').select('id, grupo').ilike('nombre_usuario', usuario).eq('fecha', fecha)]);
-  const rol = (roles.data || []).find((r) => !(ignorar.rolId && r.id === ignorar.rolId));
-  if (rol) return `una predicación ese día (${rol.horario})`;
-  const clase = (clases.data || []).find((c) => !(ignorar.claseId && c.id === ignorar.claseId));
-  if (clase) return `una clase con ${clase.grupo} ese día`;
-  // Quien preside ese día no puede cubrir clases ni predicaciones
-  const { data: preside, error } = await supabase.from('programa_servicios').select('id').ilike('preside', usuario).eq('fecha', fecha).limit(1);
-  if (!error && preside && preside.length > 0) return 'que presidir ese día';
-  return null;
+  const texto = (v) => (v ? String(v) : null);
+  const { data, error } = await supabase.rpc('conflicto_dia', { p_usuario: usuario, p_fecha: fecha, p_ign_rol: texto(ignorar.rolId), p_ign_clase: texto(ignorar.claseId), p_ign_anexo: texto(ignorar.anexoId), p_para: para });
+  if (error) return null; // la base de datos lo vuelve a revisar al aceptar
+  return data || null;
 };
+// Cada tipo de solicitud de apoyo: de qué tabla es la fecha, cómo se ignora y cómo se describe
+const TIPOS_APOYO = {
+  clase: { tabla: 'clases_asignadas', id: 'clase_asignada_id', idOtro: 'clase_asignada_id_intercambio', ignorar: (id) => ({ claseId: id }), para: 'iglesia', detalle: (f) => f.grupo },
+  rol: { tabla: 'programa_servicios', id: 'programa_servicio_id', idOtro: 'programa_servicio_id_intercambio', ignorar: (id) => ({ rolId: id }), para: 'iglesia', detalle: (f) => f.horario },
+  anexo: { tabla: 'anexo_rol', id: 'anexo_rol_id', idOtro: 'anexo_rol_id_intercambio', ignorar: (id) => ({ anexoId: id }), para: 'anexo', detalle: (f) => `${f.lugar} • ${horaAnexo(f.fecha, f.lugar)}` },
+};
+const tipoApoyo = (sol) => TIPOS_APOYO[sol.clase_asignada_id ? 'clase' : sol.grupo_clase === 'Anexo' ? 'anexo' : 'rol'];
+const areaApoyo = (sol) => (sol.clase_asignada_id ? 'ninos' : sol.grupo_clase === 'Anexo' ? 'anexo' : 'predicaciones');
 
 // ---- OFERTAS DE INTERCAMBIO: vencen a las 48 horas si nadie responde ----
 const HORAS_OFERTA = 48;
@@ -1352,6 +1360,7 @@ const obtenerNotificaciones = async () => {
     const yoInfo = (lista || []).find((m) => (m.nombre_usuario || '').toLowerCase() === yo);
     const soyElegibleClases = !!(yoInfo && yoInfo.elegible_clases_ninos);
     const soyElegiblePred = !!(yoInfo && yoInfo.elegible_predicaciones);
+    const soyElegibleAnexo = !!(yoInfo && yoInfo.elegible_anexo);
 
     const { data: reqs } = await supabase.from('solicitudes_sustitucion').select('*').or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`).order('creado_en', { ascending: false }).range(0, 499);
         const solicitudes = reqs || [];
@@ -1369,7 +1378,7 @@ const obtenerNotificaciones = async () => {
         coordPorClase[c.id] = (c.coordinador || '').toLowerCase();
       });
     }
-    const irTablon = (s) => ({ pantalla: 'Tablon', params: { solicitudId: s.id, ...(s.grupo_clase === 'Predicaciones' ? { soloGrupo: 'Predicaciones' } : { excluirGrupo: 'Predicaciones' }) } });
+    const irTablon = (s) => ({ pantalla: 'Tablon', params: { solicitudId: s.id, ...(s.grupo_clase === 'Predicaciones' || s.grupo_clase === 'Anexo' ? { soloGrupo: s.grupo_clase } : { excluirGrupo: 'Predicaciones' }) } });
     const cuando = (s) => `${s.titulo_tema}${s.grupo_clase ? ' • ' + s.grupo_clase : ''}${s.tipo_intercambio === 'intercambio' ? ' • Intercambio de fechas' : ''}`;
 
     for (const s of solicitudes) {
@@ -1386,10 +1395,14 @@ const obtenerNotificaciones = async () => {
         const conflictoPred = await buscarConflictoDia(usuarioActivoGlobal, s.fecha_referencia);
         if (!conflictoPred) items.push({ clave: `gen-rol:${s.id}`, fecha: s.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo en una predicación y tú estás libre`, detalle: cuando(s) });
       }
+      if (s.estado === 'Pendiente' && s.grupo_clase === 'Anexo' && !s.maestro_destino && solicitante !== yo && soyElegibleAnexo && s.fecha_referencia) {
+        const conflictoAnexo = await buscarConflictoDia(usuarioActivoGlobal, s.fecha_referencia, {}, 'anexo');
+        if (!conflictoAnexo) items.push({ clave: `gen-anx:${s.id}`, fecha: s.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo en el anexo y tú estás libre`, detalle: cuando(s) });
+      }
             if (s.estado === 'Cubierta' && solicitante === yo && s.maestro_suplente && !ofertasTodas.some((o) => o.solicitud_id === s.id && o.estado === 'Aceptada' && (o.respondido_por || '').toLowerCase() === yo)) {
         items.push({ clave: `acepto:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó ${s.tipo_intercambio === 'intercambio' ? 'el intercambio contigo' : 'cubrirte'}`, detalle: cuando(s) });
       }
-      if (recibeAvisosArea(esClase ? 'ninos' : 'predicaciones') && items.length === antes && solicitante !== yo && !(esClase && coordPorClase[s.clase_asignada_id] === yo)) {
+      if (recibeAvisosArea(areaApoyo(s)) && items.length === antes && solicitante !== yo && !(esClase && coordPorClase[s.clase_asignada_id] === yo)) {
         if (s.estado === 'Pendiente') items.push({ clave: `admin-pide:${s.id}`, fecha: s.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} pide apoyo`, detalle: cuando(s) });
         else if (s.estado === 'Cubierta' && s.maestro_suplente && (s.maestro_suplente || '').toLowerCase() !== yo) items.push({ clave: `admin-acepta:${s.id}`, fecha: s.cubierta_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_suplente)} aceptó cubrir a ${nom(s.maestro_solicitante)}`, detalle: cuando(s) });
       }
@@ -1401,7 +1414,7 @@ const obtenerNotificaciones = async () => {
         const ofertante = (o.ofertante || '').toLowerCase();
         const fechaOf = `${fechaLargaOferta(o.fecha_ofrecida)}${o.detalle ? ' • ' + o.detalle : ''}`;
         if (s.estado === 'Pendiente' && ofertaVigente(o) && solicitante === yo) items.push({ clave: `oferta:${o.id}`, fecha: o.creado_en, accion: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} te ofrece un intercambio`, detalle: `A cambio te da: ${fechaOf}` });
-        else if (s.estado === 'Pendiente' && ofertaVigente(o) && recibeAvisosArea(s.clase_asignada_id ? 'ninos' : 'predicaciones') && ofertante !== yo) items.push({ clave: `admin-oferta:${o.id}`, fecha: o.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} ofrece un intercambio a ${nom(s.maestro_solicitante)}`, detalle: `A cambio da: ${fechaOf}` });
+        else if (s.estado === 'Pendiente' && ofertaVigente(o) && recibeAvisosArea(areaApoyo(s)) && ofertante !== yo) items.push({ clave: `admin-oferta:${o.id}`, fecha: o.creado_en, accion: false, abierta: true, destino: irTablon(s), mensaje: `${nom(o.ofertante)} ofrece un intercambio a ${nom(s.maestro_solicitante)}`, detalle: `A cambio da: ${fechaOf}` });
         if (ofertante === yo) {
           if (o.estado === 'Aceptada') items.push({ clave: `oferta-si:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} aceptó tu intercambio`, detalle: `Te toca: ${fechaLargaOferta(s.fecha_referencia)} • ${s.titulo_tema}` });
           else if (o.estado === 'Rechazada') items.push({ clave: `oferta-no:${o.id}`, fecha: o.respondido_en, accion: false, destino: irTablon(s), mensaje: `${nom(s.maestro_solicitante)} no aceptó tu oferta`, detalle: `Ofreciste: ${fechaOf}` });
@@ -1569,13 +1582,14 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
   const confirmarConChequeo = async (tipo, fechaOtra, idOtro) => {
     setAviso('');
     if (item) {
-      const nombreDestino = destino.nombre_completo || destino.nombre_usuario;
-      const ignDestino = tipo === 'intercambio' ? (tipoItem === 'clase' ? { claseId: idOtro } : { rolId: idOtro }) : {};
-      const c1 = await buscarConflictoDia(destino.nombre_usuario, item.fecha, ignDestino);
+      const nombreDestino = ponerMayusculas(destino.nombre_completo || destino.nombre_usuario);
+      const t = TIPOS_APOYO[tipoItem];
+      const ignDestino = tipo === 'intercambio' ? t.ignorar(idOtro) : {};
+      const c1 = await buscarConflictoDia(destino.nombre_usuario, item.fecha, ignDestino, t.para);
       if (c1) return setAviso(`${nombreDestino} ya tiene ${c1}, así que no puede cubrirte.`);
       if (tipo === 'intercambio' && fechaOtra) {
-        const ignPropio = tipoItem === 'clase' ? { claseId: item.id } : { rolId: item.id };
-        const c2 = await buscarConflictoDia(item.nombre_usuario || usuarioPropio, fechaOtra, ignPropio);
+        const ignPropio = t.ignorar(item.id);
+        const c2 = await buscarConflictoDia(item.nombre_usuario || usuarioPropio, fechaOtra, ignPropio, t.para);
         if (c2) return setAviso(`Ya tienes ${c2}, no puedes tomar esa fecha.`);
       }
     }
@@ -1589,7 +1603,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
     setPaso('fecha');
     const hoy = fechaISO(new Date());
     const { data } = await supabase
-      .from(tipoItem === 'clase' ? 'clases_asignadas' : 'programa_servicios')
+      .from(TIPOS_APOYO[tipoItem].tabla)
       .select('*')
       .ilike('nombre_usuario', destino.nombre_usuario)
       .gte('fecha', hoy)
@@ -1642,7 +1656,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
                     }}
                     style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}
                   >
-                    <Text style={{ color: colors.textMain, fontSize: 14 }}>{m.nombre_completo || m.nombre_usuario}</Text>
+                    <Text style={{ color: colors.textMain, fontSize: 14 }}>{ponerMayusculas(m.nombre_completo || m.nombre_usuario)}</Text>
                   </TouchableOpacity>
                 ))}
                 {texto.length > 0 && resultados.length === 0 && <Text style={{ color: colors.textSub, fontSize: 13, paddingVertical: 10 }}>Nadie elegible coincide con ese nombre.</Text>}
@@ -1652,7 +1666,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
 
           {paso === 'tipo' && destino && (
             <>
-              <Text style={{ color: colors.textSub, marginBottom: 15 }}>Se lo pedirás a {destino.nombre_completo || destino.nombre_usuario}. ¿Cómo?</Text>
+              <Text style={{ color: colors.textSub, marginBottom: 15 }}>Se lo pedirás a {ponerMayusculas(destino.nombre_completo || destino.nombre_usuario)}. ¿Cómo?</Text>
               <TouchableOpacity style={styles.primaryButton} onPress={() => confirmarConChequeo('cobertura', null, null)}>
                 <Text style={styles.primaryButtonText}>Solo que me cubra</Text>
               </TouchableOpacity>
@@ -1674,7 +1688,7 @@ const ModalSolicitarApoyo = ({ visible, maestrosElegibles, usuarioPropio, isDark
                   {fechasDestino.map((f) => (
                     <TouchableOpacity key={f.id} onPress={() => confirmarConChequeo('intercambio', f.fecha, f.id)} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
                       <Text style={{ color: colors.textMain, fontSize: 14 }}>
-                        {formatearFechaCorta(f.fecha)} • {tipoItem === 'clase' ? f.grupo : f.horario}
+                        {formatearFechaCorta(f.fecha)} • {TIPOS_APOYO[tipoItem].detalle(f)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -4238,12 +4252,16 @@ function RolAnexoScreen({ navigation }) {
   const cerrarAlerta = () => setAlerta((a) => ({ ...a, visible: false }));
   const yo = (usuarioActivoGlobal || '').toLowerCase();
   const puedeTodo = puedeArea('anexo');
+  const [itemApoyo, setItemApoyo] = useState(null);
+  const [maestrosElegibles, setMaestrosElegibles] = useState([]);
 
   const cargar = async () => {
     const hoy = fechaISO(new Date());
     const { data } = await supabase.from('anexo_rol').select('*').gte('fecha', hoy).order('fecha', { ascending: true });
     setRol((data || []).sort((a, b) => (a.fecha !== b.fecha ? a.fecha.localeCompare(b.fecha) : LUGARES_ANEXO.indexOf(a.lugar) - LUGARES_ANEXO.indexOf(b.lugar))));
     setMapaNombres(await cargarMapaNombres());
+    const { data: lista } = await supabase.rpc('nombres_publicos');
+    setMaestrosElegibles((lista || []).filter((m) => m.elegible_anexo));
   };
   useFocusEffect(
     React.useCallback(() => {
@@ -4274,6 +4292,29 @@ function RolAnexoScreen({ navigation }) {
       },
       isDark,
     });
+
+  // Pedir apoyo: igual que en predicaciones (alguien específico o cualquiera elegible; cubrir o intercambio)
+  const enviarSolicitudApoyo = async (item, opciones = {}) => {
+    const { destino = null, tipo = null, fechaIntercambioId = null } = opciones;
+    const { data: existente } = await supabase.from('solicitudes_sustitucion').select('id').eq('anexo_rol_id', item.id).eq('estado', 'Pendiente');
+    if (existente && existente.length > 0) return setAlerta({ visible: true, titulo: 'Ya existe', mensaje: 'Ya hay una solicitud de apoyo pendiente para esta fecha.', onConfirmar: cerrarAlerta, isDark });
+    const d = new Date(item.fecha + 'T00:00:00');
+    const { error } = await supabase.from('solicitudes_sustitucion').insert([
+      {
+        mes_anio: d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }),
+        titulo_tema: `${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d.getDay()]} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()} • ${item.lugar} • ${horaAnexo(item.fecha, item.lugar)}`,
+        grupo_clase: 'Anexo',
+        maestro_solicitante: item.nombre_usuario,
+        anexo_rol_id: item.id,
+        fecha_referencia: item.fecha,
+        maestro_destino: destino,
+        tipo_intercambio: tipo,
+        anexo_rol_id_intercambio: fechaIntercambioId,
+      },
+    ]);
+    if (error) setAlerta({ visible: true, titulo: 'Error', mensaje: error.message, onConfirmar: cerrarAlerta, isDark });
+    else setAlerta({ visible: true, titulo: 'Listo', mensaje: destino ? 'Tu solicitud se envió directamente a esa persona.' : 'Tu solicitud ya aparece en las solicitudes de apoyo del anexo.', onConfirmar: cerrarAlerta, isDark });
+  };
 
   const esMia = (r) => (r.nombre_usuario || '').toLowerCase() === yo;
   const mias = rol.filter(esMia);
@@ -4340,6 +4381,11 @@ function RolAnexoScreen({ navigation }) {
             <Feather name="clock" size={16} color="#C9A227" />
           </TouchableOpacity>
         ) : null}
+        {mia || (puedeTodo && !invitado) ? (
+          <TouchableOpacity onPress={() => setItemApoyo(r)} style={{ padding: 6, marginLeft: 2 }} accessibilityLabel="Pedir apoyo">
+            <Feather name="repeat" size={18} color={colors.textSub} />
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   };
@@ -4390,6 +4436,9 @@ function RolAnexoScreen({ navigation }) {
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
           </TouchableOpacity>
         </View>
+        <View style={{ width: '95%', maxWidth: ancho, marginBottom: 15 }}>
+          <BotonChico icono="clipboard" texto="Solicitudes de apoyo" categoria="Anexo" isDark={isDark} onPress={() => navigation.navigate('Tablon', { soloGrupo: 'Anexo' })} />
+        </View>
         <View style={{ width: '95%', maxWidth: ancho }}>
           {cargando ? <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} /> : null}
           {!cargando && mias.length > 0 ? (
@@ -4438,6 +4487,20 @@ function RolAnexoScreen({ navigation }) {
         </View>
       </ScrollView>
       <AlertaPersonalizada {...alerta} />
+      <ModalSolicitarApoyo
+        visible={!!itemApoyo}
+        tipoItem="anexo"
+        item={itemApoyo}
+        maestrosElegibles={maestrosElegibles}
+        usuarioPropio={usuarioActivoGlobal}
+        isDark={isDark}
+        onCancelar={() => setItemApoyo(null)}
+        onConfirmar={async (opciones) => {
+          const item = itemApoyo;
+          setItemApoyo(null);
+          await enviarSolicitudApoyo(item, opciones);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -7092,7 +7155,7 @@ function TablonScreen({ navigation, route }) {
       consulta = consulta.eq('grupo_clase', soloGrupo);
     }
     if (excluirGrupo) {
-      consulta = consulta.neq('grupo_clase', excluirGrupo);
+      consulta = consulta.neq('grupo_clase', excluirGrupo).neq('grupo_clase', 'Anexo');
     }
     consulta = consulta.or(`fecha_referencia.is.null,fecha_referencia.gte.${hoy}`);
     let { data } = await consulta;
@@ -7105,8 +7168,9 @@ function TablonScreen({ navigation, route }) {
       data = (data || []).filter((s) => {
                 if ((s.maestro_solicitante || '').toLowerCase() === yo || (s.maestro_suplente || '').toLowerCase() === yo) return true;
         if (s.clase_asignada_id && (idsCoord.includes(s.clase_asignada_id) || puedeArea('ninos'))) return true;
+        if (s.grupo_clase === 'Anexo' && puedeArea('anexo')) return true;
         if (s.maestro_destino) return s.maestro_destino.toLowerCase() === yo;
-        return s.grupo_clase === 'Predicaciones' ? !!yoInfo.elegible_predicaciones : !!yoInfo.elegible_clases_ninos;
+        return s.grupo_clase === 'Predicaciones' ? !!yoInfo.elegible_predicaciones : s.grupo_clase === 'Anexo' ? !!yoInfo.elegible_anexo : !!yoInfo.elegible_clases_ninos;
       });
     }
         const listaSol = data || [];
@@ -7123,7 +7187,7 @@ function TablonScreen({ navigation, route }) {
     const yo = (usuarioActivoGlobal || '').toLowerCase();
     if ((sol.maestro_solicitante || '').toLowerCase() === yo) return false;
     if (sol.maestro_destino) return sol.maestro_destino.toLowerCase() === yo;
-    return sol.grupo_clase === 'Predicaciones' ? !!miPerfil.elegible_predicaciones : !!miPerfil.elegible_clases_ninos;
+    return sol.grupo_clase === 'Predicaciones' ? !!miPerfil.elegible_predicaciones : sol.grupo_clase === 'Anexo' ? !!miPerfil.elegible_anexo : !!miPerfil.elegible_clases_ninos;
   };
 
     // Solicitud general en la que se busca intercambio: quien responde propone una de sus fechas
@@ -7132,7 +7196,7 @@ function TablonScreen({ navigation, route }) {
   const ofertasDe = (sol) => ofertas.filter((o) => o.solicitud_id === sol.id && ofertaVigente(o));
   const miOferta = (sol) => ofertasDe(sol).find((o) => (o.ofertante || '').toLowerCase() === yoMin());
   // Quien pidió el apoyo decide; un administrador también puede decidir por él
-    const puedeResponderOfertas = (sol) => (sol.maestro_solicitante || '').toLowerCase() === yoMin() || rolUsuarioActivoGlobal === 'administrador' || (!!sol.clase_asignada_id && puedeArea('ninos'));
+    const puedeResponderOfertas = (sol) => (sol.maestro_solicitante || '').toLowerCase() === yoMin() || rolUsuarioActivoGlobal === 'administrador' || (!!sol.clase_asignada_id && puedeArea('ninos')) || (sol.grupo_clase === 'Anexo' && puedeArea('anexo'));
 
   async function abrirOfrecer(sol) {
     setAvisoOferta('');
@@ -7140,7 +7204,7 @@ function TablonScreen({ navigation, route }) {
     setOfreciendo(sol);
     setCargandoMisFechas(true);
     const { data } = await supabase
-      .from(sol.clase_asignada_id ? 'clases_asignadas' : 'programa_servicios')
+      .from(tipoApoyo(sol).tabla)
       .select('*')
       .ilike('nombre_usuario', usuarioActivoGlobal)
       .gte('fecha', fechaISO(new Date()))
@@ -7152,13 +7216,13 @@ function TablonScreen({ navigation, route }) {
   async function enviarOferta(f) {
     const sol = ofreciendo;
     if (!sol) return;
-    const esClase = !!sol.clase_asignada_id;
+    const t = tipoApoyo(sol);
     setAvisoOferta('');
-    const c1 = await buscarConflictoDia(usuarioActivoGlobal, sol.fecha_referencia, esClase ? { claseId: f.id } : { rolId: f.id });
+    const c1 = await buscarConflictoDia(usuarioActivoGlobal, sol.fecha_referencia, t.ignorar(f.id), t.para);
     if (c1) return setAvisoOferta(`Ya tienes ${c1}, así que no puedes tomar su fecha.`);
-    const c2 = await buscarConflictoDia(sol.maestro_solicitante, f.fecha, esClase ? { claseId: sol.clase_asignada_id } : { rolId: sol.programa_servicio_id });
+    const c2 = await buscarConflictoDia(sol.maestro_solicitante, f.fecha, t.ignorar(sol[t.id]), t.para);
     if (c2) return setAvisoOferta(`${nombreBonito(sol.maestro_solicitante)} ya tiene ${c2}. Elige otra fecha.`);
-    const { error } = await supabase.from('ofertas_intercambio').insert([{ solicitud_id: sol.id, ofertante: usuarioActivoGlobal, fecha_ofrecida_id: String(f.id), fecha_ofrecida: f.fecha, detalle: esClase ? f.grupo : f.horario }]);
+    const { error } = await supabase.from('ofertas_intercambio').insert([{ solicitud_id: sol.id, ofertante: usuarioActivoGlobal, fecha_ofrecida_id: String(f.id), fecha_ofrecida: f.fecha, detalle: t.detalle(f) }]);
     if (error) return setAvisoOferta('No se pudo enviar: ' + error.message);
     setOfreciendo(null);
     const theme = getThemeColors(sol.grupo_clase, isDark);
@@ -7210,9 +7274,9 @@ function TablonScreen({ navigation, route }) {
           obtenerSolicitudes();
           return;
         }
-        const esClase = !!sol.clase_asignada_id;
+        const t = tipoApoyo(sol);
         const { data: otro } = await supabase
-          .from(esClase ? 'clases_asignadas' : 'programa_servicios')
+          .from(t.tabla)
           .select('id, fecha, nombre_usuario')
           .eq('id', o.fecha_ofrecida_id)
           .maybeSingle();
@@ -7220,9 +7284,9 @@ function TablonScreen({ navigation, route }) {
           aviso('No se puede aceptar', `Esa fecha ya no le pertenece a ${nombreBonito(o.ofertante)}.`);
           return;
         }
-        const c1 = await buscarConflictoDia(o.ofertante, sol.fecha_referencia, esClase ? { claseId: otro.id } : { rolId: otro.id });
+        const c1 = await buscarConflictoDia(o.ofertante, sol.fecha_referencia, t.ignorar(otro.id), t.para);
         if (c1) return aviso('No se puede aceptar', `${nombreBonito(o.ofertante)} ya tiene ${c1}.`);
-        const c2 = await buscarConflictoDia(sol.maestro_solicitante, otro.fecha, esClase ? { claseId: sol.clase_asignada_id } : { rolId: sol.programa_servicio_id });
+        const c2 = await buscarConflictoDia(sol.maestro_solicitante, otro.fecha, t.ignorar(sol[t.id]), t.para);
         if (c2) return aviso('No se puede aceptar', `${nombreBonito(sol.maestro_solicitante)} ya tiene ${c2}.`);
                 const r = await aplicarCambio(sol, o.id);
         if (r.noDisponible) aviso('Ya no está disponible', 'Esta solicitud ya fue cubierta.');
@@ -7278,33 +7342,34 @@ function TablonScreen({ navigation, route }) {
           const { data: lista } = await supabase.rpc('nombres_publicos');
           const yo = (lista || []).find((m) => (m.nombre_usuario || '').toLowerCase() === usuarioActivoGlobal.toLowerCase()) || {};
           const esPred = solicitud.grupo_clase === 'Predicaciones';
-          if (!(esPred ? yo.elegible_predicaciones : yo.elegible_clases_ninos)) {
-            setTimeout(() => setAlerta({ visible: true, titulo: 'No se puede aceptar', mensaje: esPred ? 'Esta solicitud es solo para personas habilitadas para predicaciones.' : 'Esta solicitud es solo para personas habilitadas para clases de niños.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+          const esAnexo = solicitud.grupo_clase === 'Anexo';
+          if (!(esPred ? yo.elegible_predicaciones : esAnexo ? yo.elegible_anexo : yo.elegible_clases_ninos)) {
+            setTimeout(() => setAlerta({ visible: true, titulo: 'No se puede aceptar', mensaje: esPred ? 'Esta solicitud es solo para personas habilitadas para predicaciones.' : esAnexo ? 'Esta solicitud es solo para personas habilitadas para el anexo.' : 'Esta solicitud es solo para personas habilitadas para clases de niños.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
             return;
           }
         }
-        if (solicitud.programa_servicio_id || solicitud.clase_asignada_id) {
-          const esClase = !!solicitud.clase_asignada_id;
+        if (solicitud.programa_servicio_id || solicitud.clase_asignada_id || solicitud.anexo_rol_id) {
+          const t = tipoApoyo(solicitud);
           const esIntercambio = solicitud.tipo_intercambio === 'intercambio';
-          const idOtro = esClase ? solicitud.clase_asignada_id_intercambio : solicitud.programa_servicio_id_intercambio;
+          const idOtro = solicitud[t.idOtro];
           let fechaOtra = null;
           if (esIntercambio && idOtro) {
             const { data: otro } = await supabase
-              .from(esClase ? 'clases_asignadas' : 'programa_servicios')
+              .from(t.tabla)
               .select('fecha')
               .eq('id', idOtro)
               .single();
             fechaOtra = otro ? otro.fecha : null;
           }
-          const ignAceptante = esIntercambio && idOtro ? (esClase ? { claseId: idOtro } : { rolId: idOtro }) : {};
-          const c1 = await buscarConflictoDia(usuarioActivoGlobal, solicitud.fecha_referencia, ignAceptante);
+          const ignAceptante = esIntercambio && idOtro ? t.ignorar(idOtro) : {};
+          const c1 = await buscarConflictoDia(usuarioActivoGlobal, solicitud.fecha_referencia, ignAceptante, t.para);
           if (c1) {
             setTimeout(() => setAlerta({ visible: true, titulo: 'No se puede aceptar', mensaje: `Ya tienes ${c1}.`, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
             return;
           }
           if (fechaOtra) {
-            const ignSolicitante = esClase ? { claseId: solicitud.clase_asignada_id } : { rolId: solicitud.programa_servicio_id };
-            const c2 = await buscarConflictoDia(solicitud.maestro_solicitante, fechaOtra, ignSolicitante);
+            const ignSolicitante = t.ignorar(solicitud[t.id]);
+            const c2 = await buscarConflictoDia(solicitud.maestro_solicitante, fechaOtra, ignSolicitante, t.para);
             if (c2) {
               setTimeout(() => setAlerta({ visible: true, titulo: 'No se puede aceptar', mensaje: `${nombreBonito(solicitud.maestro_solicitante)} ya tiene ${c2} en la fecha que tomaría con el intercambio.`, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
               return;
@@ -7473,7 +7538,7 @@ function TablonScreen({ navigation, route }) {
                 {misFechas.map((f) => (
                   <TouchableOpacity key={f.id} onPress={() => enviarOferta(f)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
                     <Text style={{ color: colors.textMain, fontSize: 14 }}>
-                      {fechaLargaOferta(f.fecha)} • {ofreciendo && ofreciendo.clase_asignada_id ? f.grupo : f.horario}
+                      {fechaLargaOferta(f.fecha)} • {ofreciendo ? tipoApoyo(ofreciendo).detalle(f) : ''}
                     </Text>
                   </TouchableOpacity>
                 ))}
