@@ -8823,8 +8823,7 @@ const SelectorFecha = ({ valor, isDark, onElegir, conAnios = false, categoria = 
           const esHoy = f === hoyTexto;
           return (
             <View key={f} style={{ width: `${100 / 7}%`, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-              <TouchableOpacity onPress={() => onElegir(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: elegido ? VERDE_CALENDARIO : 'transparent', borderWidth: esHoy && !elegido ? 1.5 : 0, borderColor: colors.textMain }}>
-backgroundColor: elegido ? (colorSeccion ? colorSeccion.fondo : VERDE_CALENDARIO) : 'transparent', borderWidth: esHoy && !elegido ? 1.5 : 0, borderColor: colors.textMain }}>
+              <TouchableOpacity onPress={() => onElegir(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: elegido ? (colorSeccion ? colorSeccion.fondo : VERDE_CALENDARIO) : 'transparent', borderWidth: esHoy && !elegido ? 1.5 : 0, borderColor: colors.textMain }}>
                 <Text style={{ fontSize: 14.5, fontWeight: elegido || esHoy ? '800' : '500', color: elegido ? (colorSeccion ? colorSeccion.texto : '#1E1D1B') : colors.textMain }}>{d}</Text>
               </TouchableOpacity>
             </View>
