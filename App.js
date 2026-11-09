@@ -4858,7 +4858,18 @@ function MenuPrincipalScreen({ navigation }) {
   const colors = getColors(isDark);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
-  const [tieneRol, setTieneRol] = useState(false);
+  // Filtros de «Todos los usuarios»: quiénes pueden tener cada servicio (la Cena se divide en servir y presidir)
+const FILTROS_ELEGIBLES = [
+  { valor: 'ninos', frase: 'clases de niños', texto: 'Clases de niños', categoria: 'Clases de niños', ver: (m) => m.elegible_clases_ninos },
+  { valor: 'predicaciones', frase: 'clases y predicaciones', texto: 'Clases y predicaciones', categoria: 'Predicaciones', ver: (m) => m.elegible_predicaciones },
+  { valor: 'anexo', frase: 'el anexo', texto: 'Anexo', categoria: 'Anexo', ver: (m) => m.elegible_anexo },
+  { valor: 'cena', frase: 'la Cena del Señor', texto: 'Cena del Señor', categoria: 'Cena', ver: (m) => m.elegible_mesa || m.elegible_presidir },
+];
+const FILTROS_CENA = [
+  { valor: 'mesa', texto: 'Servir la cena', ver: (m) => m.elegible_mesa },
+  { valor: 'presidir', texto: 'Presidir la cena', ver: (m) => m.elegible_presidir },
+];
+function TodosUsuariosScreen({ navigation }) {
   const [mostrarAjustes, setMostrarAjustes] = useState(false);
   const [mostrarAyuda, setMostrarAyuda] = useState(false);
   const [mostrarAvisos, setMostrarAvisos] = useState(false);
@@ -5969,6 +5980,22 @@ function TodosUsuariosScreen({ navigation }) {
   const colors = getColors(isDark);
   const [maestros, setMaestros] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [filtro, setFiltro] = useState('todos');
+  const [filtroCena, setFiltroCena] = useState(null);
+  const tono = isDark ? 'oscuro' : 'claro';
+  const columnas = useColumnas();
+  const filtroActivo = FILTROS_ELEGIBLES.find((f) => f.valor === filtro);
+  const cenaActiva = filtro === 'cena' ? FILTROS_CENA.find((f) => f.valor === filtroCena) : null;
+  const lista = maestros.filter((m) => (cenaActiva ? cenaActiva.ver(m) : filtroActivo ? filtroActivo.ver(m) : true));
+  const pastilla = (activa, texto, cuantos, categoria, onPress) => {
+    const p = PALETA_MENU[tono][categoria];
+    return (
+      <TouchableOpacity key={texto} onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 9, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: activa ? p.fondo : colors.cardBorder, backgroundColor: activa ? p.fondo : colors.cardBg }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: activa ? p.texto : colors.textMain }}>{texto}</Text>
+        <Text style={{ fontSize: 12, fontWeight: '800', color: activa ? p.texto : colors.textSub }}>{cuantos}</Text>
+      </TouchableOpacity>
+    );
+  };
 
   const listaRef = useRef(null);
   const [verArriba, setVerArriba] = useState(false);
@@ -5983,9 +6010,11 @@ function TodosUsuariosScreen({ navigation }) {
   );
 
   const descargarCSV = () => {
-    const encabezados = ['Usuario', 'Nombre completo', 'PIN', 'Celular', 'Rol', 'Elegible Clases de niños', 'Elegible Predicaciones y Clases'];
-    const filas = maestros.map((m) => [m.nombre_usuario, m.nombre_completo || '', m.pin_acceso, m.telefono || '', m.rol, m.elegible_clases_ninos ? 'Sí' : 'No', m.elegible_predicaciones ? 'Sí' : 'No']);
-    descargarTablaCSV(`usuarios_indus_${fechaISO(new Date())}.csv`, encabezados, filas);
+    const encabezados = ['Usuario', 'Nombre completo', 'PIN', 'Celular', 'Rol', 'Elegible Clases de niños', 'Elegible Predicaciones y Clases', 'Elegible Anexo', 'Elegible Servir la cena', 'Elegible Presidir la cena'];
+    const si = (v) => (v ? 'Sí' : 'No');
+    const filas = lista.map((m) => [m.nombre_usuario, m.nombre_completo || '', m.pin_acceso, m.telefono || '', m.rol, si(m.elegible_clases_ninos), si(m.elegible_predicaciones), si(m.elegible_anexo), si(m.elegible_mesa), si(m.elegible_presidir)]);
+    const nombreFiltro = cenaActiva || filtroActivo ? '_' + sinAcentos((cenaActiva || filtroActivo).texto).replace(/\s+/g, '-') : '';
+    descargarTablaCSV(`usuarios_indus${nombreFiltro}_${fechaISO(new Date())}.csv`, encabezados, filas);
   };
 
   return (
@@ -5997,7 +6026,7 @@ function TodosUsuariosScreen({ navigation }) {
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 8 }}>
             <Text style={[styles.title, { color: colors.textMain }]}>Todos los usuarios</Text>
-            <Text style={[styles.subtitle, { color: colors.textSub }]}>{maestros.length} en total</Text>
+            <Text style={[styles.subtitle, { color: colors.textSub }]}>{filtro === 'todos' ? `${maestros.length} en total` : `${lista.length} de ${maestros.length}`}</Text>
           </View>
           <TouchableOpacity onPress={descargarCSV} style={{ padding: 8 }}>
             <Feather name="download" size={20} color={colors.textSub} />
@@ -6008,9 +6037,33 @@ function TodosUsuariosScreen({ navigation }) {
         </View>
 
         <View style={{ width: '95%', maxWidth: 850 }}>
+          {!cargando && (
+            <>
+              {/* En celular las pastillas se recorren de lado; en tablet y PC se acomodan en renglones */}
+              {React.createElement(
+                columnas >= 2 ? View : ScrollView,
+                columnas >= 2 ? { style: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 } } : { horizontal: true, showsHorizontalScrollIndicator: false, style: { flexGrow: 0 }, contentContainerStyle: { gap: 8, paddingBottom: 4 } },
+                pastilla(filtro === 'todos', 'Todos', maestros.length, 'Usuarios', () => setFiltro('todos')),
+                ...FILTROS_ELEGIBLES.map((f) =>
+                  pastilla(filtro === f.valor, f.texto, maestros.filter(f.ver).length, f.categoria, () => {
+                    setFiltro(f.valor);
+                    setFiltroCena(null);
+                  }),
+                ),
+              )}
+              {filtro === 'cena' ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, paddingLeft: 14, borderLeftWidth: 2, borderLeftColor: PALETA_MENU[tono]['Cena'].fondo }}>
+                  {FILTROS_CENA.map((f) => pastilla(filtroCena === f.valor, f.texto, maestros.filter(f.ver).length, 'Cena', () => setFiltroCena(filtroCena === f.valor ? null : f.valor)))}
+                </View>
+              ) : null}
+              <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 12, marginBottom: 4 }}>
+                {filtro === 'todos' ? 'Toca una categoría para ver quién es elegible.' : lista.length === 0 ? 'Nadie está marcado todavía. Para marcar a alguien, abre su ficha y toca «Editar».' : `${lista.length === 1 ? '1 hermano' : `${lista.length} hermanos`} ${cenaActiva ? (lista.length === 1 ? 'puede ' : 'pueden ') + cenaActiva.texto.toLowerCase() : (lista.length === 1 ? 'elegible para ' : 'elegibles para ') + filtroActivo.frase}`}
+              </Text>
+            </>
+          )}
           {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
           {!cargando &&
-            maestros.map((maestro) => (
+            lista.map((maestro) => (
               <TouchableOpacity key={maestro.id} style={[styles.userRow, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]} onPress={() => navigation.navigate('DetalleUsuario', { maestro })}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.userTextName, { color: colors.textMain }]}>{ponerMayusculas(maestro.nombre_completo || maestro.nombre_usuario)}</Text>
