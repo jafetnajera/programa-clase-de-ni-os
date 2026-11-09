@@ -75,6 +75,7 @@ const PALETA_MENU = {
     'Jóvenes': { fondo: '#C9CE8E', texto: '#44481A' },
     'Visitas': { fondo: '#E6C3A0', texto: '#5A3A1A' },
     'Respaldo': { fondo: '#CFCAC0', texto: '#3E3A33' },
+    'Bautismos': { fondo: '#A8C8E6', texto: '#1D3D5E' },
   },
   oscuro: {
     'Clases de niños': { fondo: '#8FB9B1', texto: '#173B37' },
@@ -96,6 +97,7 @@ const PALETA_MENU = {
     'Jóvenes': { fondo: '#B2B873', texto: '#33370F' },
     'Visitas': { fondo: '#D2AC86', texto: '#45290F' },
     'Respaldo': { fondo: '#B5AFA4', texto: '#2B2823' },
+    'Bautismos': { fondo: '#8CB2D6', texto: '#13304D' },
   },
 };
 
@@ -339,6 +341,7 @@ const linking = {
       ResumenClases: 'resumen-clases',
             ResumenPredicaciones: 'resumen-predicaciones',
             ResumenAnexo: 'resumen-anexo',
+            ResumenBautismos: 'resumen-bautismos',
       ResumenPeticiones: 'resumen-peticiones',
       ResumenJovenes: 'resumen-jovenes',
       RolAnexo: 'anexo',
@@ -1722,6 +1725,14 @@ const IconoCena = ({ size = 24, color = '#000000' }) => (
   </Svg>
 );
 
+// Olas (Bautismos)
+const IconoOlas = ({ size = 24, color = '#000000' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="miter">
+    <Path d="M2.5 10 Q5.7 12.8 8.8 7.7 Q12 12.8 15.2 7.7 Q18.3 12.8 21.5 10" />
+    <Path d="M2.5 16.4 Q5.7 19.2 8.8 14.1 Q12 19.2 15.2 14.1 Q18.3 19.2 21.5 16.4" />
+  </Svg>
+);
+
 // Palomita de trazo (como hecha a mano) para marcar a quien ya confirmó
 const IconoCheck = ({ size = 22, color = '#6FA884' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
@@ -1959,7 +1970,7 @@ const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, eti
     <TouchableOpacity activeOpacity={0.85} accessibilityLabel={titulo} onPress={onPress} style={{ width: ancho, minHeight: m.alto, borderRadius: m.radio, backgroundColor: paleta.fondo, overflow: 'hidden', paddingVertical: m.vertical, paddingHorizontal: m.lateral, justifyContent: 'space-between' }}>
       <View style={{ pointerEvents: 'none', position: 'absolute', right: -m.alto * 0.275, top: -m.alto * 0.35, width: m.alto * 1.25, height: m.alto * 1.25, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.30)' }} />
       <View style={{ pointerEvents: 'none', position: 'absolute', right: m.alto * 0.55, bottom: -m.alto * 0.425, width: m.alto * 0.85, height: m.alto * 0.85, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.18)' }} />
-      <View style={{ width: m.circulo, height: m.circulo, borderRadius: m.circulo / 2, backgroundColor: circuloClaro, alignItems: 'center', justifyContent: 'center' }}>{icono === 'cena' ? <IconoCena size={m.icono} color={paleta.texto} /> : <Feather name={icono} size={m.icono} color={paleta.texto} />}</View>
+      <View style={{ width: m.circulo, height: m.circulo, borderRadius: m.circulo / 2, backgroundColor: circuloClaro, alignItems: 'center', justifyContent: 'center' }}>{icono === 'cena' ? <IconoCena size={m.icono} color={paleta.texto} /> : icono === 'olas' ? <IconoOlas size={m.icono} color={paleta.texto} /> : <Feather name={icono} size={m.icono} color={paleta.texto} />}</View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: m.texto, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
@@ -2030,6 +2041,7 @@ const SECCIONES_ADMIN = {
   peticiones: { titulo: 'Peticiones', subtitulo: 'Resumen de peticiones de oración', categoria: 'Petición', icono: 'heart' },
   jovenes: { titulo: 'Jóvenes', subtitulo: 'Resumen de asistencia y lista de jóvenes', categoria: 'Jóvenes', icono: 'user-check' },
   anexo: { titulo: 'Anexo', subtitulo: 'Rol de los centros de rehabilitación', categoria: 'Anexo', icono: 'map-pin' },
+  bautismos: { titulo: 'Bautismos', subtitulo: 'Registro y resumen de bautismos', categoria: 'Bautismos', icono: 'olas' },
   respaldo: { titulo: 'Respaldo', subtitulo: 'Descargar toda la información en Excel', categoria: 'Respaldo', icono: 'download' },
 };
 
@@ -2041,7 +2053,7 @@ const OpcionAdmin = ({ id, titulo, subtitulo, icono, abierta, onAlternar, onPres
     <View style={{ backgroundColor: abierta ? p.fondo + (isDark ? '26' : '40') : colors.cardBg, borderWidth: 1.5, borderColor: abierta ? p.fondo : colors.cardBorder, borderRadius: 28, marginBottom: 12, overflow: 'hidden' }}>
       <TouchableOpacity activeOpacity={0.8} onPress={() => (onPress ? onPress() : onAlternar(id))} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 16 }}>
         <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: p.fondo, alignItems: 'center', justifyContent: 'center' }}>
-          <Feather name={icono} size={19} color={p.texto} />
+          {icono === 'olas' ? <IconoOlas size={20} color={p.texto} /> : <Feather name={icono} size={19} color={p.texto} />}
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain }}>{titulo}</Text>
@@ -4149,6 +4161,7 @@ const TABLAS_RESPALDO = [
   { tabla: 'clases_detalle', hoja: 'Detalle de clases' },
   { tabla: 'coritos', hoja: 'Coritos' },
   { tabla: 'anexo_rol', hoja: 'Rol del anexo' },
+  { tabla: 'bautismos', hoja: 'Bautismos', quitar: ['nombre_clave'] },
 ];
 // La librería de Excel se carga solo al descargar, para no hacer más pesada la app
 const cargarLibreriaExcel = () =>
@@ -8517,6 +8530,15 @@ function AdminScreen({ navigation, route }) {
           </>
         )}
 
+                {seccion === 'bautismos' && (
+          <>
+            <OpcionAdmin {...opc('registroBautismos')} icono="olas" titulo="Registrar bautismos" subtitulo="Nombre completo, fecha y quién lo bautizó">
+              <RegistroBautismos isDark={isDark} />
+            </OpcionAdmin>
+            <OpcionAdmin {...opc('resumenBautismos')} icono="bar-chart-2" titulo="Resumen de bautismos" subtitulo="Por mes y por año, con descarga en Excel" onPress={() => navigation.navigate('ResumenBautismos')} />
+          </>
+        )}
+
                 {seccion === 'respaldo' && (
           <OpcionAdmin {...opc('respaldo')} icono="download" titulo="Respaldo completo" subtitulo="Un Excel con toda la información de la app">
             <RespaldoAdmin isDark={isDark} />
@@ -8685,7 +8707,7 @@ const diasEntre = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a +
 
 // Campo de fecha u hora con selector propio de la app (igual en celular, tablet y PC)
 // Fecha: "AAAA-MM-DD". Hora: "HH:MM" en 24 horas.
-const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = false }) => {
+const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = false, conAnios = false }) => {
   const colors = getColors(isDark);
   const [abierto, setAbierto] = useState(false);
   const textoFecha = (f) => {
@@ -8710,6 +8732,7 @@ const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = f
                 <SelectorFecha
                   valor={valor}
                   isDark={isDark}
+                  conAnios={conAnios}
                   onElegir={(f) => {
                     onCambiar(f);
                     setAbierto(false);
@@ -8748,7 +8771,7 @@ const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = f
 };
 
 // Cuadrícula del mes: al tocar un día se elige
-const SelectorFecha = ({ valor, isDark, onElegir }) => {
+const SelectorFecha = ({ valor, isDark, onElegir, conAnios = false }) => {
   const colors = getColors(isDark);
   const base = valor ? new Date(valor + 'T00:00:00') : new Date();
   const [mesVista, setMesVista] = useState(new Date(base.getFullYear(), base.getMonth(), 1));
@@ -8762,7 +8785,12 @@ const SelectorFecha = ({ valor, isDark, onElegir }) => {
   const flecha = { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' };
   return (
     <View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: conAnios ? 6 : 0 }}>
+        {conAnios ? (
+          <TouchableOpacity onPress={() => setMesVista(new Date(anio - 1, numMes, 1))} style={flecha} accessibilityLabel="Año anterior">
+            <Feather name="chevrons-left" size={18} color={colors.textSub} />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity onPress={() => setMesVista(new Date(anio, numMes - 1, 1))} style={flecha} accessibilityLabel="Mes anterior">
           <Feather name="chevron-left" size={18} color={colors.textSub} />
         </TouchableOpacity>
@@ -8772,6 +8800,11 @@ const SelectorFecha = ({ valor, isDark, onElegir }) => {
         <TouchableOpacity onPress={() => setMesVista(new Date(anio, numMes + 1, 1))} style={flecha} accessibilityLabel="Mes siguiente">
           <Feather name="chevron-right" size={18} color={colors.textSub} />
         </TouchableOpacity>
+        {conAnios ? (
+          <TouchableOpacity onPress={() => setMesVista(new Date(anio + 1, numMes, 1))} style={flecha} accessibilityLabel="Año siguiente">
+            <Feather name="chevrons-right" size={18} color={colors.textSub} />
+          </TouchableOpacity>
+        ) : null}
       </View>
       <View style={{ flexDirection: 'row', marginBottom: 4 }}>
         {DIAS_SEMANA_CORTOS.map((d) => (
@@ -11340,6 +11373,268 @@ function ResumenAnexoScreen({ navigation }) {
   );
 }
 
+// ==========================================
+// BAUTISMOS (solo administradores): registrar, corregir y ver la lista por año
+// ==========================================
+const claveBautismo = (t) => sinAcentos(String(t || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+const fechaBautismo = (f) => {
+  const d = new Date(f + 'T00:00:00');
+  return `${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
+};
+const RegistroBautismos = ({ isDark }) => {
+  const colors = getColors(isDark);
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Bautismos'];
+  const [lista, setLista] = useState(null);
+  const [hermanos, setHermanos] = useState([]);
+  const [nombre, setNombre] = useState('');
+  const [fecha, setFecha] = useState(fechaISO(new Date()));
+  const [bautizo, setBautizo] = useState('');
+  const [editando, setEditando] = useState(null);
+  const [busqueda, setBusqueda] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '' });
+  const cerrarAlerta = () => setAlerta((a) => ({ ...a, visible: false }));
+  const avisar = (titulo, mensaje) => setAlerta({ visible: true, titulo, mensaje, onConfirmar: cerrarAlerta, isDark });
+  const cargar = async () => {
+    try {
+      setLista(await traerTodo(() => supabase.from('bautismos').select('id, nombre_completo, fecha, bautizo, registrado_por, creado_en, editado_por, editado_en').order('fecha', { ascending: false }).order('id', { ascending: false })));
+    } catch (e) {
+      setLista([]);
+      avisar('Error', 'No se pudo cargar la lista de bautismos.');
+    }
+  };
+  useEffect(() => {
+    cargar();
+    supabase.rpc('nombres_publicos').then(({ data }) => setHermanos(data || []));
+  }, []);
+  const nombreDe = (u) => {
+    const h = hermanos.find((x) => (x.nombre_usuario || '').toLowerCase() === (u || '').toLowerCase());
+    return ponerMayusculas((h && h.nombre_completo) || u || '');
+  };
+  const limpiar = () => {
+    setNombre('');
+    setFecha(fechaISO(new Date()));
+    setBautizo('');
+    setEditando(null);
+  };
+  const guardar = async (aunAsi = false) => {
+    const limpio = nombre.replace(/\s+/g, ' ').trim();
+    if (!limpio || !fecha) return avisar('Faltan datos', 'Escribe el nombre completo y elige la fecha.');
+    const iguales = (lista || []).filter((b) => b.id !== (editando && editando.id) && claveBautismo(b.nombre_completo) === claveBautismo(limpio));
+    const mismoDia = iguales.find((b) => b.fecha === fecha);
+    if (mismoDia) return avisar('Ya está registrado', `${mismoDia.nombre_completo} ya tiene su bautismo registrado el ${fechaBautismo(mismoDia.fecha)}.`);
+    // Mismo nombre en otra fecha: puede ser otra persona, se pregunta antes de guardar
+    if (iguales.length && !aunAsi)
+      return setAlerta({
+        visible: true,
+        titulo: 'Nombre ya registrado',
+        mensaje: `Ya hay un bautismo de ${iguales[0].nombre_completo} el ${fechaBautismo(iguales[0].fecha)}. ¿Es otra persona con el mismo nombre?`,
+        textoConfirmar: 'Sí, registrar',
+        textoCancelar: 'Cancelar',
+        onCancelar: cerrarAlerta,
+        onConfirmar: () => {
+          cerrarAlerta();
+          guardar(true);
+        },
+        isDark,
+      });
+    setGuardando(true);
+    const datos = { nombre_completo: ponerMayusculas(limpio), fecha, bautizo: bautizo.trim() || null };
+    const { error } = editando ? await supabase.from('bautismos').update(datos).eq('id', editando.id) : await supabase.from('bautismos').insert([datos]);
+    setGuardando(false);
+    if (error) return avisar('No se pudo guardar', error.code === '23505' ? 'Esa persona ya tiene su bautismo registrado en esa fecha.' : error.message);
+    avisar(editando ? 'Cambios guardados' : 'Bautismo registrado', `${datos.nombre_completo} · ${fechaBautismo(fecha)}`);
+    limpiar();
+    cargar();
+  };
+  const borrar = (b) =>
+    setAlerta({
+      visible: true,
+      titulo: 'Borrar registro',
+      mensaje: `¿Borrar el bautismo de ${b.nombre_completo} (${fechaBautismo(b.fecha)})?`,
+      textoConfirmar: 'Borrar',
+      textoCancelar: 'Cancelar',
+      onCancelar: cerrarAlerta,
+      onConfirmar: async () => {
+        cerrarAlerta();
+        const { error } = await supabase.from('bautismos').delete().eq('id', b.id);
+        if (error) return avisar('Error', error.message);
+        if (editando && editando.id === b.id) limpiar();
+        cargar();
+      },
+      isDark,
+    });
+  const editar = (b) => {
+    setEditando(b);
+    setNombre(b.nombre_completo);
+    setFecha(b.fecha);
+    setBautizo(b.bautizo || '');
+  };
+  // Sugerencias para «Quién lo bautizó»: hermanos de la app (se puede escribir cualquier nombre)
+  const sugerencias = claveBautismo(bautizo).length >= 2 ? hermanos.filter((h) => claveBautismo(h.nombre_completo).includes(claveBautismo(bautizo)) && claveBautismo(h.nombre_completo) !== claveBautismo(bautizo)).slice(0, 5) : [];
+  const filtrados = (lista || []).filter((b) => !busqueda.trim() || claveBautismo(b.nombre_completo).includes(claveBautismo(busqueda)) || claveBautismo(b.bautizo).includes(claveBautismo(busqueda)));
+  const anios = [...new Set(filtrados.map((b) => b.fecha.slice(0, 4)))];
+  const campo = { height: 48, borderRadius: 16, borderWidth: 1, borderColor: colors.inputBorder, backgroundColor: colors.inputBg, paddingHorizontal: 14, fontSize: 15, color: colors.inputText };
+  const etiqueta = (t) => <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textSub, marginBottom: 6, marginTop: 12 }}>{t}</Text>;
+  return (
+    <View>
+      <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: editando ? p.fondo : colors.cardBorder, borderRadius: 24, padding: 16 }}>
+        <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textMain }}>{editando ? 'Corregir registro' : 'Nuevo bautismo'}</Text>
+        {etiqueta('Nombre completo')}
+        <TextInput value={nombre} onChangeText={setNombre} placeholder="Nombre y apellidos" placeholderTextColor={colors.textSub} style={campo} autoCapitalize="words" />
+        {etiqueta('Fecha del bautismo')}
+        <CampoFechaHora tipo="date" valor={fecha} onCambiar={setFecha} isDark={isDark} etiqueta="Fecha del bautismo" conAnios />
+        {etiqueta('Quién lo bautizó')}
+        <TextInput value={bautizo} onChangeText={setBautizo} placeholder="Nombre de quien bautizó" placeholderTextColor={colors.textSub} style={campo} autoCapitalize="words" />
+        {sugerencias.length ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            {sugerencias.map((h) => (
+              <TouchableOpacity key={h.nombre_usuario} onPress={() => setBautizo(ponerMayusculas(h.nombre_completo))} style={{ paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textMain }}>{ponerMayusculas(h.nombre_completo)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+        <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 10 }}>{editando ? `Registró: ${nombreDe(editando.registrado_por)}` : `Registra: ${nombreDe(usuarioActivoGlobal)}`}</Text>
+        <TouchableOpacity onPress={() => guardar()} disabled={guardando} style={{ height: 50, borderRadius: 999, backgroundColor: p.fondo, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 14, opacity: guardando ? 0.7 : 1 }}>
+          {guardando ? <ActivityIndicator color={p.texto} /> : <Feather name={editando ? 'check' : 'plus'} size={17} color={p.texto} />}
+          <Text style={{ fontSize: 15, fontWeight: '800', color: p.texto }}>{editando ? 'Guardar cambios' : 'Registrar bautismo'}</Text>
+        </TouchableOpacity>
+        {editando ? (
+          <TouchableOpacity onPress={limpiar} style={{ height: 44, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSub }}>Cancelar</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 8 }}>
+        <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: colors.textMain }}>REGISTRADOS</Text>
+        <Text style={{ fontSize: 12.5, color: colors.textSub }}>{lista ? (lista.length === 1 ? '1 bautismo' : `${lista.length} bautismos`) : ''}</Text>
+      </View>
+      {lista && lista.length > 5 ? <TextInput value={busqueda} onChangeText={setBusqueda} placeholder="Buscar por nombre" placeholderTextColor={colors.textSub} style={[campo, { marginBottom: 6 }]} /> : null}
+      {!lista ? <ActivityIndicator color={colors.textSub} style={{ marginTop: 16 }} /> : null}
+      {lista && filtrados.length === 0 ? <Text style={{ fontSize: 13, color: colors.textSub, paddingVertical: 10 }}>{lista.length ? 'Nadie con ese nombre.' : 'Todavía no hay bautismos registrados.'}</Text> : null}
+      {anios.map((a) => {
+        const delAnio = filtrados.filter((b) => b.fecha.slice(0, 4) === a);
+        return (
+          <View key={a} style={{ marginTop: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: p.fondo }}>
+                <Text style={{ fontSize: 12.5, fontWeight: '800', color: p.texto }}>{a}</Text>
+              </View>
+              <Text style={{ fontSize: 12, color: colors.textSub }}>{delAnio.length === 1 ? '1 bautismo' : `${delAnio.length} bautismos`}</Text>
+            </View>
+            {delAnio.map((b) => (
+              <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+                <View style={{ width: 46, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 17, fontWeight: '800', color: colors.textMain }}>{Number(b.fecha.slice(8, 10))}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSub }}>{MESES_CORTOS[Number(b.fecha.slice(5, 7)) - 1].toLowerCase()}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14.5, fontWeight: '700', color: colors.textMain }}>{b.nombre_completo}</Text>
+                  <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>
+                    {b.bautizo ? `Bautizó: ${b.bautizo}` : 'Sin dato de quién bautizó'} · Registró: {nombreDe(b.registrado_por)}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => editar(b)} style={{ padding: 8 }} accessibilityLabel="Corregir">
+                  <Feather name="edit-2" size={16} color={colors.textSub} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => borrar(b)} style={{ padding: 8 }} accessibilityLabel="Borrar">
+                  <Feather name="trash-2" size={16} color="#C97A7A" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        );
+      })}
+      <AlertaPersonalizada {...alerta} />
+    </View>
+  );
+};
+
+// Resumen de bautismos: cuántos por periodo y por mes, quién bautizó, y Excel
+function ResumenBautismosScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Bautismos'];
+  const esAdmin = rolUsuarioActivoGlobal === 'administrador';
+  const [filas, setFilas] = useState(null);
+  const [error, setError] = useState(false);
+  const [periodo, setPeriodo] = useState('anio');
+  const [mapaNombres, setMapaNombres] = useState({});
+  useEffect(() => {
+    if (!esAdmin) return;
+    cargarMapaNombres().then(setMapaNombres);
+    traerTodo(() => supabase.from('bautismos').select('id, nombre_completo, fecha, bautizo, registrado_por, creado_en').order('fecha', { ascending: true }).order('id', { ascending: true }))
+      .then(setFilas)
+      .catch(() => setError(true));
+  }, []);
+  const hoy = fechaISO(new Date());
+  const { desde, hasta } = rangoPeriodo(periodo);
+  const delPeriodo = (filas || []).filter((b) => b.fecha >= desde && b.fecha <= hasta);
+  const anioActual = String(new Date().getFullYear());
+  const esteAnio = (filas || []).filter((b) => b.fecha.slice(0, 4) === anioActual).length;
+  // Gráfica: los 12 meses del año elegido (o del año actual)
+  const anioGrafica = /^\d{4}$/.test(periodo) ? periodo : anioActual;
+  const porMes = MESES_CORTOS.map((m, i) => ({ etiqueta: m, valores: [{ valor: (filas || []).filter((b) => b.fecha.slice(0, 7) === `${anioGrafica}-${String(i + 1).padStart(2, '0')}`).length, color: p.fondo }] }));
+  const conteo = {};
+  delPeriodo.forEach((b) => {
+    const n = b.bautizo || 'Sin dato';
+    conteo[n] = (conteo[n] || 0) + 1;
+  });
+  const quienes = Object.entries(conteo)
+    .map(([nombre, n]) => ({ nombre, n }))
+    .sort((a, b) => b.n - a.n || a.nombre.localeCompare(b.nombre));
+  const registro = (u) => ponerMayusculas(mapaNombres[(u || '').toLowerCase()] || u || '');
+  const descargar = () =>
+    descargarTablaCSV(
+      `bautismos_${nombreArchivoPeriodo(periodo)}_${hoy}.csv`,
+      ['Nombre completo', 'Fecha del bautismo', 'Quién lo bautizó', 'Quién lo registró', 'Registrado el'],
+      delPeriodo.map((b) => [b.nombre_completo, b.fecha, b.bautizo || '', registro(b.registrado_por), fechaISO(new Date(b.creado_en))]),
+    );
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <EncabezadoResumen titulo="Bautismos" subtitulo="Resumen de bautismos" categoria="Bautismos" navigation={navigation} isDark={isDark} columnas={columnas} onDescargar={esAdmin && filas ? descargar : null} />
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
+        <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, marginTop: 8 }}>
+          {!esAdmin ? (
+            <SinDatosResumen texto="Esta sección es solo para administradores." isDark={isDark} />
+          ) : (
+            <>
+              <PildorasResumen opciones={opcionesPeriodo((filas || []).map((b) => b.fecha))} valor={periodo} onCambiar={setPeriodo} categoria="Bautismos" isDark={isDark} />
+              {error ? (
+                <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
+              ) : !filas ? (
+                <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                    <DatoResumen valor={delPeriodo.length} etiqueta="En el periodo" detalle={(PERIODOS_RESUMEN.find((x) => x.valor === periodo) || { texto: periodo }).texto.toLowerCase()} categoria="Bautismos" isDark={isDark} />
+                    <DatoResumen valor={esteAnio} etiqueta={`En ${anioActual}`} detalle="en lo que va del año" categoria="Calendario" isDark={isDark} />
+                    <DatoResumen valor={filas.length} etiqueta="En total" detalle="registrados en la app" categoria="Usuarios" isDark={isDark} />
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    <TarjetaResumen titulo={`Por mes · ${anioGrafica}`} subtitulo="Bautismos de cada mes" ancho={anchoTarjeta(columnas, true)} isDark={isDark}>
+                      <BarrasApiladas columnas={porMes} isDark={isDark} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Quién bautizó" subtitulo="En el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={quienes} vacia="Sin bautismos en este periodo." isDark={isDark} armar={(x, i) => <FilaResumen key={x.nombre} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} etiqueta={x.n === 1 ? '1 bautismo' : `${x.n} bautismos`} categoria="Bautismos" isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Bautismos del periodo" subtitulo="Del más reciente al más antiguo" ancho={anchoTarjeta(columnas, columnas === 3)} isDark={isDark}>
+                      <ListaResumen lista={[...delPeriodo].reverse()} vacia="Sin bautismos en este periodo." isDark={isDark} armar={(b, i) => <FilaResumen key={b.id} primera={i === 0} avatar={inicialesDe(b.nombre_completo)} nombre={b.nombre_completo} detalle={b.bautizo ? `Bautizó: ${b.bautizo}` : 'Sin dato de quién bautizó'} etiqueta={fechaCorta(b.fecha)} categoria="Bautismos" isDark={isDark} />} />
+                    </TarjetaResumen>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 // Si la app se recarga en una pantalla que necesita datos de la anterior (por ejemplo, una clase),
 // regresa al inicio en lugar de quedarse en blanco
 const requiereDatos = (Pantalla, valido) => {
@@ -11495,6 +11790,7 @@ export default function App() {
             <Stack.Screen name="ResumenClases" component={ResumenClasesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenPredicaciones" component={ResumenPredicacionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenAnexo" component={ResumenAnexoScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ResumenBautismos" component={ResumenBautismosScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenPeticiones" component={ResumenPeticionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenJovenes" component={ResumenJovenesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RolAnexo" component={RolAnexoScreen} options={{ headerShown: false }} />
