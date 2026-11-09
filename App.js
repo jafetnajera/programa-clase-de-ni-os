@@ -4858,18 +4858,6 @@ function MenuPrincipalScreen({ navigation }) {
   const colors = getColors(isDark);
   const [alerta, setAlerta] = useState({ visible: false, titulo: '', mensaje: '', onConfirmar: null, onCancelar: null, textoConfirmar: 'Aceptar' });
   const cerrarAlerta = () => setAlerta({ ...alerta, visible: false });
-  // Filtros de «Todos los usuarios»: quiénes pueden tener cada servicio (la Cena se divide en servir y presidir)
-const FILTROS_ELEGIBLES = [
-  { valor: 'ninos', frase: 'clases de niños', texto: 'Clases de niños', categoria: 'Clases de niños', ver: (m) => m.elegible_clases_ninos },
-  { valor: 'predicaciones', frase: 'clases y predicaciones', texto: 'Clases y predicaciones', categoria: 'Predicaciones', ver: (m) => m.elegible_predicaciones },
-  { valor: 'anexo', frase: 'el anexo', texto: 'Anexo', categoria: 'Anexo', ver: (m) => m.elegible_anexo },
-  { valor: 'cena', frase: 'la Cena del Señor', texto: 'Cena del Señor', categoria: 'Cena', ver: (m) => m.elegible_mesa || m.elegible_presidir },
-];
-const FILTROS_CENA = [
-  { valor: 'mesa', texto: 'Servir la cena', ver: (m) => m.elegible_mesa },
-  { valor: 'presidir', texto: 'Presidir la cena', ver: (m) => m.elegible_presidir },
-];
-function TodosUsuariosScreen({ navigation }) {
   const [mostrarAjustes, setMostrarAjustes] = useState(false);
   const [mostrarAyuda, setMostrarAyuda] = useState(false);
   const [mostrarAvisos, setMostrarAvisos] = useState(false);
@@ -5975,6 +5963,17 @@ function NotificacionesScreen({ navigation }) {
 // ==========================================
 // PANTALLA: TODOS LOS USUARIOS
 // ==========================================
+// Filtros de «Todos los usuarios»: quiénes pueden tener cada servicio (la Cena se divide en servir y presidir)
+const FILTROS_ELEGIBLES = [
+  { valor: 'ninos', frase: 'clases de niños', texto: 'Clases de niños', categoria: 'Clases de niños', ver: (m) => m.elegible_clases_ninos },
+  { valor: 'predicaciones', frase: 'clases y predicaciones', texto: 'Clases y predicaciones', categoria: 'Predicaciones', ver: (m) => m.elegible_predicaciones },
+  { valor: 'anexo', frase: 'el anexo', texto: 'Anexo', categoria: 'Anexo', ver: (m) => m.elegible_anexo },
+  { valor: 'cena', frase: 'la Cena del Señor', texto: 'Cena del Señor', categoria: 'Cena', ver: (m) => m.elegible_mesa || m.elegible_presidir },
+];
+const FILTROS_CENA = [
+  { valor: 'mesa', texto: 'Servir la cena', ver: (m) => m.elegible_mesa },
+  { valor: 'presidir', texto: 'Presidir la cena', ver: (m) => m.elegible_presidir },
+];
 function TodosUsuariosScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
