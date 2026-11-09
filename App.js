@@ -8707,7 +8707,7 @@ const diasEntre = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a +
 
 // Campo de fecha u hora con selector propio de la app (igual en celular, tablet y PC)
 // Fecha: "AAAA-MM-DD". Hora: "HH:MM" en 24 horas.
-const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = false, conAnios = false }) => {
+const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = false, conAnios = false, categoria = null }) => {
   const colors = getColors(isDark);
   const [abierto, setAbierto] = useState(false);
   const textoFecha = (f) => {
@@ -8733,6 +8733,7 @@ const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = f
                   valor={valor}
                   isDark={isDark}
                   conAnios={conAnios}
+                  categoria={categoria}
                   onElegir={(f) => {
                     onCambiar(f);
                     setAbierto(false);
@@ -8771,7 +8772,8 @@ const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = f
 };
 
 // Cuadrícula del mes: al tocar un día se elige
-const SelectorFecha = ({ valor, isDark, onElegir, conAnios = false }) => {
+const SelectorFecha = ({ valor, isDark, onElegir, conAnios = false, categoria = null }) => {
+  const colorSeccion = categoria ? PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] : null;
   const colors = getColors(isDark);
   const base = valor ? new Date(valor + 'T00:00:00') : new Date();
   const [mesVista, setMesVista] = useState(new Date(base.getFullYear(), base.getMonth(), 1));
@@ -8822,7 +8824,8 @@ const SelectorFecha = ({ valor, isDark, onElegir, conAnios = false }) => {
           return (
             <View key={f} style={{ width: `${100 / 7}%`, height: 44, alignItems: 'center', justifyContent: 'center' }}>
               <TouchableOpacity onPress={() => onElegir(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: elegido ? VERDE_CALENDARIO : 'transparent', borderWidth: esHoy && !elegido ? 1.5 : 0, borderColor: colors.textMain }}>
-                <Text style={{ fontSize: 14.5, fontWeight: elegido || esHoy ? '800' : '500', color: elegido ? '#1E1D1B' : colors.textMain }}>{d}</Text>
+backgroundColor: elegido ? (colorSeccion ? colorSeccion.fondo : VERDE_CALENDARIO) : 'transparent', borderWidth: esHoy && !elegido ? 1.5 : 0, borderColor: colors.textMain }}>
+                <Text style={{ fontSize: 14.5, fontWeight: elegido || esHoy ? '800' : '500', color: elegido ? (colorSeccion ? colorSeccion.texto : '#1E1D1B') : colors.textMain }}>{d}</Text>
               </TouchableOpacity>
             </View>
           );
@@ -11483,7 +11486,7 @@ const RegistroBautismos = ({ isDark }) => {
         {etiqueta('Nombre completo')}
         <TextInput value={nombre} onChangeText={setNombre} placeholder="Nombre y apellidos" placeholderTextColor={colors.textSub} style={campo} autoCapitalize="words" />
         {etiqueta('Fecha del bautismo')}
-        <CampoFechaHora tipo="date" valor={fecha} onCambiar={setFecha} isDark={isDark} etiqueta="Fecha del bautismo" conAnios />
+        <CampoFechaHora tipo="date" valor={fecha} onCambiar={setFecha} isDark={isDark} etiqueta="Fecha del bautismo" conAnios categoria="Bautismos" />
         {etiqueta('Quién lo bautizó')}
         <TextInput value={bautizo} onChangeText={setBautizo} placeholder="Nombre de quien bautizó" placeholderTextColor={colors.textSub} style={campo} autoCapitalize="words" />
         {sugerencias.length ? (
