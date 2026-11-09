@@ -338,6 +338,7 @@ const linking = {
       ResumenCena: 'resumen-cena',
       ResumenClases: 'resumen-clases',
             ResumenPredicaciones: 'resumen-predicaciones',
+            ResumenAnexo: 'resumen-anexo',
       ResumenPeticiones: 'resumen-peticiones',
       ResumenJovenes: 'resumen-jovenes',
       RolAnexo: 'anexo',
@@ -8508,9 +8509,12 @@ function AdminScreen({ navigation, route }) {
         )}
 
                 {seccion === 'anexo' && (
-          <OpcionAdmin {...opc('subirAnexo')} icono="upload" titulo="Subir o actualizar rol del anexo" subtitulo="Archivo CSV de Pesquería y San Nicolás">
-            <SubirRolAnexo isDark={isDark} />
-          </OpcionAdmin>
+          <>
+            <OpcionAdmin {...opc('subirAnexo')} icono="upload" titulo="Subir o actualizar rol del anexo" subtitulo="Archivo CSV de Pesquería y San Nicolás">
+              <SubirRolAnexo isDark={isDark} />
+            </OpcionAdmin>
+            <OpcionAdmin {...opc('resumenAnexo')} icono="bar-chart-2" titulo="Resumen del anexo" subtitulo="Clases por hermano, lugar y mes, con descarga en Excel" onPress={() => navigation.navigate('ResumenAnexo')} />
+          </>
         )}
 
                 {seccion === 'respaldo' && (
@@ -11139,6 +11143,203 @@ function ResumenPredicacionesScreen({ navigation }) {
   );
 }
 
+// Cálculos del resumen del anexo entre dos fechas
+const calcularAnexo = (rol, solicitudes, maestros, desde, hasta) => {
+  const nombreDe = mapaNombresDe(maestros);
+  const enRango = rol.filter((r) => r.fecha >= desde && r.fecha <= hasta);
+  const conHermano = enRango.filter((r) => (r.nombre_usuario || '').trim());
+  const invitadas = enRango.filter((r) => !(r.nombre_usuario || '').trim());
+  const esSab = (r) => new Date(r.fecha + 'T00:00:00').getDay() === 6;
+  const apoyos = contarApoyos(solicitudes, desde, hasta, (s) => s.grupo_clase === 'Anexo');
+  const porPersona = {};
+  const nueva = (u) => ({ usuario: u, nombre: nombreDe(u), total: 0, 'Pesquería': 0, 'San Nicolás': 0, sabados: 0, domingos: 0, confirmadas: 0 });
+  conHermano.forEach((r) => {
+    const u = r.nombre_usuario.toLowerCase();
+    const p = (porPersona[u] = porPersona[u] || nueva(u));
+    p.total++;
+    p[r.lugar]++;
+    if (esSab(r)) p.sabados++;
+    else p.domingos++;
+    if (r.estado_confirmacion === 'confirmado') p.confirmadas++;
+  });
+  [...Object.keys(apoyos.pidio), ...Object.keys(apoyos.cubrio)].forEach((u) => {
+    porPersona[u] = porPersona[u] || nueva(u);
+  });
+  const personas = Object.values(porPersona)
+    .map((p) => ({ ...p, sinConfirmar: p.total - p.confirmadas, pidio: apoyos.pidio[p.usuario] || 0, cubrio: apoyos.cubrio[p.usuario] || 0 }))
+    .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre));
+  // Invitados: cuántas fechas dio cada uno
+  const porInvitado = {};
+  invitadas.forEach((r) => {
+    const n = (r.invitado || 'Invitado').trim();
+    porInvitado[n] = (porInvitado[n] || 0) + 1;
+  });
+  const invitados = Object.entries(porInvitado)
+    .map(([nombre, n]) => ({ nombre, n }))
+    .sort((a, b) => b.n - a.n || a.nombre.localeCompare(b.nombre));
+  // Por lugar (sábados y domingos) y por mes
+  const porLugar = LUGARES_ANEXO.map((l) => ({ lugar: l, sabados: enRango.filter((r) => r.lugar === l && esSab(r)).length, domingos: enRango.filter((r) => r.lugar === l && !esSab(r)).length }));
+  const meses = [...new Set(enRango.map((r) => r.fecha.slice(0, 7)))].sort();
+  const porMes = meses.map((m) => ({ mes: m, valores: LUGARES_ANEXO.map((l) => ({ lugar: l, valor: enRango.filter((r) => r.fecha.slice(0, 7) === m && r.lugar === l).length })) }));
+  const confirmadas = conHermano.filter((r) => r.estado_confirmacion === 'confirmado').length;
+  // Próximas sin confirmar (siguientes 30 días)
+  const hoy = fechaISO(new Date());
+  const limite = sumarDiasISO(hoy, 30);
+  const proximas = rol
+    .filter((r) => r.fecha >= hoy && r.fecha <= limite && (r.nombre_usuario || '').trim() && r.estado_confirmacion !== 'confirmado')
+    .sort((a, b) => (a.fecha !== b.fecha ? a.fecha.localeCompare(b.fecha) : LUGARES_ANEXO.indexOf(a.lugar) - LUGARES_ANEXO.indexOf(b.lugar)))
+    .map((r) => ({ fecha: r.fecha, nombre: nombreDe(r.nombre_usuario), detalle: `${r.lugar} • ${horaAnexo(r.fecha, r.lugar)}` }));
+  return {
+    total: enRango.length,
+    hermanos: personas.filter((p) => p.total > 0).length,
+    invitadas: invitadas.length,
+    pctConfirmadas: conHermano.length ? Math.round((confirmadas / conHermano.length) * 100) : 0,
+    confirmadas,
+    pedidos: apoyos.lista.length,
+    cubiertas: apoyos.cubiertas,
+    personas,
+    invitados,
+    porLugar,
+    porMes,
+    proximas,
+    masPiden: rankingApoyos(apoyos.pidio, nombreDe),
+    masCubren: rankingApoyos(apoyos.cubrio, nombreDe),
+    menosConfirman: personas.filter((p) => p.sinConfirmar > 0 && p.total > 0).sort((a, b) => b.sinConfirmar - a.sinConfirmar || a.nombre.localeCompare(b.nombre)),
+  };
+};
+
+function ResumenAnexoScreen({ navigation }) {
+  const { isDark } = useContext(ThemeContext);
+  const colors = getColors(isDark);
+  const columnas = useColumnas();
+  const tono = isDark ? 'oscuro' : 'claro';
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState(false);
+  const [periodo, setPeriodo] = useState('mes');
+  const permitido = puedeArea('anexo');
+  useEffect(() => {
+    if (!permitido) return;
+    Promise.all([traerTodo(() => supabase.from('anexo_rol').select('id, fecha, lugar, nombre_usuario, invitado, estado_confirmacion').order('fecha', { ascending: true }).order('id', { ascending: true })), traerTodo(() => supabase.from('solicitudes_sustitucion').select('id, maestro_solicitante, maestro_suplente, estado, grupo_clase, fecha_referencia, creado_en').eq('grupo_clase', 'Anexo').order('id', { ascending: true })), supabase.rpc('nombres_publicos')])
+      .then(([rol, solicitudes, { data }]) => setDatos({ rol, solicitudes, maestros: data || [] }))
+      .catch(() => setError(true));
+  }, []);
+  const hoy = fechaISO(new Date());
+  const { desde, hasta } = rangoPeriodo(periodo);
+  const d = datos ? calcularAnexo(datos.rol, datos.solicitudes, datos.maestros, desde, hasta) : null;
+  const colorLugar = (l) => COLOR_LUGAR_ANEXO[tono][l].fondo;
+  const descargar = () => {
+    if (!d) return;
+    descargarTablaCSV(
+      `resumen-anexo_${nombreArchivoPeriodo(periodo)}_${hoy}.csv`,
+      ['Hermano', 'Usuario', 'Fechas', 'Pesquería', 'San Nicolás', 'Sábados', 'Domingos', 'Confirmadas', 'Sin confirmar', 'Pidió apoyo', 'Cubrió a otros'],
+      [...d.personas.map((p) => [p.nombre, p.usuario, p.total, p['Pesquería'], p['San Nicolás'], p.sabados, p.domingos, p.confirmadas, p.sinConfirmar, p.pidio, p.cubrio]), ...d.invitados.map((x) => [`Invitado: ${x.nombre}`, '', x.n, '', '', '', '', '', '', '', ''])],
+    );
+  };
+  const leyendaLugares = (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
+      {LUGARES_ANEXO.map((l) => (
+        <View key={l} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: colorLugar(l) }} />
+          <Text style={{ fontSize: 11.5, color: colors.textSub }}>{l}</Text>
+        </View>
+      ))}
+    </View>
+  );
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
+      <EncabezadoResumen titulo="Anexo" subtitulo="Resumen del rol" categoria="Anexo" navigation={navigation} isDark={isDark} columnas={columnas} onDescargar={permitido && d ? descargar : null} />
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 30 }}>
+        <View style={{ width: '95%', maxWidth: columnas >= 2 ? 1100 : 850, marginTop: 8 }}>
+          {!permitido ? (
+            <SinDatosResumen texto="Esta sección es solo para el encargado del anexo." isDark={isDark} />
+          ) : (
+            <>
+              <PildorasResumen opciones={opcionesPeriodo(datos ? datos.rol.map((r) => r.fecha) : [])} valor={periodo} onCambiar={setPeriodo} categoria="Anexo" isDark={isDark} />
+              {error ? (
+                <SinDatosResumen texto="No se pudo cargar la información. Revisa tu conexión e intenta de nuevo." isDark={isDark} />
+              ) : !d ? (
+                <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                    <DatoResumen valor={d.total} etiqueta="Clases en el anexo" detalle={`${d.hermanos} hermanos${d.invitadas ? ` y ${d.invitadas} de invitados` : ''}`} categoria="Anexo" isDark={isDark} />
+                    <DatoResumen valor={`${d.pctConfirmadas}%`} etiqueta="Confirmadas" detalle={`${d.confirmadas} en la app`} categoria="Clases de niños" isDark={isDark} />
+                    <DatoResumen valor={d.pedidos} etiqueta="Pidieron apoyo" detalle={d.cubiertas === 1 ? '1 se cubrió' : `${d.cubiertas} se cubrieron`} categoria="Usuarios" isDark={isDark} />
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    <TarjetaResumen titulo="Clases por hermano" subtitulo="Fechas del rol en el periodo, por lugar" ancho={anchoTarjeta(columnas, true)} isDark={isDark}>
+                      {d.personas.filter((p) => p.total > 0).length === 0 ? (
+                        <SinDatosResumen texto="Todavía no hay fechas en este periodo." isDark={isDark} />
+                      ) : (
+                        <BarrasPorPersona
+                          isDark={isDark}
+                          leyenda={LUGARES_ANEXO.map((l) => [l, colorLugar(l)])}
+                          filas={d.personas
+                            .filter((p) => p.total > 0)
+                            .map((p) => ({
+                              nombre: p.nombre,
+                              total: p.total,
+                              partes: LUGARES_ANEXO.map((l) => ({ valor: p[l], color: colorLugar(l) })),
+                              nota: [p.sabados ? `${p.sabados} sáb` : '', p.domingos ? `${p.domingos} dom` : '', p.sinConfirmar ? `${p.sinConfirmar} sin confirmar` : '', p.pidio ? `pidió apoyo ${p.pidio}` : '', p.cubrio ? `cubrió ${p.cubrio}` : ''].filter(Boolean).join(' · '),
+                            }))}
+                        />
+                      )}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Por lugar y mes" subtitulo="Sábados y domingos en el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      {d.total === 0 ? (
+                        <SinDatosResumen texto="Sin fechas en este periodo." isDark={isDark} />
+                      ) : (
+                        d.porLugar.map((x) => {
+                          const c = COLOR_LUGAR_ANEXO[tono][x.lugar];
+                          return (
+                            <View key={x.lugar} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 7 }}>
+                              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: c.fondo, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ fontSize: 19, fontWeight: '800', color: c.texto }}>{x.sabados + x.domingos}</Text>
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{x.lugar}</Text>
+                                <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>
+                                  {x.sabados} sábados · {x.domingos} domingos
+                                </Text>
+                              </View>
+                            </View>
+                          );
+                        })
+                      )}
+                      {d.porMes.length > 0 ? (
+                        <>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textMain, marginTop: 16, marginBottom: 4 }}>Clases de cada mes</Text>
+                          <BarrasApiladas columnas={d.porMes.map((m) => ({ etiqueta: MESES_CORTOS[Number(m.mes.slice(5, 7)) - 1], valores: m.valores.map((v) => ({ valor: v.valor, color: colorLugar(v.lugar) })) }))} isDark={isDark} />
+                          {leyendaLugares}
+                        </>
+                      ) : null}
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Próximas sin confirmar" subtitulo="Siguientes 30 días" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.proximas} vacia="Todas están confirmadas." isDark={isDark} armar={(x, i) => <FilaResumen key={x.fecha + x.nombre + i} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} detalle={x.detalle} etiqueta={fechaCorta(x.fecha)} categoria="Anexo" isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Confirman poco" subtitulo="Fechas que pasaron sin confirmar" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.menosConfirman} vacia="Todos confirmaron." isDark={isDark} armar={(x, i) => <FilaResumen key={x.usuario} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} detalle={`Confirmó ${x.confirmadas} de ${x.total}`} etiqueta={`${x.sinConfirmar} sin confirmar`} categoria="Anexo" isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Invitados" subtitulo="Fechas que dieron hermanos sin cuenta" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.invitados} vacia="No hubo invitados en este periodo." isDark={isDark} armar={(x, i) => <FilaResumen key={x.nombre} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} etiqueta={x.n === 1 ? '1 fecha' : `${x.n} fechas`} categoria="Anexo" isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Más piden apoyo" subtitulo="Solicitudes en el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.masPiden} vacia="Nadie pidió apoyo." isDark={isDark} armar={(x, i) => <FilaResumen key={x.usuario} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} etiqueta={x.n === 1 ? '1 vez' : `${x.n} veces`} categoria="Anexo" isDark={isDark} />} />
+                    </TarjetaResumen>
+                    <TarjetaResumen titulo="Más cubren a otros" subtitulo="Apoyos aceptados en el periodo" ancho={anchoTarjeta(columnas)} isDark={isDark}>
+                      <ListaResumen lista={d.masCubren} vacia="Nadie ha cubierto en este periodo." isDark={isDark} armar={(x, i) => <FilaResumen key={x.usuario} primera={i === 0} avatar={inicialesDe(x.nombre)} nombre={x.nombre} etiqueta={x.n === 1 ? '1 vez' : `${x.n} veces`} categoria="Anexo" isDark={isDark} />} />
+                    </TarjetaResumen>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 // Si la app se recarga en una pantalla que necesita datos de la anterior (por ejemplo, una clase),
 // regresa al inicio en lugar de quedarse en blanco
 const requiereDatos = (Pantalla, valido) => {
@@ -11293,6 +11494,7 @@ export default function App() {
             <Stack.Screen name="ResumenCena" component={ResumenCenaScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenClases" component={ResumenClasesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenPredicaciones" component={ResumenPredicacionesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ResumenAnexo" component={ResumenAnexoScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenPeticiones" component={ResumenPeticionesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ResumenJovenes" component={ResumenJovenesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RolAnexo" component={RolAnexoScreen} options={{ headerShown: false }} />
