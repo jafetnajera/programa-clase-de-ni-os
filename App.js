@@ -5893,7 +5893,11 @@ function CenaScreen({ navigation }) {
                             {p === 0 ? <Text style={{ fontSize: 12, color: colors.textSub }}>Preside</Text> : null}
                             <Text style={{ fontSize: 15, fontWeight: listo || pendiente ? '700' : '500', color: listo || pendiente ? colors.textMain : colors.textSub, fontStyle: listo || pendiente ? 'normal' : 'italic', opacity: pendiente ? 0.4 : 1 }}>{texto}</Text>
                           </TouchableOpacity>
-                          {pendiente ? <Feather name={abierto === t.id ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSub} style={{ marginRight: puedeAsignar ? 8 : 0 }} /> : null}
+                          {pendiente ? (
+                            <TouchableOpacity onPress={() => setAbierto(abierto === t.id ? null : t.id)} accessibilityLabel={abierto === t.id ? 'Cerrar opciones' : `Responder por ${texto}`} style={{ padding: 8, marginRight: puedeAsignar ? 4 : -8 }}>
+                              <Feather name={abierto === t.id ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSub} />
+                            </TouchableOpacity>
+                          ) : null}
                           {listo ? <IconoCheck size={22} color={isDark ? '#8FC79F' : '#6FA884'} /> : null}
                           {listo && miTurno && t.id === miTurno.id ? (
                             <TouchableOpacity onPress={cancelarMiLugar} accessibilityLabel="Ya no puedo" style={{ padding: 6, marginLeft: 6 }}>
