@@ -4415,6 +4415,7 @@ function RolAnexoScreen({ navigation }) {
           {esMia(r) ? <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSub }}>  · Tú</Text> : null}
         </Text>
       ) : null}
+      {conNombre && r.usuario_original ? <Text style={{ fontSize: 12, color: colors.textSub, textDecorationLine: 'line-through', marginTop: 1 }}>{nombreEnRol({ nombre_usuario: r.usuario_original }, mapaNombres)}</Text> : null}
       <Text style={{ fontSize: 14, color: colors.textMain, marginTop: conNombre ? 2 : 8 }}>{r.tema}</Text>
       <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>
         {r.base_biblica}
@@ -5237,12 +5238,9 @@ function MiRolScreen({ navigation, route }) {
               {m.dias.map(({ fecha, items, franja, actual }) => (
                 <React.Fragment key={fecha}>
                   {franja ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: paletaRol.fondo, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 16, marginBottom: 12, alignSelf: 'flex-start', maxWidth: '100%' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: paletaRol.fondo, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 16, marginBottom: 12, alignSelf: 'flex-end', maxWidth: '100%' }}>
                       <Feather name="user-check" size={15} color={paletaRol.texto} />
-                      <Text style={{ flexShrink: 1, fontSize: 13, color: paletaRol.texto }}>
-                        <Text style={{ fontWeight: '800' }}>Preside: {nombreEnRol({ nombre_usuario: franja.preside }, mapaNombres)}</Text>
-                        {franja.desde ? `  ·  desde el ${new Date(franja.desde + 'T00:00:00').getDate()} de ${NOMBRES_MESES[new Date(franja.desde + 'T00:00:00').getMonth()].toLowerCase()}` : ''}
-                      </Text>
+                      <Text style={{ flexShrink: 1, fontSize: 13, fontWeight: '800', color: paletaRol.texto }}>Preside: {nombreEnRol({ nombre_usuario: franja.preside }, mapaNombres)}</Text>
                     </View>
                   ) : null}
                   <View
@@ -5283,10 +5281,10 @@ function MiRolScreen({ navigation, route }) {
                                 {item.horario}
                                 {esAdminRol || !mia ? ` • ${nombreEnRol(item, mapaNombres)}` : ''}
                               </Text>
+                              {item.usuario_original ? <Text style={{ fontSize: 11.5, color: colors.textSub, textDecorationLine: 'line-through', marginTop: 2 }}>{nombreEnRol({ nombre_usuario: item.usuario_original }, mapaNombres)}</Text> : null}
                               {otroPreside ? <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 2 }}>Preside: {nombreEnRol({ nombre_usuario: otroPreside }, mapaNombres)}</Text> : null}
                               {esObjetivo(item) && item.estado_confirmacion !== 'confirmado' && mia && <Text style={{ fontSize: 12, fontWeight: '700', color: isDark ? '#9FBCE8' : '#2C4A73', marginTop: 3 }}>Confirma aquí tu asistencia 👉</Text>}
                             </View>
-                            {item.usuario_original && <Text style={{ fontSize: 11, color: colors.textSub, textDecorationLine: 'line-through', marginRight: 2 }}>{mapaNombres[item.usuario_original.toLowerCase()] || item.usuario_original}</Text>}
                             {mia
                               ? item.estado_confirmacion !== 'confirmado' && (
                                   <TouchableOpacity onPress={() => confirmarAsistencia(item)} style={{ padding: 6 }}>
