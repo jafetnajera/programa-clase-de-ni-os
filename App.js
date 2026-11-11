@@ -8325,18 +8325,17 @@ function AdminScreen({ navigation, route }) {
               {usuarioGenerado !== '' && (
                 <View style={[styles.autoGenBox, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
                   <Text style={[styles.autoGenTitle, { color: colors.textSub }]}>Accesos que se crearán:</Text>
-                  <View style={styles.autoGenRow}>
-                    <Text style={[styles.autoGenLabel, { color: colors.textSub }]}>Usuario:</Text>
-                    <TextInput style={[styles.autoGenInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText }]} value={usuarioGenerado} onChangeText={(t) => setUsuarioGenerado(usuarioSeguro(t))} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSub, marginBottom: 6 }}>Usuario</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <TextInput style={[styles.autoGenInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, minWidth: 0 }]} value={usuarioGenerado} onChangeText={(t) => setUsuarioGenerado(usuarioSeguro(t))} />
+                    <View style={{ width: 38 }} />
                   </View>
-                  <View style={styles.autoGenRow}>
-                    <Text style={[styles.autoGenLabel, { color: colors.textSub }]}>PIN (4 dígitos):</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                      <TextInput style={[styles.autoGenInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, flex: 1 }]} value={pinGenerado} onChangeText={setPinGenerado} keyboardType="numeric" maxLength={4} />
-                      <TouchableOpacity onPress={generarNuevoPin} style={{ padding: 10 }}>
-                        <Feather name="refresh-cw" size={18} color={colors.textSub} />
-                      </TouchableOpacity>
-                    </View>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSub, marginBottom: 6 }}>PIN (4 dígitos)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TextInput style={[styles.autoGenInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.inputText, minWidth: 0 }]} value={pinGenerado} onChangeText={setPinGenerado} keyboardType="numeric" maxLength={4} />
+                    <TouchableOpacity onPress={generarNuevoPin} accessibilityLabel="Otro PIN" style={{ width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }}>
+                      <Feather name="refresh-cw" size={18} color={colors.textSub} />
+                    </TouchableOpacity>
                   </View>
                 </View>
               )}
