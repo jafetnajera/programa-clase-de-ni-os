@@ -613,6 +613,8 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
     const [nombreVisible, setNombreVisible] = useState(usuarioActivoGlobal || '');
   const [encargos, setEncargos] = useState(encargadoGlobal || []);
   const [apagados, setApagados] = useState(avisosApagadosGlobal || []);
+  const [avisosAdminAbiertos, setAvisosAdminAbiertos] = useState(false);
+  const [verPasosAvisos, setVerPasosAvisos] = useState(false);
   const [avisos, setAvisos] = useState(estadoAvisos());
   const [prueba, setPrueba] = useState(null); // null, 'enviando', 'enviada' o 'error'
   const [telegram, setTelegram] = useState(null); // null (cargando), 'no', 'abriendo', 'esperando' o 'vinculado'
@@ -718,16 +720,19 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
         </TouchableOpacity>
         {avisos !== 'no-soportado' && (
           <TouchableOpacity
-            activeOpacity={avisos === 'pendiente' ? 0.6 : 1}
+            activeOpacity={avisos === 'pendiente' || avisos === 'bloqueado' ? 0.6 : 1}
             onPress={async () => {
-              if (avisos === 'pendiente') setAvisos(await activarAvisos());
+              if (avisos !== 'pendiente' && avisos !== 'bloqueado') return;
+              const nuevo = await activarAvisos();
+              setAvisos(nuevo);
+              if (nuevo === 'bloqueado') setVerPasosAvisos(true);
             }}
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}
           >
             <Feather name={avisos === 'activo' ? 'bell' : 'bell-off'} size={20} color={avisos === 'pendiente' ? colors.textMain : colors.textSub} />
             <View style={{ marginLeft: 14, flex: 1 }}>
               <Text style={{ fontSize: 15, color: colors.textMain }}>{avisos === 'activo' ? 'Avisos activados' : avisos === 'pendiente' ? 'Activar avisos' : avisos === 'bloqueado' ? 'Avisos bloqueados' : 'Instala la app para recibir avisos'}</Text>
-              {avisos === 'bloqueado' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Actívalos en los ajustes de tu teléfono o navegador</Text>}
+              {avisos === 'bloqueado' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Toca para intentar activarlos</Text>}
               {avisos === 'instalar' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>Agrégala a tu pantalla de inicio</Text>}
               {avisos === 'activo' && prueba === 'enviada' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4 }}>Enviada. ¿No te llegó? Revisa Ayuda.</Text>}
               {avisos === 'activo' && prueba === 'error' && <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 4 }}>No se pudo enviar. Revisa tu conexión e intenta de nuevo.</Text>}
@@ -758,15 +763,16 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
           </TouchableOpacity>
         )}
                 {rolUsuarioActivoGlobal === 'administrador' && (
-          <View style={{ paddingTop: 10, paddingBottom: 4 }}>
-            <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 0.4, color: colors.textSub }}>Avisos como administrador</Text>
-            <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 2, marginBottom: 4 }}>Tus avisos personales siempre te llegan</Text>
-            {[
-              ['ninos', 'Clases de niños', 'Clases de niños'],
-              ['predicaciones', 'Predicaciones y Cena', 'Predicaciones'],
-              ['peticiones', 'Peticiones', 'Petición'],
-              ['anexo', 'Anexo', 'Anexo'],
-            ].map(([area, texto, categoria]) => (
+          <View style={{ paddingTop: 6, paddingBottom: 4 }}>
+            <TouchableOpacity onPress={() => setAvisosAdminAbiertos(!avisosAdminAbiertos)} accessibilityLabel="Avisos como administrador" style={{ flexDirection: 'row', alignItems: 'center', minHeight: 44 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 0.4, color: colors.textSub }}>Avisos como administrador</Text>
+                <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 2 }}>{AREAS_AVISO_ADMIN.filter(([area]) => !apagados.includes(area)).length} de {AREAS_AVISO_ADMIN.length} encendidos</Text>
+              </View>
+              <Feather name={avisosAdminAbiertos ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSub} />
+            </TouchableOpacity>
+            {avisosAdminAbiertos ? <Text style={{ fontSize: 11.5, color: colors.textSub, marginTop: 2, marginBottom: 4 }}>Tus avisos personales siempre te llegan</Text> : null}
+            {(avisosAdminAbiertos ? AREAS_AVISO_ADMIN : []).map(([area, texto, categoria]) => (
               <View key={area} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 7 }}>
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria].fondo, marginLeft: 5, marginRight: 12 }} />
                 <Text style={{ flex: 1, fontSize: 14.5, color: colors.textMain }}>{texto}</Text>
@@ -826,6 +832,7 @@ const PanelAjustes = ({ visible, onCerrar, isDark, toggleTheme, onCerrarSesion, 
         </TouchableOpacity>
         </ScrollView>
       </Animated.View>
+      <ModalActivarAvisos visible={verPasosAvisos} onCerrar={() => setVerPasosAvisos(false)} isDark={isDark} />
     </View>
   );
 };
@@ -876,7 +883,7 @@ const PanelNotificaciones = ({ visible, onCerrar, onNavegar, onRevisadas, isDark
       <Animated.View style={{ position: 'absolute', top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 16 : 48, right: 0, width: '88%', maxWidth: 380, maxHeight: '80%', backgroundColor: colors.background, borderTopLeftRadius: 36, borderBottomLeftRadius: 36, overflow: 'hidden', transform: [{ translateX }], paddingTop: 22, paddingBottom: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 }}>
           <Text style={{ flex: 1, color: colors.textMain, fontSize: 20, fontWeight: '700' }}>Avisos</Text>
-          <TouchableOpacity onPress={onCerrar} style={{ padding: 6 }} accessibilityLabel="Cerrar avisos">
+          <TouchableOpacity onPress={onCerrar} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 }} accessibilityLabel="Cerrar avisos">
             <Feather name="x" size={22} color={colors.textSub} />
           </TouchableOpacity>
         </View>
@@ -1129,7 +1136,7 @@ const ModalAyuda = ({ visible, onCerrar, onNavegar, isDark }) => {
               <Text style={{ fontSize: 17, fontWeight: '700', color: colors.textMain }}>Ayuda</Text>
               <Text style={{ fontSize: 12, color: colors.textSub }}>Preguntas frecuentes</Text>
             </View>
-            <TouchableOpacity onPress={onCerrar} style={{ padding: 6 }} accessibilityLabel="Cerrar ayuda">
+            <TouchableOpacity onPress={onCerrar} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 }} accessibilityLabel="Cerrar ayuda">
               <Feather name="x" size={22} color={colors.textSub} />
             </TouchableOpacity>
           </View>
@@ -1490,10 +1497,10 @@ const obtenerNotificaciones = async () => {
       if (d <= 15) {
         const cuando = d === 0 ? 'hoy' : d === 1 ? 'mañana' : `en ${d} días`;
         const etapa = d <= 1 ? 'cerca' : d <= 3 ? '3' : d <= 7 ? '7' : '15';
-        recordatorios.push({ clave: `anx-rol:${r.id}:${confirmada ? 'c' : 'p'}:${etapa}`, accion: !confirmada, destino: { pantalla: 'RolAnexo' }, mensaje: `Tienes clase en el anexo de ${r.lugar} ${cuando}`, detalle: confirmada ? `Recordatorio • ${horaAnexo(r.fecha, r.lugar)}` : 'Toca para confirmarla en el rol del anexo' });
+        recordatorios.push({ clave: `anx-rol:${r.id}:${confirmada ? 'c' : 'p'}:${etapa}`, accion: !confirmada, destino: { pantalla: 'RolAnexo', params: { anexoId: r.id } }, mensaje: `Tienes clase en el anexo de ${r.lugar} ${cuando}`, detalle: confirmada ? `Recordatorio • ${horaAnexo(r.fecha, r.lugar)}` : 'Toca para confirmarla en el rol del anexo' });
       } else if (!confirmada && !anexoLejos) anexoLejos = r;
     });
-    if (anexoLejos) recordatorios.push({ clave: 'anx-pend', accion: true, destino: { pantalla: 'RolAnexo' }, mensaje: 'Tienes fechas del anexo por confirmar', detalle: 'Toca para revisarlas en el rol del anexo' });
+    if (anexoLejos) recordatorios.push({ clave: 'anx-pend', accion: true, destino: { pantalla: 'RolAnexo', params: { anexoId: anexoLejos.id } }, mensaje: 'Tienes fechas del anexo por confirmar', detalle: 'Toca para revisarlas en el rol del anexo' });
     items.unshift(...recordatorios);
     // ---- CENA DEL SEÑOR: invitación por responder (con botones), asignación y lugares que faltan ----
     const { data: turnosCena } = await supabase.from('cena_turnos').select('id, fecha, posicion, nombre_usuario, estado, asignado_por, invitado_en, respondido_en').gte('fecha', hoy).in('estado', ['invitado', 'confirmado']);
@@ -1924,7 +1931,7 @@ const VisorPDF = ({ url, titulo, onCerrar, isDark, categoria }) => {
               {titulo}
             </Text>
             {url ? <BotonChico icono="download" texto="Descargar" categoria={categoria} isDark={isDark} onPress={() => Linking.openURL(enlaceDescarga(url))} /> : null}
-            <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ padding: 6 }}>
+            <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 }}>
               <Feather name="x" size={24} color={colors.textSub} />
             </TouchableOpacity>
           </View>
@@ -1952,8 +1959,20 @@ const VisorPDF = ({ url, titulo, onCerrar, isDark, categoria }) => {
   );
 };
 
-const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, etiqueta, isDark, columnas, esUltima, total, onPress }) => {
+const TarjetaMenu = ({ icono, titulo, subtitulo, detalle, categoria, pronto, etiqueta, isDark, columnas, esUltima, total, onPress, compacta }) => {
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria];
+  // En el inicio del celular: una columna, ícono a la izquierda y título a la derecha
+  if (compacta && columnas === 1) {
+    return (
+      <TouchableOpacity activeOpacity={0.85} accessibilityLabel={titulo} onPress={onPress} style={{ width: '100%', minHeight: 116, borderRadius: 42, backgroundColor: paleta.fondo, overflow: 'hidden', paddingVertical: 18, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+        <View style={{ pointerEvents: 'none', position: 'absolute', right: -36, top: -54, width: 160, height: 160, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.30)' }} />
+        <View style={{ pointerEvents: 'none', position: 'absolute', right: 90, bottom: -60, width: 110, height: 110, borderRadius: 999, backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.18)' }} />
+        <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: isDark ? 'rgba(255,255,255,0.50)' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>{icono === 'cena' ? <IconoCena size={25} color={paleta.texto} /> : icono === 'olas' ? <IconoOlas size={25} color={paleta.texto} /> : <Feather name={icono} size={25} color={paleta.texto} />}</View>
+        <Text style={{ flex: 1, fontSize: 20, fontWeight: '700', letterSpacing: -0.2, color: paleta.texto }}>{titulo}</Text>
+        <Feather name="chevron-right" size={22} color={paleta.texto} />
+      </TouchableOpacity>
+    );
+  }
   const m = columnas === 3 ? { alto: 236, radio: 54, circulo: 54, icono: 26, texto: 25, vertical: 24, lateral: 30, pill: 12 } : columnas === 2 ? { alto: 260, radio: 58, circulo: 60, icono: 28, texto: 28, vertical: 26, lateral: 32, pill: 13 } : { alto: 120, radio: 46, circulo: 44, icono: 22, texto: 19, vertical: 16, lateral: 20, pill: 11 };
 
   // La última tarjeta ocupa el espacio que queda libre en su fila
@@ -2261,7 +2280,7 @@ const ModalLetra = ({ corito, onCerrar, isDark }) => {
             <Text style={[styles.title, { color: colors.textMain, flex: 1 }]} numberOfLines={2}>
               {corito ? corito.titulo : ''}
             </Text>
-            <TouchableOpacity onPress={onCerrar} style={{ padding: 6 }}>
+            <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 }}>
               <Feather name="x" size={22} color={colors.textSub} />
             </TouchableOpacity>
           </View>
@@ -2474,7 +2493,7 @@ const ListaNinosAdmin = ({ isDark }) => {
           <View key={n.id} style={{ marginTop: 10, borderRadius: 20, borderWidth: 1, borderColor: abiertoAqui ? p.fondo : colors.cardBorder, backgroundColor: colors.cardBg, overflow: 'hidden' }}>
             <TouchableOpacity onPress={() => abrir(n)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{n.nombre_completo}</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{ponerMayusculas(n.nombre_completo)}</Text>
                 <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>
                   {n.grupo || 'Sin grupo'}
                   {total !== undefined ? ` · ${total} asistencia${total === 1 ? '' : 's'}` : ''}
@@ -2524,17 +2543,17 @@ const ListaNinosAdmin = ({ isDark }) => {
                     <TextInput style={campo} value={textoOtro} onChangeText={setTextoOtro} placeholder="Buscar el otro registro…" placeholderTextColor={colors.textSub} />
                     {otros.map((o) => (
                       <View key={o.id} style={{ marginTop: 10, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }}>{o.nombre_completo}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }}>{ponerMayusculas(o.nombre_completo)}</Text>
                         <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
                           {o.grupo || 'Sin grupo'}
                           {asistencias[o.id] !== undefined ? ` · ${asistencias[o.id]} asistencia${asistencias[o.id] === 1 ? '' : 's'}` : ''}
                         </Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                           <TouchableOpacity onPress={() => juntar(n, o)} style={pildora(false)}>
-                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{n.nombre_completo}»</Text>
+                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{ponerMayusculas(n.nombre_completo)}»</Text>
                           </TouchableOpacity>
                           <TouchableOpacity onPress={() => juntar(o, n)} style={pildora(false)}>
-                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{o.nombre_completo}»</Text>
+                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{ponerMayusculas(o.nombre_completo)}»</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -3525,7 +3544,7 @@ const ModalAsistencia = ({ visible, onCerrar, fecha, grupo, isDark, usuario }) =
         <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.cardBorder, maxHeight: '88%' }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <Text style={[styles.title, { color: colors.textMain }]}>Tomar lista</Text>
-            <TouchableOpacity onPress={onCerrar} style={{ padding: 6 }}>
+            <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 }}>
               <Feather name="x" size={22} color={colors.textSub} />
             </TouchableOpacity>
           </View>
@@ -3594,7 +3613,7 @@ const ModalAsistencia = ({ visible, onCerrar, fecha, grupo, isDark, usuario }) =
                 {resultados.map((n) => (
                   <TouchableOpacity key={n.id} onPress={() => marcar(n)} disabled={guardando} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.textMain, fontSize: 14 }}>{n.nombre_completo}</Text>
+                      <Text style={{ color: colors.textMain, fontSize: 14 }}>{ponerMayusculas(n.nombre_completo)}</Text>
                       <Text style={{ color: colors.textSub, fontSize: 12 }}>{n.grupo}</Text>
                     </View>
                     {asistentes.some((a) => a.nino_id === n.id) ? <Feather name="check-circle" size={18} color={colors.textSub} /> : <Feather name="plus-circle" size={18} color={colors.textMain} />}
@@ -3804,7 +3823,7 @@ const ModalAsistenciaJovenes = ({ visible, onCerrar, isDark }) => {
         <View style={[styles.modalContent, { backgroundColor: colors.background, borderColor: colors.cardBorder, maxHeight: '88%' }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <Text style={[styles.title, { color: colors.textMain }]}>Tomar lista</Text>
-            <TouchableOpacity onPress={onCerrar} style={{ padding: 6 }}>
+            <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 }}>
               <Feather name="x" size={22} color={colors.textSub} />
             </TouchableOpacity>
           </View>
@@ -3876,7 +3895,7 @@ const ModalAsistenciaJovenes = ({ visible, onCerrar, isDark }) => {
                 {resultados.map((j) => (
                   <TouchableOpacity key={j.id} onPress={() => marcar(j)} disabled={guardando} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.textMain, fontSize: 14 }}>{j.nombre_completo}</Text>
+                      <Text style={{ color: colors.textMain, fontSize: 14 }}>{ponerMayusculas(j.nombre_completo)}</Text>
                       {j.es_visita ? <Text style={{ color: colors.textSub, fontSize: 12 }}>Visita</Text> : null}
                     </View>
                     {asistentes.some((a) => a.joven_id === j.id) ? <Feather name="check-circle" size={18} color={colors.textSub} /> : <Feather name="plus-circle" size={18} color={colors.textMain} />}
@@ -4063,7 +4082,7 @@ const ListaJovenesAdmin = ({ isDark }) => {
           <View key={j.id} style={{ marginTop: 10, borderRadius: 20, borderWidth: 1, borderColor: abiertoAqui ? p.fondo : colors.cardBorder, backgroundColor: colors.cardBg, overflow: 'hidden' }}>
             <TouchableOpacity onPress={() => abrir(j)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{j.nombre_completo}</Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textMain }}>{ponerMayusculas(j.nombre_completo)}</Text>
                 <Text style={{ fontSize: 12.5, color: colors.textSub, marginTop: 2 }}>
                   {j.es_visita ? 'Visita' : 'Joven'}
                   {total !== undefined ? ` · ${total} asistencia${total === 1 ? '' : 's'}` : ''}
@@ -4112,17 +4131,17 @@ const ListaJovenesAdmin = ({ isDark }) => {
                     <TextInput style={campo} value={textoOtro} onChangeText={setTextoOtro} placeholder="Buscar el otro registro…" placeholderTextColor={colors.textSub} />
                     {otros.map((o) => (
                       <View key={o.id} style={{ marginTop: 10, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.cardBorder }}>
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }}>{o.nombre_completo}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }}>{ponerMayusculas(o.nombre_completo)}</Text>
                         <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>
                           {o.es_visita ? 'Visita' : 'Joven'}
                           {asistencias[o.id] !== undefined ? ` · ${asistencias[o.id]} asistencia${asistencias[o.id] === 1 ? '' : 's'}` : ''}
                         </Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                           <TouchableOpacity onPress={() => juntar(j, o)} style={pildora(false)}>
-                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{j.nombre_completo}»</Text>
+                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{ponerMayusculas(j.nombre_completo)}»</Text>
                           </TouchableOpacity>
                           <TouchableOpacity onPress={() => juntar(o, j)} style={pildora(false)}>
-                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{o.nombre_completo}»</Text>
+                            <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.textMain }}>Se queda «{ponerMayusculas(o.nombre_completo)}»</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -4250,7 +4269,17 @@ const COLOR_LUGAR_ANEXO = {
 // Las horas son fijas: sábado 9:00 am en los dos; domingo 4:00 pm Pesquería y 5:00 pm San Nicolás
 const horaAnexo = (fecha, lugar) => (new Date(fecha + 'T00:00:00').getDay() === 6 ? '9:00 am' : lugar === 'Pesquería' ? '4:00 pm' : '5:00 pm');
 
-function RolAnexoScreen({ navigation }) {
+function RolAnexoScreen({ navigation, route }) {
+  // Si se abre desde un aviso, esa fecha se resalta y el botón de confirmar late
+  const anexoId = route?.params?.anexoId;
+  const esObjetivo = (r) => !!anexoId && String(r.id) === String(anexoId);
+  const pulso = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!anexoId) return;
+    const anim = Animated.loop(Animated.sequence([Animated.timing(pulso, { toValue: 1.4, duration: 500, useNativeDriver: Platform.OS !== 'web' }), Animated.timing(pulso, { toValue: 1, duration: 500, useNativeDriver: Platform.OS !== 'web' })]));
+    anim.start();
+    return () => anim.stop();
+  }, [anexoId]);
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
   const columnas = useColumnas();
@@ -4327,7 +4356,7 @@ function RolAnexoScreen({ navigation }) {
       },
     ]);
     if (error) setAlerta({ visible: true, titulo: 'Error', mensaje: error.message, onConfirmar: cerrarAlerta, isDark });
-    else setAlerta({ visible: true, titulo: 'Listo', mensaje: destino ? 'Tu solicitud se envió directamente a esa persona.' : 'Tu solicitud ya aparece en las solicitudes de apoyo del anexo.', onConfirmar: cerrarAlerta, isDark });
+    else mostrarMensaje(destino ? 'Tu solicitud se envió a esa persona' : 'Tu solicitud ya está en solicitudes de apoyo');
   };
 
   const esMia = (r) => (r.nombre_usuario || '').toLowerCase() === yo;
@@ -4388,7 +4417,9 @@ function RolAnexoScreen({ navigation }) {
           <Feather name="check-circle" size={17} color={isDark ? '#9FD3BF' : '#2F6E5E'} style={{ padding: 6 }} />
         ) : mia ? (
           <TouchableOpacity onPress={() => confirmar(r)} style={{ padding: 6 }} accessibilityLabel="Confirmar">
-            <Feather name="thumbs-up" size={18} color={colors.textSub} />
+            <Animated.View style={{ transform: [{ scale: esObjetivo(r) ? pulso : 1 }] }}>
+              <Feather name="thumbs-up" size={18} color={esObjetivo(r) ? paleta.texto : colors.textSub} />
+            </Animated.View>
           </TouchableOpacity>
         ) : puedeTodo && !invitado ? (
           <TouchableOpacity onPress={() => confirmarPorOtro(r)} style={{ padding: 6 }} accessibilityLabel="Confirmar por otro">
@@ -4423,7 +4454,7 @@ function RolAnexoScreen({ navigation }) {
       </Text>
     </View>
   );
-  const fila = (fecha, contenido, destacada) => {
+  const fila = (fecha, contenido, destacada, objetivo) => {
     const t = diaTexto(fecha);
     return (
       <View key={fecha} style={{ flexDirection: 'row', marginBottom: 14 }}>
@@ -4431,7 +4462,7 @@ function RolAnexoScreen({ navigation }) {
           <Text style={{ fontSize: 21, fontWeight: '700', color: colors.textMain }}>{t.letra}</Text>
           <Text style={{ fontSize: 13, color: colors.textSub }}>{t.num}</Text>
         </View>
-        <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: destacada ? 2 : 1, borderColor: destacada ? paleta.fondo : colors.cardBorder, paddingHorizontal: 16 }}>{contenido}</View>
+        <View style={{ flex: 1, backgroundColor: objetivo ? (isDark ? 'rgba(244, 178, 124, 0.16)' : '#FDF1E7') : colors.cardBg, borderRadius: 28, borderWidth: destacada ? 2 : 1, borderColor: destacada ? paleta.fondo : colors.cardBorder, paddingHorizontal: 16 }}>{contenido}</View>
       </View>
     );
   };
@@ -4455,11 +4486,11 @@ function RolAnexoScreen({ navigation }) {
           <BotonChico icono="clipboard" texto="Solicitudes de apoyo" categoria="Anexo" isDark={isDark} onPress={() => navigation.navigate('Tablon', { soloGrupo: 'Anexo' })} />
         </View>
         <View style={{ width: '95%', maxWidth: ancho }}>
-          {cargando ? <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} /> : null}
+          {cargando ? <Esqueleto isDark={isDark} filas={4} /> : null}
           {!cargando && mias.length > 0 ? (
             <>
               <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.2, color: colors.textMain, marginBottom: 10 }}>MIS FECHAS EN EL ANEXO</Text>
-              {mias.map((r) => fila(r.fecha, renglon(r, 0, 1, false), true))}
+              {mias.map((r) => fila(r.fecha, renglon(r, 0, 1, false), true, esObjetivo(r)))}
             </>
           ) : null}
           {!cargando && rol.length === 0 ? (
@@ -4928,6 +4959,253 @@ function LoginScreen({ navigation }) {
     </SafeAreaView>
   );
 }
+// Áreas de «Avisos como administrador» en Ajustes
+const AREAS_AVISO_ADMIN = [
+  ['ninos', 'Clases de niños', 'Clases de niños'],
+  ['predicaciones', 'Predicaciones y Cena', 'Predicaciones'],
+  ['peticiones', 'Peticiones', 'Petición'],
+  ['anexo', 'Anexo', 'Anexo'],
+];
+
+// ==========================================
+// MENSAJE LIGERO: cuando algo sale bien, un aviso breve abajo que se va solo (sin ventana que cerrar)
+// ==========================================
+let mostrarMensajeGlobal = null;
+const mostrarMensaje = (texto) => {
+  if (mostrarMensajeGlobal) mostrarMensajeGlobal(texto);
+};
+const MensajeLigero = () => {
+  const { isDark } = useContext(ThemeContext);
+  const [texto, setTexto] = useState('');
+  const opacidad = useRef(new Animated.Value(0)).current;
+  const animacion = useRef(null);
+  useEffect(() => {
+    mostrarMensajeGlobal = (t) => {
+      setTexto(t);
+      if (animacion.current) animacion.current.stop();
+      opacidad.setValue(0);
+      animacion.current = Animated.sequence([Animated.timing(opacidad, { toValue: 1, duration: 180, useNativeDriver: Platform.OS !== 'web' }), Animated.delay(2600), Animated.timing(opacidad, { toValue: 0, duration: 300, useNativeDriver: Platform.OS !== 'web' })]);
+      animacion.current.start(({ finished }) => finished && setTexto(''));
+    };
+    return () => {
+      mostrarMensajeGlobal = null;
+    };
+  }, []);
+  if (!texto) return null;
+  return (
+    <Animated.View style={{ pointerEvents: 'none', position: 'absolute', left: 16, right: 16, bottom: 28, alignItems: 'center', opacity: opacidad, zIndex: 9999 }}>
+      <View style={{ maxWidth: 520, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: isDark ? '#F2F0EA' : '#2B2A27', borderRadius: 999, paddingVertical: 12, paddingHorizontal: 18, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+        <Feather name="check-circle" size={18} color={isDark ? '#2F6E5E' : '#9FD3BF'} />
+        <Text style={{ flexShrink: 1, fontSize: 14, fontWeight: '600', color: isDark ? '#2B2A27' : '#F2F0EA' }}>{texto}</Text>
+      </View>
+    </Animated.View>
+  );
+};
+
+// ==========================================
+// CAJITAS GRISES AL CARGAR: la silueta de lo que va a aparecer, en lugar de la ruedita
+// ==========================================
+const Esqueleto = ({ isDark, filas = 3, conFecha = true }) => {
+  const colors = getColors(isDark);
+  const pulso = useRef(new Animated.Value(0.55)).current;
+  useEffect(() => {
+    const anim = Animated.loop(Animated.sequence([Animated.timing(pulso, { toValue: 1, duration: 700, useNativeDriver: Platform.OS !== 'web' }), Animated.timing(pulso, { toValue: 0.55, duration: 700, useNativeDriver: Platform.OS !== 'web' })]));
+    anim.start();
+    return () => anim.stop();
+  }, []);
+  const gris = isDark ? '#3A3835' : '#DDDAD3';
+  const barra = (ancho, alto = 12, extra = {}) => <View style={{ width: ancho, height: alto, borderRadius: alto / 2, backgroundColor: gris, ...extra }} />;
+  return (
+    <Animated.View style={{ opacity: pulso }}>
+      {Array.from({ length: filas }).map((_, i) => (
+        <View key={i} style={{ flexDirection: 'row', marginBottom: 14 }}>
+          {conFecha ? (
+            <View style={{ width: 56, alignItems: 'center', paddingTop: 14, gap: 6 }}>
+              {barra(18, 18, { borderRadius: 6 })}
+              {barra(34, 10)}
+            </View>
+          ) : null}
+          <View style={{ flex: 1, backgroundColor: colors.cardBg, borderRadius: 28, borderWidth: 1, borderColor: colors.cardBorder, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 14, backgroundColor: gris }} />
+            <View style={{ flex: 1, gap: 8 }}>
+              {barra('62%')}
+              {barra('38%', 10)}
+            </View>
+          </View>
+        </View>
+      ))}
+    </Animated.View>
+  );
+};
+
+// ==========================================
+// CÓMO ACTIVAR LOS AVISOS (cuando el navegador o el teléfono los bloqueó)
+// ==========================================
+const PASOS_AVISOS = [
+  { clave: 'android', titulo: 'Android (Chrome)', pasos: ['Mantén presionado el ícono de Indus app y toca «Información de la app».', 'Entra a «Notificaciones» y actívalas.', 'Si abres la app desde Chrome: toca el candado junto a la dirección → Permisos → Notificaciones → Permitir.'] },
+  { clave: 'ios', titulo: 'iPhone', pasos: ['Abre Ajustes del iPhone y baja hasta encontrar «Indus app».', 'Toca «Notificaciones» y activa «Permitir notificaciones».', 'Los avisos solo llegan si abres la app desde su ícono en la pantalla de inicio (no desde Safari).'] },
+  { clave: 'pc', titulo: 'Computadora (Chrome o Edge)', pasos: ['Toca el candado junto a la dirección de la app.', 'En «Notificaciones» elige «Permitir».', 'Vuelve a cargar la página.'] },
+];
+const sistemaDelUsuario = () => {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  return /iPhone|iPad|iPod/i.test(ua) ? 'ios' : /Android/i.test(ua) ? 'android' : 'pc';
+};
+// Texto de un solo renglón: si no cabe, se desliza despacio para que se alcance a leer todo
+const TextoQueCorre = ({ texto, style }) => {
+  const [anchoCaja, setAnchoCaja] = useState(0);
+  const [anchoTexto, setAnchoTexto] = useState(0);
+  const mover = useRef(new Animated.Value(0)).current;
+  const sobra = Math.max(0, Math.ceil(anchoTexto - anchoCaja));
+  useEffect(() => {
+    mover.setValue(0);
+    if (!anchoCaja || sobra < 4) return;
+    const vuelta = Animated.loop(
+      Animated.sequence([
+        Animated.delay(1600),
+        Animated.timing(mover, { toValue: -sobra, duration: sobra * 28, easing: (t) => t, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.delay(1600),
+        Animated.timing(mover, { toValue: 0, duration: 450, useNativeDriver: Platform.OS !== 'web' }),
+      ])
+    );
+    vuelta.start();
+    return () => vuelta.stop();
+  }, [sobra, anchoCaja, texto]);
+  return (
+    <View style={{ flex: 1, overflow: 'hidden', pointerEvents: 'none' }} onLayout={(e) => setAnchoCaja(e.nativeEvent.layout.width)}>
+      <ScrollView horizontal scrollEnabled={false} showsHorizontalScrollIndicator={false} onContentSizeChange={(w) => setAnchoTexto(w)}>
+        <Animated.Text style={[style, { transform: [{ translateX: mover }] }]}>{texto}</Animated.Text>
+      </ScrollView>
+    </View>
+  );
+};
+
+const ModalActivarAvisos = ({ visible, onCerrar, isDark, onAbrirAjustes }) => {
+  const colors = getColors(isDark);
+  const propio = sistemaDelUsuario();
+  const lista = [...PASOS_AVISOS].sort((a, b) => (a.clave === propio ? -1 : b.clave === propio ? 1 : 0));
+  const azul = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Usuarios'];
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCerrar}>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { backgroundColor: colors.background, maxHeight: '85%', alignItems: 'stretch' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={[styles.modalTitle, { color: colors.textMain, flex: 1, textAlign: 'left', marginBottom: 0 }]}>Cómo activar los avisos</Text>
+            <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -10 }}>
+              <Feather name="x" size={22} color={colors.textSub} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ width: '100%' }}>
+            {onAbrirAjustes ? (
+              <View style={{ backgroundColor: colors.cardBg, borderWidth: 2, borderColor: azul.fondo, borderRadius: 20, padding: 14, marginTop: 10 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textMain, marginBottom: 6 }}>Primero: desde Ajustes de la app</Text>
+                {['Toca el engrane de arriba a la izquierda.', 'Toca «Avisos bloqueados» y, si te pregunta, elige «Permitir».', 'Si no te pregunta nada, tu teléfono los tiene bloqueados: sigue los pasos de abajo.'].map((p, n) => (
+                  <View key={n} style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: colors.textSub, width: 16 }}>{n + 1}.</Text>
+                    <Text style={{ flex: 1, fontSize: 13.5, lineHeight: 19, color: colors.textMain }}>{p}</Text>
+                  </View>
+                ))}
+                <TouchableOpacity onPress={onAbrirAjustes} style={{ alignSelf: 'flex-start', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingHorizontal: 16, borderRadius: 999, backgroundColor: azul.fondo }}>
+                  <Feather name="settings" size={16} color={azul.texto} />
+                  <Text style={{ fontSize: 13.5, fontWeight: '800', color: azul.texto }}>Abrir Ajustes</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {lista.map((s, i) => (
+              <View key={s.clave} style={{ backgroundColor: colors.cardBg, borderWidth: i === 0 && !onAbrirAjustes ? 2 : 1, borderColor: i === 0 && !onAbrirAjustes ? azul.fondo : colors.cardBorder, borderRadius: 20, padding: 14, marginTop: 10 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textMain, marginBottom: 6 }}>
+                  {s.titulo}
+                  {i === 0 ? <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSub }}>  · tu dispositivo</Text> : null}
+                </Text>
+                {s.pasos.map((p, n) => (
+                  <View key={n} style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: colors.textSub, width: 16 }}>{n + 1}.</Text>
+                    <Text style={{ flex: 1, fontSize: 13.5, lineHeight: 19, color: colors.textMain }}>{p}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ==========================================
+// LO QUE TE TOCA: la fecha más próxima que el hermano todavía no confirma (predicación, anexo o Cena del Señor)
+// ==========================================
+const proximaPorConfirmar = async () => {
+  const yo = usuarioActivoGlobal;
+  if (!yo) return null;
+  const hoy = fechaISO(new Date());
+  const sinConfirmar = 'estado_confirmacion.is.null,estado_confirmacion.neq.confirmado';
+  const [pred, anexo, cena] = await Promise.all([
+    supabase.from('programa_servicios').select('id, fecha, horario').ilike('nombre_usuario', yo).gte('fecha', hoy).or(sinConfirmar).order('fecha', { ascending: true }).limit(1),
+    supabase.from('anexo_rol').select('id, fecha, lugar').ilike('nombre_usuario', yo).gte('fecha', hoy).or(sinConfirmar).order('fecha', { ascending: true }).limit(1),
+    supabase.from('cena_turnos').select('id, fecha, posicion').ilike('nombre_usuario', yo).gte('fecha', hoy).eq('estado', 'invitado').order('fecha', { ascending: true }).limit(1),
+  ]);
+  const opciones = [];
+  const p = (pred.data || [])[0];
+  if (p) opciones.push({ clave: `rol-${p.id}`, fecha: p.fecha, titulo: calcularTipo(p.fecha, p.horario) === 'Clase' ? 'Clase' : 'Predicación', detalle: p.horario, categoria: 'Predicaciones', destino: { pantalla: 'MiRol', params: { servicioId: p.id } }, confirmar: async () => (await supabase.rpc('confirmar_servicio', { p_id: p.id })) });
+  const a = (anexo.data || [])[0];
+  if (a) opciones.push({ clave: `anx-${a.id}`, fecha: a.fecha, titulo: `Anexo de ${a.lugar}`, detalle: horaAnexo(a.fecha, a.lugar), categoria: 'Anexo', destino: { pantalla: 'RolAnexo', params: { anexoId: a.id } }, confirmar: async () => (await supabase.rpc('confirmar_anexo', { p_id: a.id })) });
+  const c = (cena.data || [])[0];
+  if (c)
+    opciones.push({
+      clave: `cena-${c.id}`,
+      fecha: c.fecha,
+      titulo: 'Cena del Señor',
+      detalle: c.posicion === 0 ? 'Te invitaron a presidir' : `Te invitaron · posición ${c.posicion}`,
+      categoria: 'Cena',
+      destino: { pantalla: 'Cena' },
+      confirmar: async () => {
+        try {
+          await responderCena(c.id, 'confirmar');
+          return { data: null, error: null };
+        } catch (e) {
+          return { data: e.message, error: null };
+        }
+      },
+    });
+  opciones.sort((x, y) => x.fecha.localeCompare(y.fecha));
+  return opciones[0] || null;
+};
+// Un tono intermedio entre dos colores (para que «Confirma:» no se vea tan oscuro)
+const mezclarColor = (a, b, cuanto) => {
+  const n = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+  return '#' + [0, 1, 2].map((i) => Math.round(n(a, i) * (1 - cuanto) + n(b, i) * cuanto).toString(16).padStart(2, '0')).join('');
+};
+const TarjetaPorConfirmar = ({ item, isDark, onAbrir, onConfirmada }) => {
+  const colors = getColors(isDark);
+  const p = PALETA_MENU[isDark ? 'oscuro' : 'claro'][item.categoria];
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState('');
+  const d = new Date(item.fecha + 'T00:00:00');
+  const dia = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d.getDay()];
+  const confirmar = async () => {
+    setEnviando(true);
+    setError('');
+    const { data, error: e } = await item.confirmar();
+    setEnviando(false);
+    if (e || data) return setError(data || 'No se pudo confirmar. Revisa tu conexión.');
+    mostrarMensaje(`Confirmado: ${item.titulo.toLowerCase().startsWith('cena') ? 'Cena del Señor' : item.titulo}, ${dia.toLowerCase()} ${d.getDate()}`);
+    onConfirmada();
+  };
+  const fechaCorta = `${dia.slice(0, 3).toLowerCase()} ${d.getDate()} ${MESES_CORTOS[d.getMonth()].toLowerCase()}`;
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <TouchableOpacity activeOpacity={0.85} onPress={onAbrir} accessibilityLabel={`Abrir ${item.titulo}`} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 999, paddingLeft: 18, paddingRight: 5, paddingVertical: 4 }}>
+        <Text style={{ fontSize: 14, fontWeight: '800', color: isDark ? p.fondo : mezclarColor(p.fondo, p.texto, 0.35) }}>Confirma:</Text>
+        <TextoQueCorre texto={`${item.titulo} · ${fechaCorta} · ${item.detalle}`} style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }} />
+        <TouchableOpacity onPress={confirmar} disabled={enviando} accessibilityLabel={`Confirmar ${item.titulo}`} hitSlop={8} style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: p.fondo }}>
+          {enviando ? <ActivityIndicator color={p.texto} /> : <Feather name="thumbs-up" size={16} color={p.texto} />}
+        </TouchableOpacity>
+      </TouchableOpacity>
+      {error ? <Text style={{ fontSize: 12.5, color: '#C97A7A', marginTop: 6, marginLeft: 16 }}>{error}</Text> : null}
+    </View>
+  );
+};
+
 // ==========================================
 // PANTALLA 1: MENÚ PRINCIPAL
 // ==========================================
@@ -4940,10 +5218,24 @@ function MenuPrincipalScreen({ navigation }) {
   const [mostrarAyuda, setMostrarAyuda] = useState(false);
   const [mostrarAvisos, setMostrarAvisos] = useState(false);
   const [hayNotificaciones, setHayNotificaciones] = useState(false);
+  const [porConfirmar, setPorConfirmar] = useState(null);
+  const [verComoActivar, setVerComoActivar] = useState(false);
+  // El ícono de avisos se mueve al abrir la app y cuando llega un aviso nuevo
+  const giro = useRef(new Animated.Value(0)).current;
+  const avisosAntes = useRef(-1);
+  const moverCampana = () => {
+    giro.setValue(0);
+    const paso = (v) => Animated.timing(giro, { toValue: v, duration: 90, useNativeDriver: Platform.OS !== 'web' });
+    Animated.sequence([paso(1), paso(-1), paso(0.7), paso(-0.7), paso(0.35), paso(0)]).start();
+  };
+  const cargarPorConfirmar = () =>
+    proximaPorConfirmar()
+      .then(setPorConfirmar)
+      .catch(() => setPorConfirmar(null));
   const [avisosPush, setAvisosPush] = useState(estadoAvisos());
   const columnas = useColumnas();
   const esTablet = columnas >= 2;
-  const tarjetas = [{ icono: 'smile', titulo: 'Clases de niños y jóvenes', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'volume-2', titulo: 'Anuncios', categoria: 'Anuncios', pronto: true, onPress: () => proximamente(getThemeColors('Anuncios', isDark).textDark) }, { icono: 'heart', titulo: 'Peticiones de oración', categoria: 'Petición', onPress: () => navigation.navigate('Peticiones') }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
+  const tarjetas = [{ icono: 'smile', titulo: 'Clases de niños y jóvenes', categoria: 'Clases de niños', onPress: () => navigation.navigate('Grupos') }, { icono: 'calendar', titulo: 'Rol de predicaciones y Cena del Señor', categoria: 'Predicaciones', onPress: () => navigation.navigate('Roles') }, { icono: 'heart', titulo: 'Peticiones de oración', categoria: 'Petición', onPress: () => navigation.navigate('Peticiones') }, { icono: 'calendar', titulo: 'Calendario de actividades', categoria: 'Calendario', onPress: () => navigation.navigate('Calendario') }].filter(Boolean);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -4951,9 +5243,13 @@ function MenuPrincipalScreen({ navigation }) {
       iniciarOneSignal().then(() => setAvisosPush(estadoAvisos()));
       const revisarNotificaciones = async () => {
         const { items, vistas } = await obtenerNotificaciones();
-        setHayNotificaciones(items.some((n) => n.accion || !vistas.includes(n.clave)));
+        const sinVer = items.filter((n) => n.accion || !vistas.includes(n.clave)).length;
+        setHayNotificaciones(sinVer > 0);
+        if (sinVer > 0 && sinVer > avisosAntes.current) moverCampana();
+        avisosAntes.current = sinVer;
       };
       revisarNotificaciones();
+      cargarPorConfirmar();
       const temporizador = setInterval(revisarNotificaciones, 30000);
       return () => clearInterval(temporizador);
     }, []),
@@ -4998,24 +5294,38 @@ function MenuPrincipalScreen({ navigation }) {
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 90, height: 64, resizeMode: 'contain' }} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setMostrarAvisos(true)} style={{ padding: 8 }} accessibilityLabel="Avisos">
-            <IconoNotificacion size={28} color={colors.textSub} activo={hayNotificaciones} />
+            <Animated.View style={{ transform: [{ rotate: giro.interpolate({ inputRange: [-1, 1], outputRange: ['-16deg', '16deg'] }) }] }}>
+              <IconoNotificacion size={28} color={colors.textSub} activo={hayNotificaciones} />
+            </Animated.View>
           </TouchableOpacity>
         </View>
 
         {avisosPush !== 'activo' && avisosPush !== 'no-soportado' && (
-          <View style={{ width: '95%', maxWidth: esTablet ? 1100 : 850, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 14 }}>
+          <View style={{ width: '95%', maxWidth: esTablet ? 1100 : 850, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 24, minHeight: 44, paddingVertical: 4, paddingLeft: 18, paddingRight: 5, marginBottom: 14 }}>
             <Feather name="bell-off" size={20} color={colors.textSub} />
-            <Text style={{ flex: 1, marginLeft: 12, fontSize: 13, color: colors.textMain }}>{avisosPush === 'pendiente' ? 'Activa los avisos para enterarte de las solicitudes de apoyo.' : avisosPush === 'bloqueado' ? 'Los avisos están bloqueados. Actívalos en los ajustes de tu teléfono o navegador.' : 'Para recibir avisos, instala la app en tu pantalla de inicio.'}</Text>
+            <View style={{ flex: 1, marginLeft: 12, flexDirection: 'row' }}>
+              <TextoQueCorre texto={avisosPush === 'pendiente' ? 'Avisos apagados' : avisosPush === 'bloqueado' ? 'Avisos bloqueados' : 'Instala la app para recibir avisos'} style={{ fontSize: 14, fontWeight: '700', color: colors.textMain }} />
+            </View>
             {avisosPush === 'pendiente' && (
               <TouchableOpacity onPress={async () => setAvisosPush(await activarAvisos())} style={{ marginLeft: 10, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, backgroundColor: colors.textMain }}>
                 <Text style={{ color: colors.background, fontWeight: '700', fontSize: 13 }}>Activar</Text>
               </TouchableOpacity>
             )}
+            {avisosPush === 'bloqueado' && (
+              <TouchableOpacity onPress={() => setVerComoActivar(true)} hitSlop={8} style={{ marginLeft: 10, height: 34, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 999, backgroundColor: colors.textMain }}>
+                <Text style={{ color: colors.background, fontWeight: '700', fontSize: 12.5 }}>Cómo activarlos</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
-        <View style={[styles.gruposContainer, { width: '95%', maxWidth: esTablet ? 1100 : 850 }, esTablet && { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }]}>
+        {porConfirmar ? (
+          <View style={{ width: '95%', maxWidth: esTablet ? 1100 : 850 }}>
+            <TarjetaPorConfirmar key={porConfirmar.clave} item={porConfirmar} isDark={isDark} onAbrir={() => navigation.navigate(porConfirmar.destino.pantalla, porConfirmar.destino.params)} onConfirmada={cargarPorConfirmar} />
+          </View>
+        ) : null}
+        <View style={[styles.gruposContainer, { width: '95%', maxWidth: esTablet ? 1100 : 850 }, esTablet ? { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' } : { gap: 12 }]}>
           {tarjetas.map((t, i) => (
-            <TarjetaMenu key={t.titulo} {...t} isDark={isDark} columnas={columnas} esUltima={i === tarjetas.length - 1} total={tarjetas.length} />
+            <TarjetaMenu key={t.titulo} {...t} compacta isDark={isDark} columnas={columnas} esUltima={i === tarjetas.length - 1} total={tarjetas.length} />
           ))}
         </View>
       </ScrollView>
@@ -5023,6 +5333,7 @@ function MenuPrincipalScreen({ navigation }) {
       <PanelAjustes visible={mostrarAjustes} onCerrar={() => setMostrarAjustes(false)} isDark={isDark} toggleTheme={toggleTheme} onCerrarSesion={confirmarCerrarSesion} onAdmin={() => navigation.navigate('Admin')} onAyuda={() => setMostrarAyuda(true)} />
       <ModalAyuda visible={mostrarAyuda} onCerrar={() => setMostrarAyuda(false)} onNavegar={(pantalla, params) => (pantalla === 'Notificaciones' ? setMostrarAvisos(true) : navigation.navigate(pantalla, params))} isDark={isDark} />
       <PanelNotificaciones visible={mostrarAvisos} onCerrar={() => setMostrarAvisos(false)} onNavegar={(pantalla, params) => navigation.navigate(pantalla, params)} onRevisadas={setHayNotificaciones} isDark={isDark} />
+      <ModalActivarAvisos visible={verComoActivar} onCerrar={() => setVerComoActivar(false)} isDark={isDark} onAbrirAjustes={() => { setVerComoActivar(false); setMostrarAjustes(true); }} />
     </SafeAreaView>
   );
 }
@@ -5148,7 +5459,7 @@ function MiRolScreen({ navigation, route }) {
     if (error) {
       setAlerta({ visible: true, titulo: 'Error', mensaje: error.message, onConfirmar: cerrarAlerta, isDark: isDark });
     } else {
-      setAlerta({ visible: true, titulo: 'Listo', mensaje: destino ? 'Tu solicitud se envió directamente a esa persona.' : 'Tu solicitud ya aparece en el tablón de apoyo.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#2C4A73' });
+      mostrarMensaje(destino ? 'Tu solicitud se envió a esa persona' : 'Tu solicitud ya está en solicitudes de apoyo');
     }
   };
 
@@ -5219,7 +5530,7 @@ function MiRolScreen({ navigation, route }) {
             listaRolY.current = e.nativeEvent.layout.y;
           }}
         >
-          {cargando && <ActivityIndicator style={{ marginTop: 20 }} color={colors.textSub} />}
+          {cargando && <Esqueleto isDark={isDark} filas={4} />}
           {!cargando && fechas.length === 0 && (
             <View style={[styles.emptyState, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}>
               <Feather name="calendar" size={40} color={colors.textSub} style={{ marginBottom: 15 }} />
@@ -5832,7 +6143,7 @@ function CenaScreen({ navigation }) {
 
         <View style={{ width: '95%', maxWidth: 850 }}>
           {cargando ? (
-            <ActivityIndicator color={colors.textSub} style={{ marginTop: 30 }} />
+            <Esqueleto isDark={isDark} filas={3} conFecha={false} />
           ) : (
             <>
               {/* Invitación pendiente */}
@@ -5891,7 +6202,7 @@ function CenaScreen({ navigation }) {
                           <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: listo ? paleta.fondo : 'transparent', borderWidth: 1.5, borderColor: listo ? paleta.fondo : colors.cardBorder, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>{p === 0 ? <Feather name="book-open" size={15} color={listo ? paleta.texto : colors.textSub} /> : <Text style={{ fontWeight: '700', color: listo ? paleta.texto : colors.textSub }}>{p}</Text>}</View>
                           <TouchableOpacity disabled={!pendiente} activeOpacity={0.7} onPress={() => setAbierto(abierto === t.id ? null : t.id)} accessibilityLabel={pendiente ? `Responder por ${texto}` : undefined} style={{ flex: 1 }}>
                             {p === 0 ? <Text style={{ fontSize: 12, color: colors.textSub }}>Preside</Text> : null}
-                            <Text style={{ fontSize: 15, fontWeight: listo || pendiente ? '700' : '500', color: listo || pendiente ? colors.textMain : colors.textSub, fontStyle: listo || pendiente ? 'normal' : 'italic', opacity: pendiente ? 0.4 : 1 }}>{texto}</Text>
+                            <Text style={{ fontSize: 15, fontWeight: listo || pendiente ? '700' : '500', color: listo || pendiente ? colors.textMain : colors.textSub, fontStyle: listo || pendiente ? 'normal' : 'italic', opacity: pendiente ? (isDark ? 0.6 : 0.45) : 1 }}>{texto}</Text>
                           </TouchableOpacity>
                           {pendiente ? (
                             <TouchableOpacity onPress={() => setAbierto(abierto === t.id ? null : t.id)} accessibilityLabel={abierto === t.id ? 'Cerrar opciones' : `Responder por ${texto}`} style={{ padding: 8, marginRight: puedeAsignar ? 4 : -8 }}>
@@ -5900,7 +6211,7 @@ function CenaScreen({ navigation }) {
                           ) : null}
                           {listo ? <IconoCheck size={22} color={isDark ? '#8FC79F' : '#6FA884'} /> : null}
                           {listo && miTurno && t.id === miTurno.id ? (
-                            <TouchableOpacity onPress={cancelarMiLugar} accessibilityLabel="Ya no puedo" style={{ padding: 6, marginLeft: 6 }}>
+                            <TouchableOpacity onPress={cancelarMiLugar} accessibilityLabel="Ya no puedo" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: 2, marginRight: -8 }}>
                               <Feather name="x-circle" size={22} color="#C97A7A" />
                             </TouchableOpacity>
                           ) : null}
@@ -6183,7 +6494,7 @@ function DetalleUsuarioScreen({ route, navigation }) {
 
   const copiarInfo = async () => {
     await Clipboard.setStringAsync(`Usuario: ${maestro.nombre_usuario}\nPIN: ${maestro.pin_acceso}`);
-    setAlerta({ visible: true, titulo: 'Copiado', mensaje: 'La información se copió al portapapeles.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#7EA0D8' });
+    mostrarMensaje('Se copió al portapapeles');
   };
 
   // Dar de baja desde aquí, igual que en el panel (nadie puede darse de baja a sí mismo)
@@ -6240,7 +6551,7 @@ function DetalleUsuarioScreen({ route, navigation }) {
             <Feather name="arrow-left" size={22} color={colors.textSub} />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 8 }}>
-            <Text style={[styles.title, { color: colors.textMain }]}>{maestro.nombre_completo || maestro.nombre_usuario}</Text>
+            <Text style={[styles.title, { color: colors.textMain }]}>{ponerMayusculas(maestro.nombre_completo || maestro.nombre_usuario)}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
             <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
@@ -7242,7 +7553,7 @@ function TablonScreen({ navigation, route }) {
     if (error) return setAvisoOferta('No se pudo enviar: ' + error.message);
     setOfreciendo(null);
     const theme = getThemeColors(sol.grupo_clase, isDark);
-    setTimeout(() => setAlerta({ visible: true, titulo: 'Oferta enviada', mensaje: `${nombreBonito(sol.maestro_solicitante)} decidirá si la acepta. Si no responde en ${HORAS_OFERTA} horas, la oferta vence.`, onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 300);
+    mostrarMensaje(`Oferta enviada · ${nombreBonito(sol.maestro_solicitante)} tiene ${HORAS_OFERTA} horas para responder`);
     obtenerSolicitudes();
   }
 
@@ -7401,7 +7712,7 @@ function TablonScreen({ navigation, route }) {
         if (r.motivo || r.error) {
           setTimeout(() => setAlerta({ visible: true, titulo: 'No se puede aceptar', mensaje: r.motivo || 'No se pudo completar. Revisa tu conexión e intenta de nuevo.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
         } else {
-          setTimeout(() => setAlerta({ visible: true, titulo: '¡Gracias!', mensaje: 'Has sido asignado a esta clase.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+          mostrarMensaje('¡Gracias! Ya quedaste asignado');
         }
         obtenerSolicitudes();
       },
@@ -7434,7 +7745,9 @@ function TablonScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
         {cargando ? (
-          <ActivityIndicator size="large" color={colors.textSub} style={{ marginTop: 50 }} />
+          <View style={{ width: '95%', maxWidth: 850, alignSelf: 'center', marginTop: 10 }}>
+            <Esqueleto isDark={isDark} filas={3} conFecha={false} />
+          </View>
         ) : (
           <ScrollView ref={scrollRef} style={styles.listContainer} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={colors.textSub} />}>
             {solicitudes.length === 0 ? (
@@ -7680,7 +7993,7 @@ function AdminScreen({ navigation, route }) {
     } else {
       // La Cena del Señor se guarda aparte (la función de alta no conoce estos dos datos)
       if (elegiblePresidir || elegibleMesa || elegibleAnexo || (!esAdmin && encargadoAlta.length > 0)) await supabase.from('maestros').update({ elegible_presidir: elegiblePresidir, elegible_mesa: elegibleMesa, elegible_anexo: elegibleAnexo, encargado: esAdmin ? [] : encargadoAlta }).eq('nombre_usuario', usuarioGenerado);
-      setAlerta({ visible: true, titulo: '¡Éxito!', mensaje: 'Usuario registrado.', onConfirmar: cerrarAlerta, isDark: isDark });
+      mostrarMensaje('Usuario registrado');
       setNombreCompleto('');
       setUsuarioGenerado('');
       setPinGenerado('');
@@ -7746,7 +8059,7 @@ function AdminScreen({ navigation, route }) {
 
   const copiarInfo = async (usuario, pin, equipo) => {
     await Clipboard.setStringAsync(`Usuario: ${usuario}\nPIN: ${pin}`);
-    setAlerta({ visible: true, titulo: 'Copiado', mensaje: 'La información se copió al portapapeles.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: '#7EA0D8' });
+    mostrarMensaje('Se copió al portapapeles');
   };
 
   // Lee el CSV del rol. Formato: Día, Fecha, Hora, Nombre (la fecha solo va en la primera fila de cada día).
@@ -8672,7 +8985,7 @@ function AdminScreen({ navigation, route }) {
             </OpcionAdmin>
             <Text style={{ fontSize: 13, fontWeight: '700', letterSpacing: 0.5, color: colors.textSub, marginTop: 10, marginBottom: 10, marginLeft: 6 }}>Coritos</Text>
             <OpcionAdmin {...opc('nuevoCorito')} icono="music" titulo="Agregar corito" subtitulo="Audio, letra y grupos">
-              <FormCorito isDark={isDark} onGuardado={() => setAlerta({ visible: true, titulo: 'Corito guardado', mensaje: 'Ya aparece en la sección Coritos.', textoConfirmar: 'Aceptar', onConfirmar: cerrarAlerta, isDark })} />
+              <FormCorito isDark={isDark} onGuardado={() => mostrarMensaje('Corito guardado · ya aparece en Coritos')} />
             </OpcionAdmin>
             <OpcionAdmin {...opc('editarCoritos')} icono="edit-3" titulo="Editar o borrar coritos" subtitulo="Corrige título, letra, grupos o audio">
                             <ListaCoritosAdmin isDark={isDark} />
@@ -8974,7 +9287,7 @@ const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado 
           <ScrollView contentContainerStyle={{ padding: 22 }} keyboardShouldPersistTaps="handled">
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ flex: 1, fontSize: 19, fontWeight: '800', color: colors.textMain }}>{nueva ? 'Nueva actividad' : 'Editar actividad'}</Text>
-              <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ padding: 6 }}>
+              <TouchableOpacity onPress={onCerrar} accessibilityLabel="Cerrar" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 }}>
                 <Feather name="x" size={20} color={colors.textSub} />
               </TouchableOpacity>
             </View>
@@ -11446,7 +11759,7 @@ const RegistroBautismos = ({ isDark }) => {
     const { error } = editando ? await supabase.from('bautismos').update(datos).eq('id', editando.id) : await supabase.from('bautismos').insert([datos]);
     setGuardando(false);
     if (error) return avisar('No se pudo guardar', error.code === '23505' ? 'Esa persona ya tiene su bautismo registrado en esa fecha.' : error.message);
-    avisar(editando ? 'Cambios guardados' : 'Bautismo registrado', `${datos.nombre_completo} · ${fechaBautismo(fecha)}`);
+    mostrarMensaje(`${editando ? 'Cambios guardados' : 'Bautismo registrado'}: ${datos.nombre_completo}`);
     limpiar();
     cargar();
   };
@@ -11801,6 +12114,7 @@ export default function App() {
             <Stack.Screen name="Peticiones" component={PeticionesScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
         </NavigationContainer>
+        <MensajeLigero />
       </View>
     </ThemeContext.Provider>
   );
