@@ -1332,6 +1332,7 @@ const fechaLargaOferta = (fechaTexto) => (fechaTexto ? new Date(fechaTexto + 'T0
 // ---- NOTIFICACIONES: avisos de apoyo para el usuario activo ----
 const claveVistas = () => `notificaciones_vistas_${(usuarioActivoGlobal || '').toLowerCase()}`;
 const claveHoras = () => `notificaciones_horas_${(usuarioActivoGlobal || '').toLowerCase()}`;
+const claveVistasHora = () => `notificaciones_vistas_hora_${(usuarioActivoGlobal || '').toLowerCase()}`;
 
 // Fecha y hora de un aviso: "Hoy 9:00 am", "Ayer 3:15 pm" o "Lun 19 oct, 9:00 am"
 const cuandoAviso = (iso) => {
@@ -1349,6 +1350,12 @@ const marcarNotificacionesVistas = async (items) => {
   try {
     const claves = items.map((n) => n.clave).slice(0, 300);
     await AsyncStorage.setItem(claveVistas(), JSON.stringify(claves));
+    // La primera vez que se vio cada aviso (para quitar los informativos a los 3 días)
+    const antes = JSON.parse((await AsyncStorage.getItem(claveVistasHora())) || '{}');
+    const ahora = new Date().toISOString();
+    const horas = {};
+    claves.forEach((k) => (horas[k] = antes[k] || ahora));
+    await AsyncStorage.setItem(claveVistasHora(), JSON.stringify(horas));
   } catch (e) {
     console.error('No se pudieron guardar las notificaciones vistas:', e);
   }
@@ -1438,8 +1445,17 @@ const obtenerNotificaciones = async () => {
     const DIAS_AVISO_INFO = 7;
     const limiteInfo = Date.now() - DIAS_AVISO_INFO * 86400000;
     const esInfo = (n) => /^(acepto|admin-acepta|coord-acepta|oferta-si|oferta-no|oferta-desc|oferta-vence):/.test(n.clave);
+    // Y si ya los viste, se quitan a los 3 días de haberlos visto
+    let vistoEn = {};
+    try {
+      vistoEn = JSON.parse((await AsyncStorage.getItem(claveVistasHora())) || '{}');
+    } catch (e) {}
+    const limiteVisto = Date.now() - 3 * 86400000;
     for (let i = items.length - 1; i >= 0; i--) {
-      if (esInfo(items[i]) && items[i].fecha && new Date(items[i].fecha).getTime() < limiteInfo) items.splice(i, 1);
+      if (!esInfo(items[i])) continue;
+      const viejo = items[i].fecha && new Date(items[i].fecha).getTime() < limiteInfo;
+      const visto = vistoEn[items[i].clave] && new Date(vistoEn[items[i].clave]).getTime() < limiteVisto;
+      if (viejo || visto) items.splice(i, 1);
     }
     // ---- RECORDATORIOS: clases, equipo y rol (desaparecen solos cuando pasa la fecha) ----
     const recordatorios = [];
@@ -1538,6 +1554,7 @@ const obtenerNotificaciones = async () => {
     const { data: noPublicadas } = await supabase.from('peticiones_oracion').select('id, nombre_usuario, motivo, revisada_en').eq('publicacion', 'No publicada');
     (noPublicadas || [])
       .filter((p) => (p.nombre_usuario || '').toLowerCase() === (usuarioActivoGlobal || '').toLowerCase())
+      .filter((p) => !p.revisada_en || Date.now() - new Date(p.revisada_en).getTime() < 7 * 86400000)
       .forEach((p) => items.unshift({ clave: `pet-nopub:${p.id}:${p.revisada_en}`, fecha: p.revisada_en, accion: false, destino: { pantalla: 'Peticiones', params: { vista: 'enviar' } }, mensaje: 'Tu petición de oración no se publicó', detalle: `Motivo: ${p.motivo || 'Otro motivo'} · Toca para editarla` }));
     // ---- Área de cada aviso, para su etiqueta de color ----
     const solPorId = {};
@@ -7625,19 +7642,22 @@ function TablonScreen({ navigation, route }) {
     });
   }
 
-  function cancelarSolicitud(solicitudId, grupoClase) {
+  function cancelarSolicitud(solicitudId, grupoClase, solicitante) {
     const theme = getThemeColors(grupoClase, isDark);
+    const esMia = (solicitante || '').toLowerCase() === yoMin();
     setAlerta({
       visible: true,
       titulo: 'Cancelar',
-      mensaje: '¿Ya no necesitas el apoyo?',
+      mensaje: esMia ? '¿Ya no necesitas el apoyo?' : `¿Cancelar la solicitud de ${nombreBonito(solicitante)}? Se quitará del tablón y de los avisos.`,
       isDark: isDark,
       themeColor: theme.main,
       textoConfirmar: 'Sí, cancelar',
       onCancelar: cerrarAlerta,
       onConfirmar: async () => {
         cerrarAlerta();
-        await supabase.from('solicitudes_sustitucion').delete().eq('id', solicitudId);
+        const { data, error } = await supabase.from('solicitudes_sustitucion').delete().eq('id', solicitudId).select('id');
+        if (error || !data || data.length === 0) setTimeout(() => setAlerta({ visible: true, titulo: 'No se pudo cancelar', mensaje: 'Revisa tu conexión e intenta de nuevo.', onConfirmar: cerrarAlerta, isDark: isDark, themeColor: theme.main }), 500);
+        else mostrarMensaje('Solicitud cancelada');
         obtenerSolicitudes();
       },
     });
@@ -7812,8 +7832,8 @@ function TablonScreen({ navigation, route }) {
                         ))}
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 15 }}>
-                      {solicitud.maestro_solicitante === usuarioActivoGlobal && solicitud.estado === 'Pendiente' && (
-                        <TouchableOpacity style={[styles.cancelarButton, { borderColor: colors.cardBorder }]} onPress={() => cancelarSolicitud(solicitud.id, solicitud.grupo_clase)}>
+                      {((solicitud.maestro_solicitante || '').toLowerCase() === yoMin() || rolUsuarioActivoGlobal === 'administrador') && solicitud.estado === 'Pendiente' && (
+                        <TouchableOpacity style={[styles.cancelarButton, { borderColor: colors.cardBorder }]} onPress={() => cancelarSolicitud(solicitud.id, solicitud.grupo_clase, solicitud.maestro_solicitante)}>
                           <Text style={[styles.cancelarButtonText, { color: colors.textSub }]}>Cancelar</Text>
                         </TouchableOpacity>
                       )}
