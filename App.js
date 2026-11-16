@@ -1230,6 +1230,10 @@ const ponerMayusculas = (t) =>
     .join(' ');
 
 // Nombre propio: "JUAN de la CRUZ" -> "Juan de la Cruz"
+// Un nombre solo lleva letras (con acentos), espacios, puntos, guiones y apóstrofes
+const nombreValido = (t) => /^[\p{L}][\p{L} .'\-]*$/u.test(String(t || '').trim());
+const AVISO_NOMBRE = 'El nombre solo puede llevar letras, espacios, puntos, guiones y apóstrofes.';
+
 const nombrePropio = (t) =>
   String(t || '')
     .trim()
@@ -2454,6 +2458,7 @@ const ListaNinosAdmin = ({ isDark }) => {
   const guardar = async () => {
     const limpio = nombrePropio(nombre);
     if (limpio.length < 3) return setMensaje('Escribe el nombre completo.');
+    if (!nombreValido(limpio)) return setMensaje(AVISO_NOMBRE);
     const { data: iguales } = await supabase.rpc('buscar_ninos', { p_texto: limpio, p_exacto: true });
     const otro = (iguales || []).find((x) => x.id !== abierto.id);
     if (otro) return setMensaje(`Ya existe "${otro.nombre_completo}" (${otro.grupo || 'sin grupo'}). Si es el mismo niño, usa «Juntar con otro».`);
@@ -3519,6 +3524,10 @@ const ModalAsistencia = ({ visible, onCerrar, fecha, grupo, isDark, usuario }) =
       setMensaje('Escribe el nombre completo del niño.');
       return;
     }
+    if (!nombreValido(nombre)) {
+      setMensaje(AVISO_NOMBRE);
+      return;
+    }
     setGuardando(true);
     const { data: existente } = await supabase.rpc('buscar_ninos', { p_texto: nombre, p_exacto: true });
     if (existente && existente.length > 0) {
@@ -3780,6 +3789,7 @@ const ModalAsistenciaJovenes = ({ visible, onCerrar, isDark }) => {
   const agregarYMarcar = async () => {
     const nombre = nombrePropio(texto);
     if (nombre.length < 3) return setMensaje('Escribe el nombre completo.');
+    if (!nombreValido(nombre)) return setMensaje(AVISO_NOMBRE);
     setGuardando(true);
     const { data: existente } = await supabase.rpc('buscar_jovenes', { p_texto: nombre, p_exacto: true });
     if (existente && existente.length > 0) {
@@ -4043,6 +4053,7 @@ const ListaJovenesAdmin = ({ isDark }) => {
   const guardar = async () => {
     const limpio = nombrePropio(nombre);
     if (limpio.length < 3) return setMensaje('Escribe el nombre completo.');
+    if (!nombreValido(limpio)) return setMensaje(AVISO_NOMBRE);
     const { data: iguales } = await supabase.rpc('buscar_jovenes', { p_texto: limpio, p_exacto: true });
     const otro = (iguales || []).find((x) => x.id !== abierto.id);
     if (otro) return setMensaje(`Ya existe "${otro.nombre_completo}". Si es la misma persona, usa «Juntar con otro».`);
@@ -11788,6 +11799,7 @@ const RegistroBautismos = ({ isDark }) => {
   const guardar = async (aunAsi = false) => {
     const limpio = nombre.replace(/\s+/g, ' ').trim();
     if (!limpio || !fecha) return avisar('Faltan datos', 'Escribe el nombre completo y elige la fecha.');
+    if (!nombreValido(limpio) || (bautizo.trim() && !nombreValido(bautizo))) return avisar('Revisa el nombre', AVISO_NOMBRE);
     const iguales = (lista || []).filter((b) => b.id !== (editando && editando.id) && claveBautismo(b.nombre_completo) === claveBautismo(limpio));
     const mismoDia = iguales.find((b) => b.fecha === fecha);
     if (mismoDia) return avisar('Ya está registrado', `${mismoDia.nombre_completo} ya tiene su bautismo registrado el ${fechaBautismo(mismoDia.fecha)}.`);
