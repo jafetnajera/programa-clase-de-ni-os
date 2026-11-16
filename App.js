@@ -5938,71 +5938,97 @@ const AccionesCena = ({ turno, isDark, onHecho }) => {
 };
 
 // Diagrama del salón con el recorrido de una posición: un punto sale del frente y recorre su hilera
-const DiagramaCena = ({ posicion, isDark }) => {
+// Con «todas» (administradores) se puede tocar cualquier número para ver su recorrido, uno a la vez
+const DiagramaCena = ({ posicion, isDark, todas = false }) => {
   const colors = getColors(isDark);
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Cena'];
   const avance = useRef(new Animated.Value(0)).current;
+  const [elegida, setElegida] = useState(1);
   const W = 300;
   const FILA0 = 92;
   const PASO = 21;
   const H = FILA0 + 14 * PASO + 12;
   const xCirculo = { 5: 30, 3: 72, 1: 114, 2: 186, 4: 228, 6: 270 };
   const yFila = (f) => FILA0 + (f - 1) * PASO;
-  const r = RECORRIDO_CENA[posicion];
-  const izq = r && r.lado === 'izq';
-  // Solo se dibuja desde tu hilera: sale hacia tu lado del pasillo y avanza 2 hileras en tu dirección
-  const puntos = r
-    ? [
-        [izq ? 134 : 166, yFila(r.fila)],
-        [izq ? 96 : 204, yFila(r.fila)],
-        [izq ? 96 : 204, yFila(r.hasta)],
-      ]
-    : [];
+  const visibles = todas ? [elegida] : RECORRIDO_CENA[posicion] ? [posicion] : [];
   useEffect(() => {
-    if (!r) return undefined;
+    if (!visibles.length) return undefined;
     avance.setValue(0);
     const animacion = Animated.loop(Animated.sequence([Animated.timing(avance, { toValue: 1, duration: 5000, useNativeDriver: false }), Animated.delay(900), Animated.timing(avance, { toValue: 0, duration: 0, useNativeDriver: false })]));
     animacion.start();
     return () => animacion.stop();
-  }, [posicion]);
-  if (!r) return null;
-  // Reparte el tiempo de la animación según lo largo de cada tramo
-  const largos = puntos.slice(1).map((p, i) => Math.abs(p[0] - puntos[i][0]) + Math.abs(p[1] - puntos[i][1]));
-  const total = largos.reduce((a, b) => a + b, 0) || 1;
-  const entradas = [0];
-  largos.forEach((l) => entradas.push(entradas[entradas.length - 1] + l / total));
-  entradas[entradas.length - 1] = 1;
-  const x = avance.interpolate({ inputRange: entradas, outputRange: puntos.map((p) => p[0] - 8) });
-  const y = avance.interpolate({ inputRange: entradas, outputRange: puntos.map((p) => p[1] - 8) });
-  const camino = puntos.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' ');
-  const fin = puntos[puntos.length - 1];
-  const flecha = r.hasta < r.fila ? `M${fin[0] - 6} ${fin[1] + 7} L${fin[0]} ${fin[1]} L${fin[0] + 6} ${fin[1] + 7}` : `M${fin[0] - 6} ${fin[1] - 7} L${fin[0]} ${fin[1]} L${fin[0] + 6} ${fin[1] - 7}`;
+  }, [posicion, todas, elegida]);
+  if (!visibles.length) return null;
+  const radio = 8;
+  // Cada recorrido se dibuja desde su hilera: sale hacia su lado del pasillo y avanza 2 hileras en su dirección
+  const trazos = visibles.map((p) => {
+    const r = RECORRIDO_CENA[p];
+    const izq = r.lado === 'izq';
+    const puntos = [
+      [izq ? 134 : 166, yFila(r.fila)],
+      [izq ? 96 : 204, yFila(r.fila)],
+      [izq ? 96 : 204, yFila(r.hasta)],
+    ];
+    // Reparte el tiempo de la animación según lo largo de cada tramo
+    const largos = puntos.slice(1).map((q, i) => Math.abs(q[0] - puntos[i][0]) + Math.abs(q[1] - puntos[i][1]));
+    const total = largos.reduce((a, b) => a + b, 0) || 1;
+    const entradas = [0];
+    largos.forEach((l) => entradas.push(entradas[entradas.length - 1] + l / total));
+    entradas[entradas.length - 1] = 1;
+    const fin = puntos[puntos.length - 1];
+    return {
+      p,
+      fila: r.fila,
+      x: avance.interpolate({ inputRange: entradas, outputRange: puntos.map((q) => q[0] - radio) }),
+      y: avance.interpolate({ inputRange: entradas, outputRange: puntos.map((q) => q[1] - radio) }),
+      camino: puntos.map((q, i) => `${i === 0 ? 'M' : 'L'}${q[0]} ${q[1]}`).join(' '),
+      flecha: r.hasta < r.fila ? `M${fin[0] - 6} ${fin[1] + 7} L${fin[0]} ${fin[1]} L${fin[0] + 6} ${fin[1] + 7}` : `M${fin[0] - 6} ${fin[1] - 7} L${fin[0]} ${fin[1]} L${fin[0] + 6} ${fin[1] - 7}`,
+    };
+  });
+  const filasDeSalida = trazos.map((t) => t.fila);
   return (
     <View style={{ alignSelf: 'center', width: W, height: H, marginVertical: 8 }}>
       <Svg width={W} height={H}>
-        <Path d={camino} stroke={paleta.fondo} strokeWidth={3} fill="none" strokeLinejoin="round" />
-        <Path d={flecha} stroke={paleta.fondo} strokeWidth={3} fill="none" strokeLinecap="round" />
+        {trazos.map((t) => (
+          <React.Fragment key={t.p}>
+            <Path d={t.camino} stroke={paleta.fondo} strokeWidth={3} fill="none" strokeLinejoin="round" />
+            <Path d={t.flecha} stroke={paleta.fondo} strokeWidth={3} fill="none" strokeLinecap="round" />
+          </React.Fragment>
+        ))}
       </Svg>
       {/* Mesa al frente */}
       <View style={{ position: 'absolute', left: 120, top: 0, width: 60, height: 22, borderRadius: 6, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 10, color: colors.textSub }}>Mesa</Text>
       </View>
-      {/* Las 6 posiciones al frente */}
+      {/* Las 6 posiciones al frente (el administrador puede tocarlas) */}
       {Object.entries(xCirculo).map(([p, cx]) => {
-        const mio = Number(p) === posicion;
-        return (
-          <View key={p} style={{ position: 'absolute', left: cx - 14, top: 24, width: 28, height: 28, borderRadius: 14, backgroundColor: mio ? paleta.fondo : 'transparent', borderWidth: 1.5, borderColor: mio ? paleta.fondo : colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+        const n = Number(p);
+        const mio = visibles.includes(n);
+        const circulo = (
+          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: mio ? paleta.fondo : 'transparent', borderWidth: 1.5, borderColor: mio ? paleta.fondo : colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: 13, fontWeight: '700', color: mio ? paleta.texto : colors.textSub }}>{p}</Text>
+          </View>
+        );
+        const lugar = { position: 'absolute', left: cx - 21, top: 16, width: 42, height: 44, alignItems: 'center', justifyContent: 'center' };
+        return todas ? (
+          <TouchableOpacity key={p} activeOpacity={0.7} onPress={() => setElegida(n)} accessibilityLabel={`Ver el recorrido de la posición ${p}`} style={lugar}>
+            {circulo}
+          </TouchableOpacity>
+        ) : (
+          <View key={p} style={lugar}>
+            {circulo}
           </View>
         );
       })}
       {/* Hileras de bancas */}
       {Array.from({ length: 15 }, (_, i) => i + 1).map((f) => (
-        <Text key={f} style={{ position: 'absolute', left: 140, top: yFila(f) - 8, width: 20, textAlign: 'center', fontSize: 11, fontWeight: f === r.fila ? '800' : '500', color: f === r.fila ? colors.textMain : colors.textSub }}>
+        <Text key={f} style={{ position: 'absolute', left: 140, top: yFila(f) - 8, width: 20, textAlign: 'center', fontSize: 11, fontWeight: filasDeSalida.includes(f) ? '800' : '500', color: filasDeSalida.includes(f) ? colors.textMain : colors.textSub }}>
           {f}
         </Text>
       ))}
-      <Animated.View style={{ position: 'absolute', left: 0, top: 0, width: 16, height: 16, borderRadius: 8, backgroundColor: paleta.texto, borderWidth: 3, borderColor: paleta.fondo, transform: [{ translateX: x }, { translateY: y }] }} />
+      {trazos.map((t) => (
+        <Animated.View key={t.p} style={{ position: 'absolute', left: 0, top: 0, width: radio * 2, height: radio * 2, borderRadius: radio, backgroundColor: paleta.texto, borderWidth: 3, borderColor: paleta.fondo, transform: [{ translateX: t.x }, { translateY: t.y }] }} />
+      ))}
     </View>
   );
 };
@@ -6051,6 +6077,7 @@ function RolesScreen({ navigation }) {
 function CenaScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
+  const { width: anchoCena } = useWindowDimensions();
   const paleta = PALETA_MENU[isDark ? 'oscuro' : 'claro']['Cena'];
   const esAdmin = rolUsuarioActivoGlobal === 'administrador';
   const yo = (usuarioActivoGlobal || '').toLowerCase();
@@ -6058,6 +6085,7 @@ function CenaScreen({ navigation }) {
   const [turnos, setTurnos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [eligiendo, setEligiendo] = useState(null);
+  const [cambiando, setCambiando] = useState(null); // turno confirmado que el administrador va a cambiar
   const [elegibles, setElegibles] = useState([]);
   const [asignando, setAsignando] = useState(false);
   const [mapaNombres, setMapaNombres] = useState({});
@@ -6088,7 +6116,8 @@ function CenaScreen({ navigation }) {
   const puedeAsignar = esAdmin && ((ahora.getDay() === 6 && ahora.getHours() >= 12) || ahora.getDay() === 0);
   const turnoDe = (p) => turnos.find((t) => t.posicion === p);
 
-  const abrirAsignar = async (posicion) => {
+  const abrirAsignar = async (posicion, turnoActual = null) => {
+    setCambiando(turnoActual);
     setEligiendo(posicion);
     const { data } = await supabase.from('maestros').select('nombre_usuario, nombre_completo, elegible_presidir, elegible_mesa').order('nombre_completo', { ascending: true });
     const confirmados = turnos.filter((t) => t.estado === 'confirmado').map((t) => (t.nombre_usuario || '').toLowerCase());
@@ -6096,7 +6125,7 @@ function CenaScreen({ navigation }) {
   };
   const asignar = async (persona) => {
     setAsignando(true);
-    const { data, error } = await supabase.functions.invoke('cena', { body: { accion: 'asignar', fecha: domingo, posicion: eligiendo, nombre_usuario: persona.nombre_usuario } });
+    const { data, error } = await supabase.functions.invoke('cena', { body: { accion: 'asignar', fecha: domingo, posicion: eligiendo, nombre_usuario: persona.nombre_usuario, cambiar: !!cambiando } });
     setAsignando(false);
     setEligiendo(null);
     if (error || (data && data.error)) return setAlerta({ visible: true, titulo: 'No se pudo asignar', mensaje: (data && data.error) || error.message, onConfirmar: cerrarAlerta, isDark });
@@ -6204,8 +6233,9 @@ function CenaScreen({ navigation }) {
               ) : null}
 
               {/* Rol de la semana: los participantes confirmados lo ven; el administrador ve también quién está pendiente */}
+              <View style={esAdmin && anchoCena >= 760 ? { flexDirection: 'row', alignItems: 'flex-start', gap: 14 } : null}>
               {verRol ? (
-                <View style={tarjeta}>
+                <View style={[tarjeta, esAdmin && anchoCena >= 760 ? { flex: 1 } : null]}>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, letterSpacing: 1, marginBottom: 6 }}>{`Rol del ${fechaLargaCena(domingo).replace(',', '')}`.toUpperCase()}</Text>
                   {[0, 1, 2, 3, 4, 5, 6].map((p) => {
                     const t = turnoDe(p);
@@ -6227,6 +6257,11 @@ function CenaScreen({ navigation }) {
                             </TouchableOpacity>
                           ) : null}
                           {listo ? <IconoCheck size={22} color={isDark ? '#8FC79F' : '#6FA884'} /> : null}
+                          {listo && esAdmin ? (
+                            <TouchableOpacity onPress={() => abrirAsignar(p, t)} accessibilityLabel={`Cambiar a ${texto}`} style={{ width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center', marginLeft: 8 }}>
+                              <Feather name="edit-2" size={14} color={colors.textSub} />
+                            </TouchableOpacity>
+                          ) : null}
                           {listo && miTurno && t.id === miTurno.id ? (
                             <TouchableOpacity onPress={cancelarMiLugar} accessibilityLabel="Ya no puedo" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: 2, marginRight: -8 }}>
                               <Feather name="x-circle" size={22} color="#C97A7A" />
@@ -6255,6 +6290,15 @@ function CenaScreen({ navigation }) {
                   })}
                 </View>
               ) : null}
+              {/* El administrador ve el diagrama con los 6 recorridos */}
+              {esAdmin ? (
+                <View style={[tarjeta, anchoCena >= 760 ? { width: 348 } : null]}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSub, letterSpacing: 1 }}>CÓMO SE REPARTE</Text>
+                  <Text style={{ fontSize: 14, color: colors.textSub, marginTop: 4 }}>Toca un número para ver su recorrido.</Text>
+                  <DiagramaCena todas isDark={isDark} />
+                </View>
+              ) : null}
+              </View>
             </>
           )}
         </View>
@@ -6264,8 +6308,8 @@ function CenaScreen({ navigation }) {
       <Modal visible={eligiendo !== null} transparent animationType="fade" onRequestClose={() => setEligiendo(null)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.background, maxHeight: '80%' }]}>
-            <Text style={[styles.modalTitle, { color: colors.textMain }]}>{eligiendo === 0 ? 'Quién preside' : `Posición ${eligiendo}`}</Text>
-            <Text style={[styles.modalMessage, { color: colors.textSub }]}>Elige a un hermano elegible. Quedará confirmado y le llegará un aviso.</Text>
+            <Text style={[styles.modalTitle, { color: colors.textMain }]}>{cambiando ? `Cambiar a ${nombreDe(cambiando.nombre_usuario)}` : eligiendo === 0 ? 'Quién preside' : `Posición ${eligiendo}`}</Text>
+            <Text style={[styles.modalMessage, { color: colors.textSub }]}>{cambiando ? `Elige quién ${eligiendo === 0 ? 'presidirá' : `servirá en la posición ${eligiendo}`}. Quedará confirmado y a los dos les llegará un aviso.` : 'Elige a un hermano elegible. Quedará confirmado y le llegará un aviso.'}</Text>
             {asignando ? (
               <ActivityIndicator color={colors.textSub} style={{ marginVertical: 20 }} />
             ) : (
@@ -9027,7 +9071,13 @@ function AdminScreen({ navigation, route }) {
 // ==========================================
 // PANTALLA: CALENDARIO DE ACTIVIDADES
 // ==========================================
-const VERDE_CALENDARIO = '#39FF6A';
+// El calendario usa los colores de su tarjeta de Inicio
+const coloresCalendario = (isDark) => PALETA_MENU[isDark ? 'oscuro' : 'claro']['Calendario'];
+// Versión fuerte (día elegido, botón + y botones principales)
+const fuerteCalendario = (isDark) => {
+  const p = coloresCalendario(isDark);
+  return isDark ? p : { fondo: p.texto, texto: '#FFFFFF' };
+};
 const DIAS_SEMANA_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const DIAS_SEMANA_LARGOS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 // "15:00:00" -> "3:00 pm"
@@ -9107,7 +9157,7 @@ const CampoFechaHora = ({ tipo, valor, onCambiar, isDark, etiqueta, opcional = f
 
 // Cuadrícula del mes: al tocar un día se elige
 const SelectorFecha = ({ valor, isDark, onElegir, conAnios = false, categoria = null }) => {
-  const colorSeccion = categoria ? PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] : null;
+  const colorSeccion = categoria ? PALETA_MENU[isDark ? 'oscuro' : 'claro'][categoria] : fuerteCalendario(isDark);
   const colors = getColors(isDark);
   const base = valor ? new Date(valor + 'T00:00:00') : new Date();
   const [mesVista, setMesVista] = useState(new Date(base.getFullYear(), base.getMonth(), 1));
@@ -9157,8 +9207,8 @@ const SelectorFecha = ({ valor, isDark, onElegir, conAnios = false, categoria = 
           const esHoy = f === hoyTexto;
           return (
             <View key={f} style={{ width: `${100 / 7}%`, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-              <TouchableOpacity onPress={() => onElegir(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: elegido ? (colorSeccion ? colorSeccion.fondo : VERDE_CALENDARIO) : 'transparent', borderWidth: esHoy && !elegido ? 1.5 : 0, borderColor: colors.textMain }}>
-                <Text style={{ fontSize: 14.5, fontWeight: elegido || esHoy ? '800' : '500', color: elegido ? (colorSeccion ? colorSeccion.texto : '#1E1D1B') : colors.textMain }}>{d}</Text>
+              <TouchableOpacity onPress={() => onElegir(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: elegido ? colorSeccion.fondo : 'transparent', borderWidth: esHoy && !elegido ? 1.5 : 0, borderColor: colors.textMain }}>
+                <Text style={{ fontSize: 14.5, fontWeight: elegido || esHoy ? '800' : '500', color: elegido ? colorSeccion.texto : colors.textMain }}>{d}</Text>
               </TouchableOpacity>
             </View>
           );
@@ -9171,22 +9221,23 @@ const SelectorFecha = ({ valor, isDark, onElegir, conAnios = false, categoria = 
 // Hora, minutos (de 5 en 5) y am/pm, con botón Listo
 const SelectorHora = ({ valor, isDark, onElegir }) => {
   const colors = getColors(isDark);
+  const pc = fuerteCalendario(isDark);
   const m = String(valor || '').match(/^(\d{1,2}):(\d{2})/);
   const h24 = m ? parseInt(m[1], 10) : 19;
   const [hora, setHora] = useState(h24 % 12 || 12);
   const [minuto, setMinuto] = useState(m ? Math.round(parseInt(m[2], 10) / 5) * 5 % 60 : 0);
   const [pm, setPm] = useState(h24 >= 12);
   const resultado = () => `${String((hora % 12) + (pm ? 12 : 0)).padStart(2, '0')}:${String(minuto).padStart(2, '0')}`;
-  const boton = (activo) => ({ width: '23%', height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: activo ? VERDE_CALENDARIO : colors.cardBorder, backgroundColor: activo ? VERDE_CALENDARIO : 'transparent' });
-  const textoBoton = (activo) => ({ fontSize: 15, fontWeight: activo ? '800' : '600', color: activo ? '#1E1D1B' : colors.textMain });
+  const boton = (activo) => ({ width: '23%', height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: activo ? pc.fondo : colors.cardBorder, backgroundColor: activo ? pc.fondo : 'transparent' });
+  const textoBoton = (activo) => ({ fontSize: 15, fontWeight: activo ? '800' : '600', color: activo ? pc.texto : colors.textMain });
   const etiqueta = { fontSize: 12.5, fontWeight: '700', color: colors.textSub, marginTop: 12, marginBottom: 8 };
   return (
     <View>
       <Text style={{ textAlign: 'center', fontSize: 38, fontWeight: '800', letterSpacing: -1, color: colors.textMain }}>{horaBonita(resultado())}</Text>
       <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 8 }}>
         {[false, true].map((esPm) => (
-          <TouchableOpacity key={String(esPm)} onPress={() => setPm(esPm)} style={{ paddingHorizontal: 22, height: 38, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: pm === esPm ? VERDE_CALENDARIO : colors.cardBorder, backgroundColor: pm === esPm ? VERDE_CALENDARIO : 'transparent' }}>
-            <Text style={{ fontSize: 14, fontWeight: '800', color: pm === esPm ? '#1E1D1B' : colors.textSub }}>{esPm ? 'pm' : 'am'}</Text>
+          <TouchableOpacity key={String(esPm)} onPress={() => setPm(esPm)} style={{ paddingHorizontal: 22, height: 38, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: pm === esPm ? pc.fondo : colors.cardBorder, backgroundColor: pm === esPm ? pc.fondo : 'transparent' }}>
+            <Text style={{ fontSize: 14, fontWeight: '800', color: pm === esPm ? pc.texto : colors.textSub }}>{esPm ? 'pm' : 'am'}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -9206,8 +9257,8 @@ const SelectorHora = ({ valor, isDark, onElegir }) => {
           </TouchableOpacity>
         ))}
       </View>
-      <TouchableOpacity onPress={() => onElegir(resultado())} style={{ marginTop: 16, height: 48, borderRadius: 999, backgroundColor: VERDE_CALENDARIO, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E1D1B' }}>Listo</Text>
+      <TouchableOpacity onPress={() => onElegir(resultado())} style={{ marginTop: 16, height: 48, borderRadius: 999, backgroundColor: pc.fondo, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 15, fontWeight: '800', color: pc.texto }}>Listo</Text>
       </TouchableOpacity>
     </View>
   );
@@ -9239,6 +9290,7 @@ const fechaCortaDia = (f) => {
 // Ventana para agregar, editar o borrar una actividad del calendario (solo administradores)
 const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado }) => {
   const colors = getColors(isDark);
+  const pc = fuerteCalendario(isDark);
   const nueva = !actividad;
   const [nombre, setNombre] = useState(actividad ? actividad.actividad : '');
   const [lugar, setLugar] = useState(actividad ? actividad.lugar || '' : '');
@@ -9296,7 +9348,7 @@ const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado 
   const interruptor = (texto, valor, onCambiar) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}>
       <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: colors.textMain }}>{texto}</Text>
-      <Interruptor value={valor} onValueChange={onCambiar} color={VERDE_CALENDARIO} isDark={isDark} />
+      <Interruptor value={valor} onValueChange={onCambiar} color={pc.fondo} isDark={isDark} />
     </View>
   );
 
@@ -9369,8 +9421,8 @@ const ModalActividad = ({ actividad, fechaInicial, isDark, onCerrar, onGuardado 
             <Text style={etiqueta}>Descripción</Text>
             <TextInput style={[campo, { minHeight: 80, paddingTop: 12, textAlignVertical: 'top' }]} value={descripcion} onChangeText={setDescripcion} placeholder="Opcional" placeholderTextColor={colors.textSub} multiline />
             {error ? <Text style={{ fontSize: 13, color: '#E0806A', marginTop: 12 }}>{error}</Text> : null}
-            <TouchableOpacity onPress={guardar} disabled={guardando} style={{ marginTop: 18, height: 50, borderRadius: 999, backgroundColor: VERDE_CALENDARIO, alignItems: 'center', justifyContent: 'center' }}>
-              {guardando ? <ActivityIndicator color="#1E1D1B" /> : <Text style={{ fontSize: 15, fontWeight: '800', color: '#1E1D1B' }}>Guardar</Text>}
+            <TouchableOpacity onPress={guardar} disabled={guardando} style={{ marginTop: 18, height: 50, borderRadius: 999, backgroundColor: pc.fondo, alignItems: 'center', justifyContent: 'center' }}>
+              {guardando ? <ActivityIndicator color={pc.texto} /> : <Text style={{ fontSize: 15, fontWeight: '800', color: pc.texto }}>Guardar</Text>}
             </TouchableOpacity>
             {!nueva ? (
               <TouchableOpacity onPress={eliminar} disabled={guardando} style={{ marginTop: 10, height: 46, borderRadius: 999, borderWidth: 1, borderColor: borrar ? '#E0806A' : colors.cardBorder, backgroundColor: borrar ? 'rgba(224, 128, 106, 0.15)' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
@@ -10012,6 +10064,7 @@ function ResumenPeticionesScreen({ navigation }) {
 function CalendarioScreen({ navigation }) {
   const { isDark } = useContext(ThemeContext);
   const colors = getColors(isDark);
+  const pc = coloresCalendario(isDark);
   const { width, height } = useWindowDimensions();
       const horizontal = width >= 760 && width > height;
     // Tablet en vertical: más ancho y la lista del día va debajo de la cuadrícula (sin ventana que sube)
@@ -10069,8 +10122,9 @@ function CalendarioScreen({ navigation }) {
     Animated.timing(subir, { toValue: abierta ? 1 : 0, duration: 260, useNativeDriver: false }).start();
   }, [abierta]);
 
-  const colorPasado = isDark ? '#34322E' : '#1E1D1B';
-  const colorFuturo = isDark ? '#6A675F' : '#D3D0C9';
+  // Colores de su tarjeta de Inicio: el día elegido va relleno y los días con actividad llevan un punto
+  const colorFuerte = isDark ? pc.fondo : pc.texto;
+  const textoFuerte = isDark ? pc.texto : '#FFFFFF';
   const anio = mes.getFullYear();
   const numMes = mes.getMonth();
   const totalDias = new Date(anio, numMes + 1, 0).getDate();
@@ -10114,20 +10168,16 @@ function CalendarioScreen({ navigation }) {
     }
   };
 
-  // Cuadrícula: cada día es un círculo. En horizontal se ajusta al ancho y al alto disponibles
-  const filas = Math.ceil((primero + totalDias) / 7);
-  const separacion = horizontal ? 12 : 6;
-  let tam = 0;
-  if (zona.w) {
-    const porAncho = Math.floor((zona.w - separacion * 6 - 1) / 7);
-    const porAlto = horizontal && zona.h ? Math.floor((zona.h - 34 - separacion * (filas - 1)) / filas) : porAncho;
-        tam = Math.max(28, Math.min(horizontal ? 132 : tabletVertical ? 112 : 92, porAncho, porAlto));
-  }
-  const anchoRejilla = tam * 7 + separacion * 6;
+  // Cuadrícula del mes: siete columnas dentro de una tarjeta
+  const grande = horizontal || tabletVertical;
   const celdas = [...Array(primero).fill(null), ...Array.from({ length: totalDias }, (_, i) => i + 1)];
-  // Cápsula verde para las actividades de varios días (un tramo por cada semana que cruzan)
-  const capsulas = [];
-  if (tam) {
+  while (celdas.length % 7) celdas.push(null);
+  // Punto: actividades de un solo día. Las de varios días llevan una píldora suave detrás de sus días
+  const conActividad = (f) => actividades.some((a) => a.fecha_inicio === f && a.fecha_fin === f);
+  const altoCelda = grande ? 60 : 50;
+  const tamCirculo = grande ? 46 : 40;
+  const pildoras = [];
+  {
     const inicioMes = fechaDe(1);
     const finMes = fechaDe(totalDias);
     actividades
@@ -10138,10 +10188,9 @@ function CalendarioScreen({ navigation }) {
         let d = desde;
         while (d <= hasta) {
           const idx = primero + d - 1;
-          const fila = Math.floor(idx / 7);
           const col = idx % 7;
           const fin = Math.min(hasta, d + (6 - col));
-          capsulas.push({ clave: `${a.id}-${d}`, left: col * (tam + separacion), top: fila * (tam + separacion), width: (fin - d + 1) * tam + (fin - d) * separacion });
+          pildoras.push({ clave: `${a.id}-${d}`, fila: Math.floor(idx / 7), col, dias: fin - d + 1, pasada: a.fecha_fin < hoy });
           d = fin + 1;
         }
       });
@@ -10150,145 +10199,130 @@ function CalendarioScreen({ navigation }) {
   const fechaSel = new Date(sel + 'T00:00:00');
   const listaSel = delDia(sel);
   const tituloDia = `${DIAS_SEMANA_LARGOS[fechaSel.getDay()]} ${fechaSel.getDate()} de ${NOMBRES_MESES[fechaSel.getMonth()].toLowerCase()}`;
-  const flecha = { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.cardBg, alignItems: 'center', justifyContent: 'center' };
-  const botonAgregar = esAdmin ? (
-    <TouchableOpacity onPress={() => setEditando('nueva')} accessibilityLabel="Agregar actividad" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, borderRadius: 999, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.cardBorder, marginTop: 6, marginBottom: 8 }}>
-      <Feather name="plus" size={16} color={colors.textSub} />
-      <Text style={{ fontSize: 13.5, fontWeight: '700', color: colors.textSub }}>Agregar actividad</Text>
-    </TouchableOpacity>
-  ) : null;
+  const flecha = { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' };
+  const tarjeta = { backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder };
 
-  const listaActividades = (
-    <>
-      {listaSel.length === 0 ? <Text style={{ fontSize: 14, color: colors.textSub, paddingVertical: 14 }}>Sin actividades este día</Text> : null}
-      {listaSel.map((a, i) => {
-        const varios = a.fecha_inicio !== a.fecha_fin;
-        const yaPaso = a.fecha_inicio <= hoy;
-        const tengo = mios.includes(a.id);
-        return (
-          <View key={a.id} style={{ flexDirection: 'row', gap: 14, paddingVertical: 14, borderTopWidth: i ? 1 : 0, borderTopColor: colors.cardBorder }}>
-                        <View style={{ width: 76 }}>
-              {(() => {
-                const h = horarioDe(a, sel);
-                if (!h.hora) return <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMain }}>Todo el día</Text>;
-                return (
-                  <>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textMain }}>{horaBonita(h.hora)}</Text>
-                    {h.hora_fin ? <Text style={{ fontSize: 12, color: colors.textSub, marginTop: 2 }}>a {horaBonita(h.hora_fin)}</Text> : null}
-                  </>
-                );
-              })()}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15.5, fontWeight: '700', color: colors.textMain }}>{a.actividad}</Text>
-              {a.lugar ? <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 3 }}>{a.lugar}</Text> : null}
-              {a.descripcion ? <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 3 }}>{a.descripcion}</Text> : null}
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                {varios ? (
-                  <View style={{ backgroundColor: VERDE_CALENDARIO, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#1E1D1B' }}>
-                      Día {diasEntre(a.fecha_inicio, sel) + 1} de {diasEntre(a.fecha_inicio, a.fecha_fin) + 1}
-                    </Text>
-                  </View>
-                ) : null}
-                {!yaPaso ? (
-                  <TouchableOpacity onPress={() => alternarRecordatorio(a.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: tengo ? VERDE_CALENDARIO : colors.cardBorder, backgroundColor: tengo ? VERDE_CALENDARIO : 'transparent' }}>
-                    <Feather name={tengo ? 'check' : 'bell'} size={13} color={tengo ? '#1E1D1B' : colors.textSub} />
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: tengo ? '#1E1D1B' : colors.textSub }}>{tengo ? 'Te lo recordaremos' : 'Recordarme'}</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            </View>
-            {esAdmin ? (
-              <TouchableOpacity onPress={() => setEditando(a)} accessibilityLabel={`Editar ${a.actividad}`} style={{ width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
-                <Feather name="edit-2" size={14} color={colors.textSub} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        );
-      })}
-    </>
-  );
-
-  const fecha = (
-    <View>
-      <Text style={{ fontSize: horizontal ? 130 : 112, fontWeight: '800', letterSpacing: horizontal ? -7 : -6, lineHeight: horizontal ? 136 : 118, color: VERDE_CALENDARIO, marginTop: 6 }}>{String(fechaSel.getDate()).padStart(2, '0')}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 4 }}>
-        <View>
-          <Text style={{ fontSize: 28, fontWeight: '800', letterSpacing: -0.5, color: colors.textMain }}>{NOMBRES_MESES[numMes].toUpperCase()}</Text>
-          <Text style={{ fontSize: 24, fontWeight: '500', color: colors.textSub }}>{anio}</Text>
+  const tarjetaMes = (
+    <View style={[tarjeta, { borderRadius: 32, paddingHorizontal: grande ? 20 : 12, paddingTop: 16, paddingBottom: 10, marginTop: 6 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingHorizontal: 4 }}>
+        <TouchableOpacity onPress={() => cambiarMes(-1)} hitSlop={4} style={flecha} accessibilityLabel="Mes anterior">
+          <Feather name="chevron-left" size={18} color={colors.textMain} />
+        </TouchableOpacity>
+        <Text style={{ flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700', letterSpacing: 3, color: colors.textMain }}>{`${NOMBRES_MESES[numMes]} ${anio}`.toUpperCase()}</Text>
+        <TouchableOpacity onPress={() => cambiarMes(1)} hitSlop={4} style={flecha} accessibilityLabel="Mes siguiente">
+          <Feather name="chevron-right" size={18} color={colors.textMain} />
+        </TouchableOpacity>
+      </View>
+      <Animated.View style={{ transform: [{ translateX: deslizar }], opacity: deslizar.interpolate({ inputRange: [-60, 0, 60], outputRange: [0.35, 1, 0.35] }) }}>
+        <View style={{ flexDirection: 'row' }}>
+          {DIAS_SEMANA_CORTOS.map((d) => (
+            <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: colors.textSub, paddingVertical: 6 }}>
+              {d}
+            </Text>
+          ))}
         </View>
-        {!horizontal ? <Text style={{ fontSize: 28, fontWeight: '700', color: colors.textSub }}>{DIAS_SEMANA_CORTOS[fechaSel.getDay()]}</Text> : null}
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-        <TouchableOpacity onPress={() => cambiarMes(-1)} style={flecha} accessibilityLabel="Mes anterior">
-          <Feather name="chevron-left" size={18} color={colors.textSub} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => cambiarMes(1)} style={flecha} accessibilityLabel="Mes siguiente">
-          <Feather name="chevron-right" size={18} color={colors.textSub} />
-        </TouchableOpacity>
-      </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', position: 'relative' }}>
+          {pildoras.map((c) => (
+            <View key={c.clave} style={{ pointerEvents: 'none', position: 'absolute', left: `${(c.col * 100) / 7}%`, width: `${(c.dias * 100) / 7}%`, top: c.fila * altoCelda + (altoCelda - tamCirculo) / 2, height: tamCirculo, paddingHorizontal: 3 }}>
+              <View style={{ flex: 1, borderRadius: tamCirculo / 2, backgroundColor: pc.fondo, opacity: (isDark ? 0.3 : 0.45) * (c.pasada ? 0.5 : 1) }} />
+            </View>
+          ))}
+          {celdas.map((d, i) => {
+            if (!d) return <View key={'v' + i} style={{ width: `${100 / 7}%`, height: altoCelda }} />;
+            const f = fechaDe(d);
+            const esHoy = f === hoy;
+            const esElegido = f === sel;
+            const pasado = f < hoy;
+            const hay = conActividad(f);
+            return (
+              <TouchableOpacity key={f} activeOpacity={0.7} onPress={() => tocarDia(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: `${100 / 7}%`, height: altoCelda, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: tamCirculo, height: tamCirculo, borderRadius: tamCirculo / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: esElegido ? colorFuerte : 'transparent', borderWidth: esHoy && !esElegido ? 1.5 : 0, borderColor: colorFuerte }}>
+                  <Text style={{ fontSize: grande ? 17 : 15.5, fontWeight: esElegido || esHoy ? '800' : '500', color: esElegido ? textoFuerte : esHoy ? colorFuerte : pasado ? colors.textSub : colors.textMain, opacity: pasado && !esElegido ? 0.6 : 1 }}>{d}</Text>
+                  {hay ? <View style={{ position: 'absolute', bottom: grande ? 6 : 5, width: 5, height: 5, borderRadius: 3, backgroundColor: esElegido ? textoFuerte : colorFuerte, opacity: pasado && !esElegido ? 0.5 : 1 }} /> : null}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </Animated.View>
     </View>
   );
 
-  const cuadricula = (
-    <View
-      style={{ flex: horizontal ? 1 : undefined, marginTop: horizontal ? 10 : 18, alignItems: 'center', justifyContent: horizontal ? 'center' : 'flex-start' }}
-      onLayout={(e) => {
-        const { width: w, height: h, y } = e.nativeEvent.layout;
-        setZona((z) => (z.w === w && z.h === h ? z : { w, h }));
-        setArribaCuadricula(y);
-      }}
-    >
-      {tam ? (
-        <Animated.View style={{ width: anchoRejilla, transform: [{ translateX: deslizar }], opacity: deslizar.interpolate({ inputRange: [-60, 0, 60], outputRange: [0.35, 1, 0.35] }) }}>
-          <View style={{ flexDirection: 'row', gap: separacion, marginBottom: 8 }}>
-            {DIAS_SEMANA_CORTOS.map((d) => (
-              <Text key={d} style={{ width: tam, textAlign: 'center', fontSize: horizontal ? 12.5 : 11, color: colors.textSub }}>
-                {d}
-              </Text>
-            ))}
-          </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: separacion, position: 'relative', width: anchoRejilla }}>
-            {capsulas.map((c) => (
-              <View key={c.clave} style={{ position: 'absolute', left: c.left, top: c.top, width: c.width, height: tam, borderRadius: tam / 2, backgroundColor: VERDE_CALENDARIO }} />
-            ))}
-            {celdas.map((d, i) => {
-              if (!d) return <View key={'v' + i} style={{ width: tam, height: tam }} />;
-              const f = fechaDe(d);
-              const esHoy = f === hoy;
-              const fondo = esHoy ? VERDE_CALENDARIO : f < hoy ? colorPasado : colorFuturo;
-              const colorPunto = esHoy ? '#1E1D1B' : f < hoy ? '#FFFFFF' : isDark ? '#F2F0EA' : '#1E1D1B';
-              const n = puntosDe(f);
-              const elegido = f === sel && !esHoy;
-                            // Cada día es su número: los que ya pasaron se ven apagados, hoy en verde.
-              // Si ese día hay actividad, lleva un anillo verde. Las de varios días usan la cápsula verde.
-              // El día elegido no lleva número (ya se ve en grande arriba): solo una rayita.
-              const esElegido = f === sel;
-              const enCapsula = actividades.some((a) => a.fecha_inicio !== a.fecha_fin && a.fecha_inicio <= f && a.fecha_fin >= f);
-              const conEvento = n > 0 && !enCapsula;
-                            const colorNumero = enCapsula || conEvento ? (f < hoy ? 'rgba(30,29,27,0.45)' : '#1E1D1B') : esHoy ? VERDE_CALENDARIO : f < hoy ? (isDark ? '#55524B' : '#B3AFA6') : colors.textMain;
-              const altoNumero = Math.round(tam * 0.56);
-              return (
-                <TouchableOpacity key={f} activeOpacity={0.7} onPress={() => tocarDia(f)} accessibilityLabel={`${d} de ${NOMBRES_MESES[numMes]}`} style={{ width: tam, height: tam, alignItems: 'center', justifyContent: 'center' }}>
-                  {conEvento ? <View style={{ position: 'absolute', width: tam, height: tam, borderRadius: tam / 2, backgroundColor: VERDE_CALENDARIO, opacity: f < hoy ? 0.45 : 1 }} /> : null}
-                  {esElegido ? (
-                    <View style={{ width: Math.round(tam * 0.36), height: 5, borderRadius: 3, backgroundColor: enCapsula || conEvento ? '#1E1D1B' : esHoy ? VERDE_CALENDARIO : colors.textMain }} />
-                  ) : (
-                    <Text style={{ fontSize: altoNumero, lineHeight: altoNumero, fontWeight: '800', letterSpacing: -Math.round(tam * 0.04), color: colorNumero }}>{d}</Text>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </Animated.View>
+  // Botón redondo (como el lápiz) para pedir o quitar el recordatorio
+  const botonRedondo = (activo) => ({ width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: activo ? pc.fondo : colors.cardBorder, backgroundColor: activo ? pc.fondo : 'transparent', alignItems: 'center', justifyContent: 'center' });
+  const listaActividades = (
+    <View style={{ marginTop: horizontal ? 6 : 24 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 12, paddingHorizontal: 4 }}>
+        <Text style={{ flex: 1, fontSize: 20, fontWeight: '800', color: colors.textMain }}>{tituloDia}</Text>
+        {listaSel.length ? <Text style={{ fontSize: 13, color: colors.textSub }}>{listaSel.length === 1 ? '1 actividad' : `${listaSel.length} actividades`}</Text> : null}
+      </View>
+      {listaSel.length === 0 ? (
+        <View style={[tarjeta, { borderRadius: 24, paddingVertical: 18, paddingHorizontal: 20 }]}>
+          <Text style={{ fontSize: 14, color: colors.textSub }}>Sin actividades este día</Text>
+        </View>
       ) : null}
+      {listaSel.map((a) => {
+        const varios = a.fecha_inicio !== a.fecha_fin;
+        const yaPaso = a.fecha_inicio <= hoy;
+        const tengo = mios.includes(a.id);
+        const h = horarioDe(a, sel);
+        const [horaTxt, ampm] = h.hora ? horaBonita(h.hora).split(' ') : ['', ''];
+        return (
+          <View key={a.id} style={[tarjeta, { flexDirection: 'row', alignItems: 'center', borderRadius: 24, paddingVertical: 14, paddingLeft: 12, paddingRight: 12, marginBottom: 10 }]}>
+            <View style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, backgroundColor: pc.fondo }} />
+            <View style={{ width: 66, alignItems: 'center' }}>
+              {h.hora ? (
+                <>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textMain }}>{horaTxt}</Text>
+                  <Text style={{ fontSize: 12, color: colors.textSub }}>{ampm}</Text>
+                  {h.hora_fin ? <Text style={{ fontSize: 11, color: colors.textSub, marginTop: 2 }}>a {horaBonita(h.hora_fin)}</Text> : null}
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textMain }}>Todo</Text>
+                  <Text style={{ fontSize: 12, color: colors.textSub }}>el día</Text>
+                </>
+              )}
+            </View>
+            <View style={{ width: 1, alignSelf: 'stretch', backgroundColor: colors.cardBorder, marginRight: 14 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15.5, fontWeight: '700', color: colors.textMain }}>{a.actividad}</Text>
+              {a.lugar || varios ? (
+                <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 3 }}>
+                  {[a.lugar, varios ? `Día ${diasEntre(a.fecha_inicio, sel) + 1} de ${diasEntre(a.fecha_inicio, a.fecha_fin) + 1}` : null].filter(Boolean).join(' · ')}
+                </Text>
+              ) : null}
+              {a.descripcion ? <Text style={{ fontSize: 13, color: colors.textSub, marginTop: 3 }}>{a.descripcion}</Text> : null}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginLeft: 10 }}>
+              {!yaPaso ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    alternarRecordatorio(a.id);
+                    mostrarMensaje(tengo ? 'Ya no te lo recordaremos' : 'Te lo recordaremos');
+                  }}
+                  hitSlop={4}
+                  accessibilityLabel={tengo ? `Quitar recordatorio de ${a.actividad}` : `Recordarme ${a.actividad}`}
+                  style={botonRedondo(tengo)}
+                >
+                  <Feather name="bell" size={15} color={tengo ? pc.texto : colors.textSub} />
+                </TouchableOpacity>
+              ) : null}
+              {esAdmin ? (
+                <TouchableOpacity onPress={() => setEditando(a)} hitSlop={4} accessibilityLabel={`Editar ${a.actividad}`} style={botonRedondo(false)}>
+                  <Feather name="edit-2" size={14} color={colors.textSub} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background, alignItems: 'center' }]}>
-                        <View {...gestos.panHandlers} style={{ width: '95%', maxWidth: horizontal ? 1400 : tabletVertical ? 900 : 600, flex: 1, touchAction: 'pan-y' }}>
+      <View {...gestos.panHandlers} style={{ width: '95%', maxWidth: horizontal ? 1200 : tabletVertical ? 760 : 600, flex: 1, touchAction: 'pan-y' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MenuPrincipal'))} style={{ padding: 8, marginLeft: -8, marginRight: 4 }}>
             <Feather name="arrow-left" size={22} color={colors.textSub} />
@@ -10296,32 +10330,30 @@ function CalendarioScreen({ navigation }) {
           <View style={[styles.headerSoloText, { flex: 1 }]}>
             <Text style={[styles.titleMini, { color: colors.textMain }]}>CALENDARIO</Text>
           </View>
-          {!horizontal ? (
-            <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
-              <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
-            </TouchableOpacity>
-          ) : null}
+          <TouchableOpacity onPress={() => navigation.navigate('MenuPrincipal')}>
+            <Image source={isDark ? require('./logo-white.png') : require('./logo-black.png')} style={{ width: 50, height: 36, resizeMode: 'contain' }} />
+          </TouchableOpacity>
         </View>
         {horizontal ? (
-          <View style={{ flex: 1, flexDirection: 'row', gap: 40, paddingBottom: 16 }}>
-            <ScrollView style={{ width: '38%', maxWidth: 460, flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 30 }}>
-              {fecha}
-              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textSub, marginTop: 22, marginBottom: 10 }}>{tituloDia}</Text>
-              <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingVertical: 6 }}>{listaActividades}</View>
-              {botonAgregar ? <View style={{ marginTop: 10 }}>{botonAgregar}</View> : null}
+          <View style={{ flex: 1, flexDirection: 'row', gap: 28 }}>
+            <View style={{ width: '46%', maxWidth: 540 }}>{tarjetaMes}</View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 110 }}>
+              {listaActividades}
             </ScrollView>
-            {cuadricula}
           </View>
-                                ) : (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
-            {fecha}
-            {cuadricula}
-            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textMain, marginTop: 26, marginBottom: 10 }}>{tituloDia}</Text>
-            <View style={{ backgroundColor: colors.cardBg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 32, paddingHorizontal: 20, paddingVertical: 6 }}>{listaActividades}</View>
-            {botonAgregar ? <View style={{ marginTop: 10 }}>{botonAgregar}</View> : null}
-       </ScrollView>
+        ) : (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 110 }}>
+            {tarjetaMes}
+            {listaActividades}
+          </ScrollView>
         )}
       </View>
+      {/* Botón + para agregar actividad (administradores) */}
+      {esAdmin ? (
+        <TouchableOpacity onPress={() => setEditando('nueva')} accessibilityLabel="Agregar actividad" style={{ position: 'absolute', right: Math.max(22, (width - (horizontal ? 1200 : tabletVertical ? 760 : 600)) / 2), bottom: 26, width: 60, height: 60, borderRadius: 30, backgroundColor: colorFuerte, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+          <Feather name="plus" size={28} color={textoFuerte} />
+        </TouchableOpacity>
+      ) : null}
       {editando ? <ModalActividad actividad={editando === 'nueva' ? null : editando} fechaInicial={sel} isDark={isDark} onCerrar={() => setEditando(null)} onGuardado={alGuardar} /> : null}
     </SafeAreaView>
   );
