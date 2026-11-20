@@ -1231,8 +1231,8 @@ const ponerMayusculas = (t) =>
 
 // Nombre propio: "JUAN de la CRUZ" -> "Juan de la Cruz"
 // Un nombre solo lleva letras (con acentos), espacios, puntos, guiones y apóstrofes
-const nombreValido = (t) => /^[\p{L}][\p{L} .'\-]*$/u.test(String(t || '').trim());
-const AVISO_NOMBRE = 'El nombre solo puede llevar letras, espacios, puntos, guiones y apóstrofes.';
+const nombreValido = (t) => /^[\p{L}][\p{L} .,'()\-]*$/u.test(String(t || '').trim());
+const AVISO_NOMBRE = 'El nombre solo puede llevar letras, espacios, puntos, comas, paréntesis, guiones y apóstrofes.';
 
 const nombrePropio = (t) =>
   String(t || '')
